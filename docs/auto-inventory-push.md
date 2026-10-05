@@ -56,10 +56,10 @@ flowchart TD
     D --> E[Query active SkuMappings & Connected Shops with Push Enabled]
     E --> F[Calculate push quantity: Formula BR-05-01]
     F --> G[Redis State: Update Latest Value & Push Version]
-    G --> H[BullMQ: Enqueue Coalesced Push Job in tiktok.push-stock queue]
-    H --> I[Worker: TikTokPushStockProcessor]
+    G --> H[Kafka: Publish Coalesced Push Event to vishop.inventory.push-stock]
+    H --> I[Kafka Consumer: TikTokPushStockConsumer]
     I --> J{Check Out-of-Order?}
-    J -- Version is Stale --> K[Drop Job / No-op]
+    J -- Version is Stale --> K[Drop Event / No-op]
     J -- Version is Fresh --> L[Call TikTok API: /product/202309/products/{id}/inventory/update]
     L --> M[Record EventLog & Update lastPushedVersion]
 ```
@@ -68,21 +68,17 @@ flowchart TD
 
 ## 4. Kế hoạch Thay đổi Code Chi tiết
 
-### Component 1: Core Domain Events & Contracts
-
-- **[NEW]** `libs/modules/inventories/src/domain/events/inventory-changed.event.ts`: Định nghĩa `InventoryChangedEvent` chứa `{ tenantId, merchantSkuIds: string[], reason: string, correlationId?: string }`.
+### Component 1: Core Domain Events
+- Định nghĩa `InventoryChangedEvent` chứa `{ tenantId, merchantSkuIds: List<UUID>, reason: String, correlationId: UUID }` implements `DomainEvent`.
 
 ### Component 2: Service Tính toán & Điều phối Đẩy tồn
-
-- **[NEW]** `libs/modules/shops/src/application/services/inventory-push-coordinator.service.ts`:
+- `InventoryPushCoordinator`:
   - `resolveAffectedSkuIds(tenantId, skuIds)`: Tìm SKU con + tất cả combo cha chứa SKU con.
-  - `calculateShopSkuPushPayloads(tenantId, skuIds)`: Tính toán số lượng tồn đẩy cho từng shop và listing dựa trên công thức `BR-05-01`, giải quyết tồn an toàn theo thứ tự ưu tiên (SKU override > Shop default).
-  - `enqueueCoalescedPushes(payloads)`: Ghi nhận version mới nhất vào Redis và enqueue job vào BullMQ queue `tiktok.push-stock` với `jobId` deduplicated.
+  - `calculateShopSkuPushPayloads(tenantId, skuIds)`: Tính toán số lượng tồn đẩy cho từng shop và listing dựa trên công thức `BR-05-01`.
+  - `enqueueCoalescedPushes(payloads)`: Ghi nhận version mới nhất vào Redis và bắn event sang topic Kafka `vishop.inventory.push-stock` với partition key theo `shopId`.
 
-### Component 3: Domain Event Listener
-
-- **[NEW]** `libs/modules/shops/src/application/listeners/inventory-changed-push.listener.ts`:
-  - Lắng nghe `InventoryChangedEvent`.
+### Component 3: Kafka Event Listener
+- Lắng nghe `InventoryChangedEvent` và kích hoạt luồng tính toán đẩy tồn.
   - Gọi `InventoryPushCoordinatorService` để thực hiện tính toán và lên lịch đẩy tồn tự động.
 
 ### Component 4: Worker Processor Nâng cấp & Out-of-Order Rejection

@@ -1,6 +1,6 @@
 # Stock Alerts (FR-05-10 / FR-05-27 / FR-03-09)
 
-`StockAlertService` in `modules-products` and the pure assessment function `assessStockAlert` in `@nestjs-fastify-nx/shared` provide the **single source of truth** for low-stock evaluations across the entire system.
+`StockAlertService` trong `inventory-service` và quy tắc nghiệp vụ `StockAlertEvaluator` cung cấp nguồn dữ liệu đánh giá cảnh báo tồn kho thấp cho toàn bộ hệ thống.
 
 Consumers include:
 

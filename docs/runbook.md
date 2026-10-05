@@ -1,4 +1,4 @@
-# Runbook — nestjs-fastify-nx
+# Runbook — ViShop Platform
 
 Operational runbook for on-call engineers. Each section follows the pattern:
 **Symptom → Diagnostic → Action → Escalation**.
@@ -7,30 +7,27 @@ Operational runbook for on-call engineers. Each section follows the pattern:
 
 ## 1. Outbox stuck
 
-**Symptom:** Domain events stop flowing. Downstream listeners (audit-log, notifications) are silent. `outbox_events` rows accumulate with `"processedAt" IS NULL`.
+**Symptom:** Domain events stop flowing. Downstream listeners (audit-log, notifications) are silent. `outbox_events` rows accumulate with `status = 'PENDING'` or `status = 'FAILED'`.
 
 **Diagnostic:**
 
-Prisma maps the table to snake_case but leaves column names camelCase, so every column here must
-stay double-quoted — unquoted, Postgres folds it to lowercase and answers
-`column "event_type" does not exist`.
-
 ```sql
--- Find events that have exhausted retry attempts
-SELECT id, "eventType", "aggregateId", attempts, "createdAt", "lastError"
+-- Find events that have failed or exhausted retry attempts
+SELECT id, event_type, aggregate_type, aggregate_id, retry_count, occurred_at, error_message
 FROM outbox_events
-WHERE "processedAt" IS NULL
-  AND attempts >= 10
-ORDER BY "createdAt" ASC
+WHERE status IN ('PENDING', 'FAILED')
+ORDER BY occurred_at ASC
 LIMIT 50;
 
--- Count stuck vs in-flight events
-SELECT
-  CASE WHEN attempts >= 10 THEN 'exhausted' ELSE 'retrying' END AS state,
-  COUNT(*)
+-- Count pending vs failed events
+SELECT status, COUNT(*)
 FROM outbox_events
-WHERE "processedAt" IS NULL
-GROUP BY 1;
+GROUP BY status;
+```
+
+```bash
+# Check service logs for outbox publishing errors
+docker logs vishop-tenant-service --tail=200 | grep -i "outbox\|error\|failed"
 ```
 
 ```bash

@@ -1,153 +1,70 @@
-# Soft delete
+# Cơ chế Xóa mềm (Soft Delete)
 
-## Phạm vi
+Tài liệu quy định cách thức triển khai và quy ước xóa mềm (Soft Delete) trong cơ sở dữ liệu và Spring Data JPA cho các entity trong **ViShop Platform**.
 
-Soft delete áp dụng cho các model có `deletedAt` trong schema:
+---
 
-- `MerchantSku`
-- `PlatformSku`
-- `Warehouse`
-- `WarehouseBin`
-- `Tenant`
-- `TikTokShop`
+## 1. Phạm vi áp dụng
 
-`deletedAt = NULL` là record active; một timestamp nghĩa là record đã bị xóa mềm.
+Xóa mềm áp dụng cho các Entity có trường `deletedAt` (`deleted_at TIMESTAMPTZ`):
+* `Tenant`
+* `Product` / `MerchantSku` / `PlatformSku`
+* `Warehouse` / `WarehouseBin`
+* `TikTokShop`
 
-## Client mặc định
+Quy ước:
+* `deleted_at IS NULL`: Bản ghi đang hoạt động (active).
+* `deleted_at IS NOT NULL`: Bản ghi đã bị xóa mềm (mang mốc thời gian xóa).
 
-`PrismaService.db` và `PrismaService.dbRead` là scoped client. Với các thao tác đọc, aggregate và
-update trên các model trên, client tự thêm:
+---
 
-```ts
-where: {
-  deletedAt: null;
+## 2. Triển khai trong Spring Data JPA & Hibernate 6
+
+Trong Spring Boot 3.3 (Hibernate 6.4+), ta sử dụng annotation `@SQLRestriction` hoặc `@SoftDelete`:
+
+```java
+@Entity
+@Table(name = "merchants_skus")
+@SQLRestriction("deleted_at IS NULL")
+public class MerchantSkuJpaEntity extends BaseTenantJpaEntity {
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    public void markDeleted() {
+        this.deletedAt = Instant.now();
+    }
 }
 ```
 
-Không cần lặp lại điều kiện trong repository:
+Với cấu hình này:
+1. Mọi câu query thông thường (`findById`, `findAll`) tự động thêm điều kiện `WHERE deleted_at IS NULL`.
+2. Không bị rò rỉ dữ liệu đã xóa mềm ra ngoài API nghiệp vụ.
 
-```ts
-const sku = await this.prisma.db.merchantSku.findFirst({
-  where: { id: skuId, tenantId },
-});
-```
+---
 
-Client mặc định chặn `delete()` và `deleteMany()` trên soft-deletable models. Không biến hard delete
-thành soft delete một cách ngầm; lifecycle phải được đặt tên rõ ở repository/use case.
+## 3. Thực hiện xóa mềm trong Repository Adapter
 
-## Thực hiện xóa mềm
+Tầng Domain không gọi `delete()`, mà gọi phương thức nghiệp vụ mang ý nghĩa rõ ràng (ví dụ: `archive()` hoặc `delete()` trên Aggregate Root).
 
-Repository cung cấp method như `softDelete` và cập nhật `deletedAt`:
-
-```ts
-await client.merchantSku.updateMany({
-  where: { id: skuId, tenantId },
-  data: { deletedAt: new Date() },
-});
-```
-
-Nên kiểm tra record còn active và dùng transaction nếu cần xóa dữ liệu phụ thuộc, ví dụ GTIN của SKU.
-
-## Đọc cả record đã xóa
-
-Dùng unscoped client:
-
-```ts
-const db = this.prisma.getDb({ withDeleted: true });
-
-const allRows = await db.merchantSku.findMany({
-  where: { tenantId },
-});
-```
-
-Chỉ record đã xóa:
-
-```ts
-const deletedRows = await db.merchantSku.findMany({
-  where: { tenantId, deletedAt: { not: null } },
-});
-```
-
-Chỉ record active với unscoped client:
-
-```ts
-where: {
-  deletedAt: null;
+Tại Repository Adapter:
+```java
+@Override
+public void delete(MerchantSku sku) {
+    skuJpaRepository.findById(sku.getId()).ifPresent(entity -> {
+        entity.markDeleted();
+        skuJpaRepository.save(entity);
+    });
 }
 ```
 
-Prisma không có cú pháp `NotNull`; dùng `{ not: null }`. Read replica có API tương ứng:
+---
 
-```ts
-const dbRead = this.prisma.getDbRead({ withDeleted: true });
+## 4. Truy vấn các bản ghi bao gồm cả đã xóa mềm
+
+Khi cần tra cứu lịch sử kiểm toán hoặc khôi phục dữ liệu:
+* Khai báo phương thức native query hoặc query không áp dụng filter trong Spring Data JPA repository:
+```java
+@Query(value = "SELECT * FROM merchants_skus WHERE id = :id", nativeQuery = true)
+Optional<MerchantSkuJpaEntity> findByIdIncludingDeleted(@Param("id") UUID id);
 ```
-
-## Join/relation khác scope
-
-Extension chỉ scope model đang được query trực tiếp. Nó không rewrite sâu `include`, `select` hoặc
-relation filter. Đây là chủ ý để core đơn giản và tránh sinh Prisma query không hợp lệ.
-
-Khi bảng A cần gồm record đã xóa nhưng bảng B chỉ lấy active, dùng unscoped client và viết filter
-cho B:
-
-```ts
-const db = this.prisma.getDb({ withDeleted: true });
-
-const mappings = await db.skuMapping.findMany({
-  where: {
-    platformSku: {
-      is: { deletedAt: null },
-    },
-  },
-  include: {
-    merchantSku: true,
-    platformSku: true,
-  },
-});
-```
-
-Cùng quy tắc này áp dụng cho `Tenant` và `TikTokShop` trong relation filter. Ví dụ tenant guard
-phải kiểm tra tenant chưa bị xóa:
-
-```ts
-where: {
-  userId,
-  tenant: {
-    status: 'ACTIVE',
-    deletedAt: null,
-  },
-}
-```
-
-Nếu dùng raw SQL, extension không can thiệp; phải viết điều kiện cho từng bảng:
-
-```ts
-const rows = await this.prisma.db.$queryRaw`
-  SELECT w.id, b.id AS "binId"
-  FROM warehouses w
-  LEFT JOIN warehouse_bins b
-    ON b."warehouseId" = w.id
-   AND b."deletedAt" IS NULL
-  WHERE w."tenantId" = ${tenantId}::uuid
-    AND w."deletedAt" IS NULL
-`;
-```
-
-## Partial unique index
-
-Các model danh mục dùng unique index chỉ áp dụng cho record active:
-
-```prisma
-@@unique([tenantId, skuCode], where: { deletedAt: null })
-```
-
-Vì vậy mã có thể được tái sử dụng sau khi record cũ bị xóa mềm, theo chính sách nghiệp vụ.
-
-## Quy tắc
-
-1. Dùng `prisma.db`/`dbRead` cho luồng nghiệp vụ bình thường.
-2. Không tự thêm `deletedAt: null` trong repository thông thường.
-3. Dùng `getDb({ withDeleted: true })` chỉ cho admin, restore, audit hoặc maintenance.
-4. Khi dùng unscoped client, tự ghi `deletedAt: null` hoặc `{ not: null }` khi cần.
-5. Không gọi `delete()`/`deleteMany()` trên soft-deletable model qua client mặc định.
-6. Soft delete phải có method/use case tên rõ như `softDelete` và xử lý transaction khi có dữ liệu phụ thuộc.

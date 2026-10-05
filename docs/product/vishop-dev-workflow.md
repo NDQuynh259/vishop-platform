@@ -33,7 +33,7 @@ Và không kéo hộ ticket của người khác. Muốn nhận thì đổi assi
 
 Đọc phần TIÊU CHÍ HOÀN THÀNH trong ticket trước, không phải sau. Nó là thứ quyết định ticket có được sang Done hay không.
 
-Rồi kiểm tra bảng mình cần đã có chưa. Repo đã dựng sẵn 13 bảng lõi — danh mục, SKU, combo, mapping sàn, kho, ô kệ, tồn, đơn, dòng đơn, package, dòng package. **Không tự tạo lại bảng đã có.** Xem `prisma/schema.prisma` và `vishop-erd.md`.
+Rồi kiểm tra bảng mình cần đã có chưa. Repo đã dựng sẵn các bảng lõi — danh mục, SKU, combo, mapping sàn, kho, ô kệ, tồn, đơn, dòng đơn, package, dòng package. **Không tự tạo lại bảng đã có.** Xem các migration `db/migration/` và `vishop-erd.md`.
 
 Nếu bảng đã có nhưng thiếu trường mình cần → mục 3.
 

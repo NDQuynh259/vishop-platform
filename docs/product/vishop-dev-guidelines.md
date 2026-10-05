@@ -10,20 +10,20 @@ Tài liệu này không lặp lại spec nghiệp vụ. Nó quy định cách vi
 
 ## 0. Nền tảng kỹ thuật — không phải lựa chọn của dev
 
-Backend ViShop nằm ở repo `api-vishop`: **NestJS 11 trên Fastify 5, Nx monorepo, Prisma 7 + Postgres, kiến trúc DDD/CQRS** (`@nestjs/cqrs`), outbox pattern, BullMQ cho hàng đợi, OpenTelemetry + Sentry cho quan sát. Bốn ứng dụng: `api`, `worker`, `scheduler`, `migration`.
+Backend ViShop: **Java 21 LTS, Spring Boot 3.3.x, Gradle Multi-Module, PostgreSQL 16 + Flyway + Spring Data JPA, kiến trúc DDD/CQRS** (`CommandBus`/`QueryBus`), Transactional Outbox pattern, Apache Kafka làm event broker phân tán, OpenTelemetry + Micrometer Prometheus cho quan sát.
 
-Repo đã có các module nền và nghiệp vụ đang triển khai như `users`, `tenants`, `products`, `tiktok`, `event-log`, `audit-log`, `upload` cùng các composition liên quan. Module mới tiếp tục đi **bên trong** khung DDD/CQRS hiện hữu. Tám điều dưới đây là ràng buộc cứng, PR vi phạm bị chặn:
+Kiến trúc bao gồm nền tảng `platform-common` và các microservices độc lập (`tenant-service`, `identity-service`, `audit-service`...). Module mới tiếp tục đi **bên trong** khung DDD/CQRS hiện hữu. Tám điều dưới đây là ràng buộc cứng, PR vi phạm bị chặn:
 
-1. **Tạo module bằng generator, không tự dựng thư mục:** `pnpm gen:module <name>` (module nghiệp vụ), `pnpm gen:composition <name>` (lib cắt ngang nhiều context). Generator dựng sẵn cấu trúc DDD và tag ranh giới; tự tạo tay là chắc chắn sai `@nx/enforce-module-boundaries`.
-2. **Handler không biết HTTP status.** Vi phạm nghiệp vụ thì `throw new DomainException` với một `kind` (`malformed` / `validation` / `not_found` / `conflict` / `forbidden`), **không bao giờ** `extends HttpException` trong `libs/core`, domain entity hay application handler — cùng handler đó còn chạy dưới GraphQL và outbox listener của scheduler, nơi không có status nào để gán.
-3. **Không tự dựng thân lỗi.** Lỗi là RFC 9457 Problem Details do `GlobalExceptionFilter` sinh ra. `code` phải lấy từ `ERROR_CODES` (`libs/contracts`) vì client khoá i18n theo giá trị này — mọi mã lỗi ViShop trong `vishop-api-contract.md` phải được thêm vào đó trước khi implement.
-4. **Response 2xx trả thẳng tài nguyên**, collection độc lập trả `ListResponseDto<T>` qua `toCursorListResponse()`. Không bọc `{ data, meta }`. Toàn bộ list dùng `?limit=&cursor=` và trả `pageInfo.hasNextPage` + `pageInfo.nextCursor`; cấm `offset`, `page`, `pageSize`, `totalCount` và bare array response.
-5. **Xác thực là phiên cookie Better Auth**, không phải JWT. Repo cấm dùng lại thuật ngữ `refresh-token` / `access-token` / `JWT blacklist` cho phiên người dùng. Controller đọc người gọi bằng `@CurrentUser() user: AuthenticatedSession`, không `@Req() req.user`.
-6. **Validate bằng decorator, không viết tay.** Body validate bằng `class-validator` trên DTO presentation; id trên đường dẫn dùng `@Param('id', new ParseUUIDPipe({ version: '7' }))` — `ParseUUIDPipe` trần nhận mọi phiên bản UUID nên một id v4 sai sẽ lọt vào handler. Mọi UUID (kể cả fixture test, job id, idempotency owner và lease token) phải sinh bằng `generateId()` từ `@nestjs-fastify-nx/shared`; không dùng `randomUUID()` của Node vì hàm đó sinh UUID v4. `if`/`else` chỉ dành cho logic nghiệp vụ mà decorator không diễn đạt được.
-7. **Che field nhạy cảm bằng mapping DTO tường minh**, không dùng `ClassSerializerInterceptor`/`@Exclude`. Quyền `Xem giá vốn` / `Xem lợi nhuận` / `Xem thông tin người mua` (FR-01-06) hiện thực bằng cách chiếu entity sang DTO **không khai báo** cột đó — xem mục 4.
-8. **Cổng trước khi commit:** `pnpm nx affected -t lint test build typecheck --base=origin/main`. Chạm `apps/api/` thì chạy thêm `pnpm nx run api:e2e`. Ngưỡng coverage 60% cho mọi project, CI chạy kèm `--coverage` nên bản chạy xanh ở máy vẫn có thể trượt PR.
+1. **Tạo service chuẩn cấu trúc 4 tầng:** Đăng ký trong `settings.gradle.kts`, cấu hình `build.gradle.kts` kế thừa các module `platform-common`, và phân chia đầy đủ 4 tầng (`domain`, `application`, `infrastructure`, `presentation`).
+2. **Handler không biết HTTP status.** Vi phạm nghiệp vụ thì `throw new DomainException` với mã lỗi nghiệp vụ tương ứng (`EntityNotFoundException`, `ConflictException`, `BusinessRuleViolationException`), **không bao giờ** hardcode mã HTTP trong domain entity hay application handler.
+3. **Không tự dựng thân lỗi.** Lỗi là RFC 9457 Problem Details do `GlobalExceptionHandler` sinh ra. `code` phải mang ý nghĩa nghiệp vụ (ví dụ: `tenant_code_already_exists`).
+4. **Response 2xx trả thẳng tài nguyên**, collection độc lập trả `ListEnvelope<T>`. Toàn bộ list dùng `?limit=&cursor=` và trả `pageInfo.hasNextPage` + `pageInfo.nextCursor`; cấm `offset`, `page`, `pageSize` và bare array response.
+5. **Multi-tenancy:** Mọi thao tác nghiệp vụ phải cô lập theo tenant, context được tự động inject qua `TenantContextFilter` và `TenantRecordInterceptor` (cho Kafka) vào `TenantContext`.
+6. **Validate bằng Jakarta Validation.** Body validate bằng Jakarta Bean Validation (`@Valid`, `@NotBlank`, `@Size`) trên DTO; Mọi UUID phải sinh bằng `UuidV7.nextId()` từ `platform-common:common-domain` để đảm bảo time-ordering.
+7. **Che field nhạy cảm bằng mapping DTO tường minh.** Quyền `Xem giá vốn` / `Xem lợi nhuận` / `Xem thông tin người mua` hiện thực bằng cách chiếu domain model sang DTO **không khai báo** cột đó.
+8. **Cổng trước khi commit:** `.\gradlew.bat compileJava` và `.\gradlew.bat test`. Toàn bộ tests phải pass 100%.
 
-Test: **không mock database** — test tích hợp chạy Postgres thật qua Testcontainers (`libs/testing`). E2E nằm ở `apps/api/e2e/`, dùng `createTestApp()`. Điều này không mâu thuẫn với mục 8 phần dưới ("mock `ChannelAdapter`"): mock đúng chỗ là **API TikTok**, không phải database.
+Test: **không mock database** trong integration tests — test tích hợp chạy Postgres thật và Kafka thật qua Testcontainers (`platform-common:common-test`).
 
 ---
 

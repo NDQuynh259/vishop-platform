@@ -1,8 +1,8 @@
 # Shipment tracking polling (FR-06-14)
 
 How a parcel's carrier journey stays current without a webhook, and why the write path looks the way
-it does. Code lives in `libs/modules/orders` (domain + application + infrastructure),
-`apps/scheduler` (the cron) and `apps/worker` (the queue consumer).
+it does. Logic lives in `order-service` (domain + application + infrastructure)
+and background workers via Kafka events.
 
 ## Why polling at all
 

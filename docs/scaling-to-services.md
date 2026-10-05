@@ -1,85 +1,40 @@
-# Scaling to services
+# Chiến lược Microservices & Bounded Contexts
 
-How this codebase gets split into separately deployed services — and why it is not split today.
+Tài liệu mô tả kiến trúc phân tách dịch vụ của **ViShop Platform** theo mô hình Microservices phân tán hướng sự kiện (Event-Driven Architecture) với Apache Kafka.
 
-## Where the repo already stands
+---
 
-| Property              | State                                                                                                    |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Deployable units      | 4 (`api`, `worker`, `scheduler`, `migration`), each with its own Docker target and pruned `package.json` |
-| Bounded contexts      | 3 (`users`, `audit-log`, `upload`)                                                                       |
-| Cross-context imports | Blocked by `@nx/enforce-module-boundaries` — `scope:modules` cannot import another `scope:modules`       |
-| Table ownership       | Clean: each context's repository touches only its own tables                                             |
-| Cross-context FKs     | None. `StoredFile.userId` and `AuditLog.userId` deliberately carry **no** foreign key                    |
-| Cross-process events  | `outbox_events` + `OutboxRelayService`, at-least-once, with backoff                                      |
-| Event names           | `DOMAIN_EVENTS` in `@nestjs-fastify-nx/shared`, locked to the trigger SQL by `domain-events.spec.ts`     |
+## 1. Ranh giới Bounded Contexts & Services
 
-The only foreign keys in the schema are `Session.userId → User` and `Account.userId → User` — all three
-tables belong to Better Auth, so they move together as one unit. Nothing else joins across contexts.
+Mỗi Microservice sở hữu hoàn toàn Bounded Context và Database riêng của mình (Database-per-service):
 
-## What is deliberately not done yet
+| Microservice | Bounded Context | Trách nhiệm chính | Database Schema |
+| :--- | :--- | :--- | :--- |
+| **`tenant-service`** | Tenants, Organizations | Quản lý thông tin tổ chức, gian hàng, phân quyền nội bộ tenant, trạng thái hoạt động | `vishop_tenant` |
+| **`identity-service`** | Users, Authentication | Quản lý người dùng, mật khẩu, tài khoản, xác thực 2FA, JWT token | `vishop_identity` |
+| **`audit-service`** | Audit Trails | Ghi nhận nhật ký kiểm toán bất biến (append-only) cho mọi sự kiện trên nền tảng | `vishop_audit` |
+| **`catalog-service`** | Products, Categories | Quản lý thông tin sản phẩm, danh mục, thuộc tính, phân loại SKU | `vishop_catalog` |
+| **`inventory-service`** | Stock, Warehouses | Quản lý tồn kho, khóa tồn kho tạm thời khi đặt hàng, đồng bộ kho sàn | `vishop_inventory` |
+| **`order-service`** | Orders, Checkouts | Quản lý đơn hàng, giỏ hàng, tính giá, trạng thái vòng đời đơn | `vishop_order` |
 
-Splitting costs network failures, eventual consistency, per-service CI/CD and distributed tracing.
-With 3 contexts and 7 tables that trade is a loss. Split when one of these is true, not before:
+---
 
-- a context needs to scale on a different axis (upload is I/O bound, audit is write bound)
-- two or more teams block each other on release
-- a context needs its own SLA or deploy cadence
-- a context needs data isolation for compliance
+## 2. Giao tiếp giữa các Dịch vụ (Inter-Service Communication)
 
-## Stage 1 — separate runtime, shared database
+### 2.1. Bất đồng bộ qua Apache Kafka (Event-Driven) — 90% các tương tác
+* **Không dùng HTTP gọi chéo giữa các service để cập nhật dữ liệu**.
+* Khi một service hoàn tất thao tác ghi, nó lưu Domain Event vào bảng `outbox_events` trong cùng một transaction.
+* `OutboxPublisher` gửi sự kiện lên topic Kafka tương ứng (`vishop.{aggregate}.events`).
+* Các service quan tâm (ví dụ: `audit-service`, `inventory-service`) lắng nghe event qua `@KafkaListener` và xử lý idempotent bằng `IdempotentConsumer`.
 
-Cheapest step, fully reversible.
+### 2.2. Đồng bộ qua REST / gRPC — Chỉ dùng khi thực sự cần thiết
+* Chỉ áp dụng cho các truy vấn tra cứu thông tin tức thời (Read-only query) hoặc kiểm tra validation không thể trì hoãn.
 
-```bash
-pnpm gen:app <name>                     # new deployable
-# project.json: tags ["scope:<name>", "type:app"]
-# eslint.config.mjs: allow-list for scope:<name>
-# Dockerfile: new target; docker/compose.*.yml: new service
-```
+---
 
-The new app imports the same `libs/modules/*` and `libs/infra/*`. Webpack's `generatePackageJson`
-prunes its dependencies automatically. **No application code changes.**
+## 3. Tính độc lập của Database (Database-per-Service)
 
-Gains independent deploy, scaling and blast radius. Does not gain data isolation.
-
-## Stage 2 — separate data for an edge context
-
-`audit-log` and `upload` are the two candidates, because their tables have no inbound foreign key.
-
-Per context:
-
-1. Move its tables to their own schema/database; give the service its own `DATABASE_URL`.
-2. Treat `userId` as a **reference value**, not a foreign key — it already is.
-3. Replace the in-process `@OnEvent` subscription with a broker subscription. The relay currently
-   dispatches through `EventBusService` (EventEmitter2); publishing to a broker means adding one
-   adapter behind `EventPublisherPort` — the port already exists, no call site changes.
-4. Keep consumers idempotent. They must be already: the outbox redelivers whenever
-   publish succeeds but mark-processed fails.
-
-`DOMAIN_EVENTS` + `userEventPayloadSchema` are the wire contract for this step. They are versioned
-by `OUTBOX_SCHEMA_VERSION`; the relay refuses envelopes newer than it understands rather than
-guessing.
-
-## Stage 3 — separate the core (users/auth)
-
-Most expensive, do last. Better Auth owns `users`, `sessions`, `accounts`, `verifications` and writes
-outside the Nest request pipeline; the outbox triggers for `users.*` live on those tables. Extracting
-it means:
-
-- every other service receives `userId` and verifies sessions against the identity service
-- no cross-context transactions — compensate with sagas driven by the outbox
-- the `users.logged_out` / user-cascade interaction (see the trigger SQL) has to be re-derived across
-  a service boundary, which is where correctness usually breaks first
-
-## Checklist for extracting one context
-
-- [ ] Context owns its tables and nothing joins into them
-- [ ] Every inbound dependency is an event or an explicit API call, never a shared repository
-- [ ] Events it emits are declared in `DOMAIN_EVENTS` and covered by the contract test
-- [ ] Consumers are idempotent under redelivery
-- [ ] Its listeners parse payloads (`safeParse`) instead of casting
-- [ ] Health probes split correctly: only core serving deps on `/health/ready`
-- [ ] New `scope:*` tag added to `eslint.config.mjs`, boundary test green
-- [ ] Prod image boots (`./scripts/build-prod.sh`) — the pruned `package.json` is where extraction
-      failures surface first
+1. **Tuyệt đối không có Foreign Key giữa các Database của các service khác nhau**:
+   * Khóa ngoại chéo (`tenantId`, `userId`, `productId`) chỉ được lưu dưới dạng giá trị tham chiếu UUID v7.
+2. **Không join bảng xuyên database**:
+   * Dữ liệu cần tổng hợp từ nhiều context được thực hiện thông qua **Event Sourcing / Materialized Views** hoặc tổng hợp ở tầng API Gateway / BFF.
