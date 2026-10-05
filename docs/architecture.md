@@ -12,10 +12,12 @@ vishop-platform/
 │   ├── common-security/                 # Multi-Tenancy context (TenantContext, TenantContextFilter)
 │   ├── common-events/                   # Kafka Backbone (EventEnvelope, KafkaEventPublisher, DLQ, RecordInterceptor)
 │   ├── common-persistence/              # Transactional Outbox, OutboxPublisher, ConsumedMessage (Idempotency)
+│   ├── common-saga/                     # Saga Pattern Orchestrator (Distributed Transactions with Compensation)
 │   ├── common-observability/            # Actuator & Micrometer Prometheus
 │   └── common-test/                     # Testcontainers (PostgreSQL, Kafka)
 │
 ├── services/                            # Các Microservices độc lập (Bounded Contexts)
+│   ├── api-gateway/                     # Spring Cloud Gateway (:8000) - Unified Routing, CorrelationId, CORS
 │   ├── tenant-service/                  # Quản lý Tenant, tổ chức, cấu hình gian hàng (DDD + CQRS + Outbox)
 │   ├── identity-service/                # Quản lý User, Account, Authentication & Token
 │   └── audit-service/                   # Event-driven consumer ghi nhận lịch sử audit log từ Kafka
@@ -184,3 +186,25 @@ sequenceDiagram
 * Toàn bộ các bảng nghiệp vụ kế thừa `BaseTenantJpaEntity` chứa cột `tenant_id`.
 * Khi gửi event qua Kafka, `KafkaEventPublisher` tự động đính kèm header `X-Tenant-Id`.
 * `TenantRecordInterceptor` giải mã header `X-Tenant-Id` và thiết lập `TenantContext` trong thread xử lý event.
+
+---
+
+## 6. Distributed Transactions — Saga Pattern
+
+Để xử lý các giao dịch phức tạp cần bảo đảm tính nhất quán sau cùng (Eventual Consistency) trải dài qua nhiều microservices, ViShop sử dụng **Saga Orchestrator** trong [`platform-common:common-saga`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga):
+* **State Machine**: Vòng đời Saga (`STARTED`, `EXECUTING`, `COMPENSATING`, `COMPENSATED`, `COMPLETED`, `FAILED`).
+* **Reverse Compensation**: Tự động rollback các bước trước đó theo chiều ngược lại (LIFO) khi có bất kỳ step nào fail.
+* **Persistent Instances**: Lưu trữ trạng thái Saga trong bảng `saga_instances` bằng transaction độc lập `REQUIRES_NEW`.
+* Chi tiết xem thêm tại [docs/saga-pattern.md](file:///c:/Users/ndquynh/Documents/vishop-platform/docs/saga-pattern.md).
+
+---
+
+## 7. API Gateway (Spring Cloud Gateway)
+
+`services/api-gateway` hoạt động trên cổng `8000` đóng vai trò là Reverse Proxy và Gateway trung tâm:
+* **Dynamic Routing**: Chuyển tiếp request tới các microservices phía sau (`identity-service:8080`, `tenant-service:8081`, `audit-service:8082`).
+* **Distributed Tracing**: Tự động sinh hoặc kế thừa `X-Correlation-Id` qua `CorrelationIdGlobalFilter`.
+* **Multi-Tenancy**: Kiểm tra và chuyển tiếp `X-Tenant-Id` qua `TenantResolutionGlobalFilter`.
+* **Error Normalization**: Bắt các lỗi hạ tầng (503 Service Unavailable, timeout) và chuẩn hóa về **RFC 9457 Problem Details**.
+* Chi tiết xem thêm tại [docs/api-gateway.md](file:///c:/Users/ndquynh/Documents/vishop-platform/docs/api-gateway.md).
+

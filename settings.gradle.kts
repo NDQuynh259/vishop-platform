@@ -8,9 +8,11 @@ include(
     "platform-common:common-events",
     "platform-common:common-persistence",
     "platform-common:common-observability",
+    "platform-common:common-saga",
     "platform-common:common-test",
 
     // Services
+    "services:api-gateway",
     "services:identity-service",
     "services:tenant-service",
     "services:audit-service"

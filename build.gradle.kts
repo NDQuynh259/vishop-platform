@@ -26,6 +26,7 @@ subprojects {
     configure<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension> {
         imports {
             mavenBom("org.springframework.boot:spring-boot-dependencies:3.3.5")
+            mavenBom("org.springframework.cloud:spring-cloud-dependencies:2023.0.3")
         }
     }
 

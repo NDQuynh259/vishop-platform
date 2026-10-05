@@ -1,0 +1,21 @@
+package com.vishop.common.saga;
+
+import java.util.List;
+
+/**
+ * Definition of a Saga workflow consisting of an ordered list of steps.
+ *
+ * @param <T> context data type
+ */
+public interface SagaDefinition<T> {
+
+    /**
+     * Unique identifier for the type of saga (e.g. "CreateOrderSaga", "TransferTenantSaga").
+     */
+    String sagaType();
+
+    /**
+     * Ordered list of steps to execute sequentially.
+     */
+    List<SagaStep<T>> steps();
+}

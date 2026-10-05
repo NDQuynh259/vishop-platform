@@ -30,10 +30,12 @@ vishop-platform/
 │   ├── common-security/                 # Multi-Tenancy: TenantContext, TenantContextFilter
 │   ├── common-events/                   # Kafka Backbone: EventEnvelope, KafkaTopicNaming, KafkaEventPublisher, DLQ
 │   ├── common-persistence/              # Transactional Outbox, OutboxPublisher, ConsumedMessage (Idempotency)
+│   ├── common-saga/                     # Saga Pattern Orchestrator (Distributed Transactions with Compensation)
 │   ├── common-observability/            # Spring Actuator & Prometheus
 │   └── common-test/                     # Testcontainers helpers
 │
 ├── services/                            # Các Microservices độc lập (Bounded Contexts)
+│   ├── api-gateway/                     # Spring Cloud Gateway (:8000) - Điểm chạm trung tâm & định tuyến
 │   ├── tenant-service/                  # Quản lý Tenant, tổ chức, gian hàng (DDD + CQRS + Outbox)
 │   ├── identity-service/                # Quản lý người dùng, tài khoản & xác thực
 │   └── audit-service/                   # Kafka Event Consumer ghi nhận lịch sử audit log
@@ -68,10 +70,16 @@ docker compose -f infra/docker-compose/docker-compose.yml up -d
 .\gradlew.bat test
 ```
 
-### 3.3. Khởi chạy Microservice
+### 3.3. Khởi chạy Microservices
 ```powershell
+# Chạy API Gateway (Port 8000)
+.\gradlew.bat :services:api-gateway:bootRun
+
 # Chạy tenant-service (Port 8081)
 .\gradlew.bat :services:tenant-service:bootRun
+
+# Chạy identity-service (Port 8080)
+.\gradlew.bat :services:identity-service:bootRun
 
 # Chạy audit-service (Port 8082)
 .\gradlew.bat :services:audit-service:bootRun
@@ -82,6 +90,8 @@ docker compose -f infra/docker-compose/docker-compose.yml up -d
 ## 4. Tài liệu chi tiết trong `docs/`
 
 * [Kiến trúc hệ thống (Architecture)](./docs/architecture.md)
+* [API Gateway & Routing](./docs/api-gateway.md)
+* [Saga Pattern — Distributed Transactions](./docs/saga-pattern.md)
 * [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./docs/domain-module-anatomy.md)
 * [Tạo mới Microservice](./docs/creating-a-module.md)
 * [Hướng dẫn cài đặt & khởi chạy (Getting Started)](./docs/getting-started.md)
