@@ -1,0 +1,387 @@
+# Deployment
+
+## Prerequisites
+
+- Docker 24+ and Docker Compose v2
+- Access to a container registry (GHCR, ECR, Docker Hub)
+- PostgreSQL 18 and Redis 8 in production
+- MinIO or S3-compatible storage
+
+## Environment Variables
+
+Copy `.env.example` and fill in production values. See [Environment Variables](environment.md) for the full reference.
+
+Critical variables for production:
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:5432/db
+REDIS_CACHE_HOST=redis-cache-host
+REDIS_QUEUE_HOST=redis-queue-host
+BETTER_AUTH_SECRET=<min-32-char-random-string>
+NODE_ENV=production
+CORS_ORIGINS=https://your-frontend.com
+```
+
+## Building Images
+
+GitLab CI builds all four images through `docker-bake.hcl`. A merge request targeting `main`
+builds without publishing; a push to `main` publishes commit-SHA tags to the GitLab container registry.
+
+To build manually:
+
+```bash
+# Bake submits all four targets as one BuildKit graph. Shared dependency and
+# Nx build stages execute once; service-specific production installs run in parallel.
+IMAGE_REGISTRY=your-registry IMAGE_NAMESPACE=your-project IMAGE_TAG=latest \
+  docker buildx bake -f docker-bake.hcl production --load
+```
+
+The wrapper uses the same Bake graph and optionally boots the prod-parity stack:
+
+```bash
+./scripts/build-prod.sh                       # local build + optional production-parity boot
+```
+
+## Database Migrations
+
+Run migrations **before** starting the API:
+
+```bash
+docker run --rm \
+  -e DATABASE_URL=postgresql://... \
+  your-registry/nestjs-migration:latest
+```
+
+The migration image only seeds the admin user when `RUN_SEED=true` is
+set; routine schema deploys leave user data untouched. Pass
+`SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` only when explicitly opting
+in:
+
+```bash
+docker run --rm \
+  -e DATABASE_URL=postgresql://... \
+  -e RUN_SEED=true \
+  -e SEED_ADMIN_EMAIL=admin@example.com \
+  -e SEED_ADMIN_PASSWORD=<strong-password> \
+  your-registry/nestjs-migration:latest
+```
+
+## Docker Compose (Production)
+
+Each runtime connects as its own least-privilege Postgres role, so production needs `.env` (compose
+interpolation: role credentials, MinIO root, image refs) plus one mode-0600 file per process
+containing only what that process uses. `gen-env.sh` writes all five with generated secrets and
+the right DSN in each — done by hand it is nine credentials and four DSNs, and compose reports only
+the first missing variable per run.
+
+```bash
+./scripts/gen-env.sh --prod     # .env + .env.{api,worker,scheduler,migration}
+./scripts/gen-env.sh --check    # list everything still missing, in one pass
+
+# Then replace the placeholders it cannot know: BETTER_AUTH_URL, FRONTEND_BASE_URL,
+# CORS_ORIGINS and MAIL_* must point at your real hosts before this is exposed.
+
+# Start infrastructure + apps
+docker compose --env-file .env -f docker/compose.yml -f docker/compose.prod.yml up -d
+```
+
+The base `compose.yml` defines the infrastructure services (PostgreSQL, Redis,
+MinIO) and healthcheck specs for worker/scheduler. The
+`compose.prod.yml` requires digest-pinned `API_IMAGE`, `WORKER_IMAGE`,
+`SCHEDULER_IMAGE`, and `MIGRATION_IMAGE`. It provisions separate database roles
+after migrations and gives each process its own env file, preventing the API,
+worker, scheduler, and migration containers from inheriting one shared secret set.
+
+## Network Exposure & Port Binding
+
+The base `compose.yml` publishes host ports for Postgres, Redis, and MinIO as a
+**dev convenience**. Short-form mappings (`5432:5432`) bind `0.0.0.0` _through
+Docker's own iptables chain, which bypasses `ufw`/`firewalld`_ — on a public-IP
+host they are internet-reachable even behind a "deny" rule. The
+`compose.prod.yml` overlay closes this:
+
+| Service                                      | Host port in prod overlay                                     | Reachable by                                                                    |
+| -------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| postgres / redis-cache / redis-queue / minio | none — stripped via `ports: !override []`                     | other containers only, by service name (`postgres:5432`, `redis-cache:6379`, …) |
+| api                                          | `${API_BIND_HOST:-127.0.0.1}:${API_PORT:-3000}:${PORT:-3000}` | loopback only by default — **not** the public internet                          |
+
+### Exposing the api
+
+Loopback (`127.0.0.1`) by default, so the api is never internet-facing out of
+the box. This image is deploy-agnostic — pick whichever fits, nothing else changes:
+
+- **TLS proxy on the host** (nginx/Caddy/…) → `proxy_pass http://127.0.0.1:${API_PORT}`.
+- **Proxy or tunnel container on the compose network** → reaches `api:${PORT}` by
+  Docker DNS, ignoring the host bind. A `cloudflared`/Tailscale sidecar needs no
+  published host port at all — drop `ports:` on the api service entirely.
+- **Direct exposure** (managed L4 LB, or none) → set `API_BIND_HOST=0.0.0.0`.
+
+> Docker port publishing **bypasses `ufw`/`firewalld`** — a `0.0.0.0` bind is
+> internet-open even behind a host "deny" rule. Gate it with a cloud security
+> group or a `DOCKER-USER` iptables rule.
+
+> **Swarm note**: `compose.swarm.yml` publishes the api through the routing mesh
+> (`ports: !override` with `mode: ingress`) and strips the data-tier ports the
+> same way, so the swarm path is unaffected by `API_BIND_HOST`.
+>
+> The Swarm overlay also places `db-grants` and `malware-scanner` on the
+> encrypted application network. `db-grants` retries because Swarm ignores
+> `depends_on` conditions; do not remove that one-shot service or start workers
+> before it has completed successfully.
+
+See also `TRUST_PROXY_HOPS` under [Scaling](#scaling) — set it to the number of
+proxy hops so Fastify resolves `req.ip` from `X-Forwarded-For` correctly.
+
+## Local Observability Stack (opt-in)
+
+The `docker/compose.observability.yml` overlay starts Prometheus, Grafana, Jaeger, Loki, Alloy, and
+an OTel collector alongside the dev stack. It is intentionally excluded from the base compose files
+to keep the default stack lightweight. Alloy's read-only Docker socket is for local Compose log
+discovery; production platforms should use their native node/pod log agent.
+
+```bash
+# Start dev stack + observability
+./scripts/build-dev.sh --with-obs
+
+# Or manually
+docker compose --env-file .env \
+  -f docker/compose.yml \
+  -f docker/compose.dev.yml \
+  -f docker/compose.observability.yml \
+  up -d
+```
+
+Enable instrumentation in `.env`:
+
+```bash
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+ENABLE_METRICS=true
+# Allow the Prometheus container (Docker bridge) to scrape /metrics
+METRICS_ALLOW_CIDRS=172.16.0.0/12
+```
+
+| Service    | URL                    | Notes                 |
+| ---------- | ---------------------- | --------------------- |
+| Grafana    | http://localhost:3001  | admin / admin         |
+| Jaeger UI  | http://localhost:16686 | Trace explorer        |
+| Prometheus | http://localhost:9090  | Metrics scrape target |
+| OTel gRPC  | localhost:4317         | OTLP receiver         |
+| OTel HTTP  | localhost:4318         | OTLP receiver         |
+
+Config files live under `docker/prometheus/`, `docker/otel-collector/`, and `docker/grafana/provisioning/`. The observability stack is for local development and demos — production observability should use a managed service or a dedicated cluster.
+
+The overlay binds every port to `127.0.0.1` only, so none of these UIs are reachable from the internet even on a public host — reach them with an SSH tunnel (see below).
+
+### Viewing logs & errors on a headless server
+
+A container logs structured JSON to stdout — never to a file inside the container. Docker captures it via the `json-file` driver (rotated `50m × 5` in `compose.prod.yml`). On a server without a desktop, everything below runs in the SSH terminal — no browser needed.
+
+```bash
+# Tail one app's logs (JSON, one line per request)
+docker compose -f docker/compose.yml -f docker/compose.prod.yml logs -f api
+
+# Trace a single request end-to-end by its id (echoed in the RFC 9457 error body)
+docker compose -f docker/compose.yml -f docker/compose.prod.yml logs api | grep 'req-019732db'
+
+# Pretty-print while reading
+docker compose -f docker/compose.yml -f docker/compose.prod.yml logs api | npx pino-pretty
+```
+
+Typical failure-triage flow:
+
+1. The API error response carries `requestId` (RFC 9457 problem+json) — the user reports it.
+2. `grep` that id in `docker compose ... logs` to see the full ordered log chain for the request.
+3. Open **Sentry** and filter by the `requestId` tag for the exact stack trace and breadcrumbs.
+4. If it is slow rather than broken, copy the `trace_id` from the log line (present once `OTEL_ENABLED=true`) into **Jaeger** to find the offending span.
+
+To open Jaeger/Grafana/Prometheus that run on the remote host, do **not** expose them publicly. Tunnel them to your workstation over SSH:
+
+```bash
+# Run on your workstation, then open http://localhost:16686 etc. locally
+ssh -L 16686:localhost:16686 -L 3001:localhost:3001 -L 9090:localhost:9090 user@your-server
+```
+
+For a team that needs persistent access, put the host on a private network (VPN / Tailscale) or use a managed backend (Grafana Cloud, Sentry SaaS, Datadog). Only expose a dashboard publicly behind TLS **and** authentication, ideally behind a VPN — never a raw public port.
+
+## Release Process
+
+The repository currently uses GitLab CI; there are no GitHub release workflows. The effective flow is:
+
+1. Open a merge request from `develop-main` to `main`. Validation runs lint, typecheck, unit tests
+   with coverage, production build, migration drift checks, and API e2e tests.
+2. The release merge request builds the production Bake graph without publishing it.
+3. After merge, the `main` pipeline publishes `api`, `worker`, `scheduler`, and `migration` images
+   to `${CI_REGISTRY}/${CI_PROJECT_PATH}/<app>:${CI_COMMIT_SHA}`.
+4. The `deploy` job is manual and currently a placeholder until the production runner and VPS
+   rollout command are configured. Do not treat a green package job as evidence that production
+   was deployed.
+
+`pnpm release:dry` and `pnpm release` are available for an operator-managed semantic version/tag
+flow, but no CI job currently invokes them. Trivy image gating, SBOM/provenance publication, and
+Cosign signing are also not wired into `.gitlab-ci.yml`; run the scripts under `scripts/security/`
+manually until dedicated CI jobs are added. See [Security](security.md) for the scanner inventory.
+
+## Health Checks
+
+| Endpoint                          | Description                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `GET /api/v1/health`              | Full check: DB + memory + Redis (cache & queue)                                |
+| `GET /api/v1/health/ready`        | **Readiness probe**: core serving deps only — DB primary + Redis               |
+| `GET /api/v1/health/live`         | **Liveness probe**: always 200 if process is up                                |
+| `GET /api/v1/health/dependencies` | Deep check (BullMQ + pgbouncer + replica lag) — dashboards/alerts, not a probe |
+
+> Wire the readiness/liveness probes to `/health/ready` and `/health/live` only. Never point a
+> Kubernetes probe at `/health/dependencies`: it checks shared infrastructure, so a single
+> dependency blip would flip every replica to NotReady at once (see `docs/observability.md`).
+
+Worker and scheduler use file-based liveness probes (`/tmp/worker-alive`, `/tmp/scheduler-alive`), refreshed every 30 seconds.
+
+## Scaling
+
+| Env var                     | Default | Effect                                                                                                                        |
+| --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `API_REPLICAS`              | `1`     | Number of api containers. Front with any L7 reverse proxy that supports keep-alive + WS upgrade (nginx, Traefik, Caddy, ALB). |
+| `WORKER_REPLICAS`           | `1`     | Number of worker containers. BullMQ distributes jobs automatically across all replicas via atomic Redis locks.                |
+| `WORKER_EMAIL_CONCURRENCY`  | `5`     | Per-queue parallelism inside each worker replica for email jobs. Effective throughput = concurrency × replicas.               |
+| `WORKER_UPLOAD_CONCURRENCY` | `5`     | Per-queue parallelism inside each worker replica for upload-verification jobs.                                                |
+
+Place any L7 reverse proxy in front of the api service that forwards `X-Forwarded-For` and proxies WebSocket upgrades. Set `TRUST_PROXY_HOPS` to the number of proxy hops between the edge and the api container so Fastify and the WebSocket connection limiter resolve the client IP consistently. Both directions are a hole, not a misconfiguration to fix later: too low and Fastify ignores `X-Forwarded-For`, so every caller on earth shares one rate-limit bucket; too high and a client can prepend an address of its choosing and mint a fresh bucket per forged IP. The metrics allowlist intentionally uses the raw TCP peer address because scrapers are expected to connect from the trusted internal network.
+
+The edge actually deployed for ViShop — nginx vhosts, the Cloudflare-only firewall, and the hostname split — lives in [`deploy/`](../deploy/README.md), config files included.
+
+> **Important**: Throttler limits (`THROTTLER_LIMIT`, `AUTH_RATE_LIMIT_MAX`) are cluster-wide counters backed by Redis shared state — set them for **total** expected traffic, not per-replica. With `API_REPLICAS=5` and `THROTTLER_LIMIT=100`, each IP is limited to 100 req/min total, not 500.
+>
+> **Connection pool budget**: `(API_REPLICAS + 1) × DATABASE_POOL_MAX` must stay below your Postgres `max_connections` (typically 80–100 for a default installation). The worker contributes 0 database connections. If replicas × pool would exceed the budget, add PgBouncer in transaction mode in front of Postgres — see [Connection Pooling](#connection-pooling) below.
+
+- **Scheduler**: Multiple replicas are supported through the Redis owner-token lease at `bull:scheduler:leader`; followers keep their cron and outbox loops idle. The production compose file remains at one replica by default to minimize idle resources. During failover, the 30-second lease TTL bounds takeover time.
+
+## Connection Pooling
+
+### When you need a pooler
+
+```text
+(API_REPLICAS + 1 scheduler) × DATABASE_POOL_MAX > Postgres max_connections
+```
+
+The worker contributes **zero** database connections. A default Postgres install
+has `max_connections=100`. With `DATABASE_POOL_MAX=20` you hit the limit at
+5 API replicas; with `DATABASE_POOL_MAX=5` you have room for 19 replicas.
+
+### Sizing formula
+
+```text
+required_server_conns = (API_REPLICAS + 1) × DATABASE_POOL_MAX
+
+pgbouncer default_pool_size  ≥ required_server_conns
+pgbouncer reserve_pool_size   = 5   (burst buffer)
+
+Postgres max_connections must be:
+  ≥ default_pool_size + reserve_pool_size + 5  (admin headroom)
+```
+
+Example — `API_REPLICAS=10`, `DATABASE_POOL_MAX=5`:
+
+```text
+required = (10 + 1) × 5 = 55
+→ set PGBOUNCER_POOL_SIZE=55, Postgres max_connections ≥ 65
+```
+
+### Option A — Direct connection (boilerplate default)
+
+No extra service. Set only `DATABASE_URL`. Works until the formula above
+exceeds `max_connections`.
+
+### Option B — Self-hosted pgbouncer (opt-in overlay)
+
+```bash
+docker compose --env-file .env \
+  -f docker/compose.yml \
+  -f docker/compose.prod.yml \
+  -f examples/pgbouncer/compose.pgbouncer.prod.yml \
+  up -d
+```
+
+See [`examples/pgbouncer/`](../examples/pgbouncer/) for the full walkthrough,
+pool-sizing guide, and Docker secrets pattern for production credentials.
+
+Set these in `.env` when the overlay is active:
+
+```bash
+# App traffic → pooler
+DATABASE_URL=postgresql://user:pass@pgbouncer:6432/nestjs_db
+# Prisma CLI + migration container → direct Postgres (bypasses pooler for DDL)
+DATABASE_DIRECT_URL=postgresql://user:pass@postgres:5432/nestjs_db
+PGBOUNCER_POOL_SIZE=30          # server-side connections to Postgres
+PGBOUNCER_MAX_CLIENT_CONN=500   # client-side cap
+```
+
+### Option C — HA pgbouncer (2× + HAProxy)
+
+Two pgbouncer instances behind HAProxy eliminates the pooler as a SPOF.
+Required for 99.9 %+ uptime SLO. See [`examples/pgbouncer-ha/`](../examples/pgbouncer-ha/) for
+the full walkthrough, failover verification steps, and production secrets pattern.
+
+```bash
+docker compose --env-file .env \
+  -f docker/compose.yml \
+  -f docker/compose.prod.yml \
+  -f examples/pgbouncer/compose.pgbouncer.prod.yml \
+  -f examples/pgbouncer-ha/compose.pgbouncer-ha.yml \
+  up -d
+```
+
+Set `DATABASE_URL` to route through HAProxy:
+
+```bash
+DATABASE_URL=postgresql://user:pass@haproxy:6432/nestjs_db
+DATABASE_DIRECT_URL=postgresql://user:pass@postgres:5432/nestjs_db
+```
+
+> **Note**: this option addresses pooler availability, NOT Postgres availability.
+> For HA Postgres use Patroni, Stolon, or a managed service (RDS Multi-AZ, Cloud SQL HA).
+
+### Option D — Managed pooler (RDS Proxy, Supavisor, AlloyDB)
+
+Point `DATABASE_URL` at the managed pooler endpoint and `DATABASE_DIRECT_URL`
+at the direct instance endpoint. No extra compose service needed.
+
+```bash
+DATABASE_URL=postgresql://user:pass@proxy.rds.amazonaws.com:5432/nestjs_db
+DATABASE_DIRECT_URL=postgresql://user:pass@db.rds.amazonaws.com:5432/nestjs_db
+```
+
+The migration container and Prisma CLI automatically use `DATABASE_DIRECT_URL`
+when set — no code changes required.
+
+### Managed Postgres providers
+
+Providers like AWS RDS, Cloud SQL, AlloyDB, Supabase, and Neon typically pre-enable
+`pg_stat_statements`. The `CREATE EXTENSION` for it lives in `prisma/migrations/20260501000000_init/migration.sql`, which
+runs `CREATE EXTENSION IF NOT EXISTS` and handles registration automatically — no extra
+ops step is required.
+
+For self-hosted Postgres, see [`examples/postgres-with-stats/`](../examples/postgres-with-stats/)
+for the opt-in compose overlay that enables `shared_preload_libraries` + slow query log.
+
+## High-availability pooling
+
+Choose the topology that matches your uptime SLO and operational budget:
+
+| Topology                       | Uptime expectation | Memory cost | When to use                           |
+| ------------------------------ | ------------------ | ----------- | ------------------------------------- |
+| Direct to Postgres (no pooler) | ~99 %              | 0           | Single replica, dev, very low traffic |
+| Single pgbouncer               | ~99.5 %            | ~50 MB      | Most production deployments           |
+| 2× pgbouncer + HAProxy         | 99.9 %+            | ~150 MB     | Production with strict SLO            |
+| Managed (RDS Proxy, Supavisor) | Provider SLO       | $$          | Hosted on the same cloud              |
+
+The single pgbouncer option (`examples/pgbouncer/`) is a SPOF: if the pooler
+container crashes, every API replica loses its database connection simultaneously.
+The HA overlay (`examples/pgbouncer-ha/`) adds a second pgbouncer and an HAProxy
+TCP load-balancer in front of both. HAProxy detects a failed backend within 4-6 s
+and drains it from the rotation — apps see a brief connection reset, then
+pgbouncer-2 takes over with no operator intervention.
+
+See [`examples/pgbouncer-ha/README.md`](../examples/pgbouncer-ha/README.md) for
+setup steps, failover verification, Docker secrets pattern, and guidance on
+eliminating HAProxy as the remaining SPOF (app-node sidecar, cloud NLB, Keepalived).
