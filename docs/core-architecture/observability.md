@@ -133,7 +133,7 @@ File cấu hình chuẩn đặt trong `src/main/resources/logback-spring.xml` c�
 ## 3. Trụ cột 2: Metrics & Health Monitoring (Chỉ số Giám sát)
 
 ### 3.1. Thiết lập Spring Boot Actuator & Micrometer
-Mọi service đều tích hợp module [`platform-common:common-observability`](../../platform-common/common-observability) để kích hoạt Prometheus endpoint tại `GET /actuator/prometheus`.
+Các service sử dụng module [`platform-common:common-observability`](../../platform-common/common-observability) để tích hợp Prometheus endpoint tại `GET /actuator/prometheus`.
 
 #### Cấu hình `application.yml`:
 ```yaml

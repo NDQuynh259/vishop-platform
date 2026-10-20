@@ -32,6 +32,6 @@ Shared code uses the `io.github.coreplatform.common` Java package namespace. See
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for Conventional Commit messages, branch naming, and pull request expectations.
 
-## Preserved source-project documentation
+## Architecture documentation
 
-Existing documents under `docs/architecture/`, `docs/product/`, and other `docs/` directories are preserved from the ViShop source project. They remain available for reference; reusable core architecture is documented under `docs/core-architecture/`.
+Start with the [Core Architecture index](docs/core-architecture/README.md) for all architecture documents and the reusable core module boundaries. Original architecture documents remain preserved under `docs/architecture/`; product documentation and other guides remain in their existing locations.

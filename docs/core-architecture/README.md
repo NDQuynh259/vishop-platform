@@ -1,29 +1,31 @@
 # Core Platform Architecture
 
-Core Platform is a reusable Java 21 and Spring Boot 3.3 foundation. It provides optional libraries for common application concerns; it does not define business services, product domains, deployment topology, or tenant-specific policy.
+This directory is the central index for reusable Core Platform architecture and preserved architecture documents from the ViShop source project. The source documents remain unchanged in `docs/architecture/`.
 
-## Principles
+## Core platform
 
-- Modules are independently consumable and dependencies flow toward lower-level abstractions.
-- Spring integrations stay in adapter modules; domain contracts remain framework-independent.
-- Applications opt into modules they need rather than depending on a single all-inclusive starter.
-- Service implementations, API contracts, database schemas, and infrastructure are owned by consuming projects.
-- Observability uses standard Micrometer/OpenTelemetry interfaces and OTLP-compatible exporters.
+- [Core principles and module overview](#core-platform) in this document
+- [Module boundaries](./module-boundaries.md)
 
-## Modules
+## Architecture handbook
 
-| Module | Responsibility |
+| Document | Subject |
 | --- | --- |
-| `common-domain` | DDD building blocks, CQRS contracts, and domain exceptions |
-| `common-web` | Spring web support, request identifiers, pagination, and CQRS dispatch adapters |
-| `common-security` | Reusable request security context primitives; applications own authentication and authorization policy |
-| `common-events` | Event envelope and Kafka integration primitives |
-| `common-persistence` | Persistence support for outbox and idempotent consumption |
-| `common-saga` | Saga orchestration primitives and persistence contracts |
-| `common-observability` | Actuator, Micrometer, tracing, and structured logging integration |
-| `common-test` | Shared test utilities |
+| [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, and Kafka |
+| [API gateway](./api-gateway.md) | Gateway routing, filters, CORS, and error handling |
+| [Saga pattern](./saga-pattern.md) | Saga orchestration and compensation |
+| [Service decomposition](./scaling-to-services.md) | Service boundaries, decomposition criteria, and extraction playbook |
+| [Service module anatomy](./domain-module-anatomy.md) | Domain, application, infrastructure, and presentation layers |
+| [Multi-tenancy](./tenancy.md) | Tenant context propagation through HTTP, Kafka, and persistence |
+| [Idempotency and tracing](./idempotency-and-tracing.md) | Deduplication and request/message correlation |
+| [Observability](./observability.md) | Logs, metrics, distributed tracing, and alerting |
+| [Spring Boot migration plan](./spring-boot-microservices-migration-plan.md) | Migration strategy and operational considerations |
 
-See [module boundaries](module-boundaries.md) for dependencies and ownership boundaries. See [contribution rules](../../CONTRIBUTING.md) for branch and commit conventions.
+## Core principles
+
+Core Platform provides optional Java 21 and Spring Boot libraries; consuming applications own business services, product domains, deployment topology, and tenant-specific policy. Modules are independently consumable, domain contracts remain framework-independent, and applications opt into the modules they need.
+
+The shared Java namespace is `io.github.coreplatform.common`. See [module boundaries](./module-boundaries.md) for dependency and ownership rules, and [contribution rules](../../CONTRIBUTING.md) for branch and commit conventions.
 
 ## Build and test
 
@@ -31,4 +33,6 @@ See [module boundaries](module-boundaries.md) for dependencies and ownership bou
 .\gradlew.bat clean test
 ```
 
-Shared Java packages use the `io.github.coreplatform.common` namespace. Existing ViShop documents under `docs/` are preserved as source-project documentation; reusable core architecture is maintained in this directory.
+## Source-project documents
+
+The handbook entries above are preserved copies of the original documents in `docs/architecture/`. They describe the ViShop source project and may refer to services or infrastructure that are not part of the reusable core build. Shared module links in these copies point to the current core source paths where available.

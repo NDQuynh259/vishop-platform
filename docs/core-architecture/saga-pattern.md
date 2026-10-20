@@ -2,7 +2,7 @@
 
 ## 1. Giới thiệu
 
-Trong kiến trúc Microservices của ViShop Platform, mỗi service sở hữu cơ sở dữ liệu riêng biệt (Database-per-Service). Để xử lý các giao dịch kinh doanh kéo dài qua nhiều service (ví dụ: Tạo Tenant kèm tạo Admin Account, thanh toán đơn hàng kèm giữ kho), chúng ta áp dụng **Saga Pattern** theo mô hình **Orchestration-based** thông qua module [`platform-common:common-saga`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga).
+Trong kiến trúc Microservices của ViShop Platform, mỗi service sở hữu cơ sở dữ liệu riêng biệt (Database-per-Service). Để xử lý các giao dịch kinh doanh kéo dài qua nhiều service (ví dụ: Tạo Tenant kèm tạo Admin Account, thanh toán đơn hàng kèm giữ kho), chúng ta áp dụng **Saga Pattern** theo mô hình **Orchestration-based** thông qua module [`platform-common:common-saga`](../../platform-common/common-saga).
 
 ---
 
@@ -37,23 +37,23 @@ flowchart TD
 ```
 
 ### Các thành phần chính:
-1. **[`SagaStep<TContext>`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga/src/main/java/com/vishop/common/saga/SagaStep.java)**:
+1. **[`SagaStep<TContext>`](../../platform-common/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaStep.java)**:
    * Interface định nghĩa một bước trong quy trình.
    * `getName()`: Tên định danh của bước (ví dụ: `CreateTenantStep`, `ProvisionIdentityStep`).
    * `execute(TContext context)`: Thực hiện hành động chính.
    * `compensate(TContext context)`: Thực hiện rollback bù trừ khi có bước phía sau bị lỗi (idempotent, không được throw exception unhandled).
 
-2. **[`SagaDefinition<TContext>`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga/src/main/java/com/vishop/common/saga/SagaDefinition.java)**:
+2. **[`SagaDefinition<TContext>`](../../platform-common/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaDefinition.java)**:
    * Danh sách tuần tự các `SagaStep`.
    * Khởi tạo linh hoạt thông qua Fluent Builder: `SagaDefinition.<MyContext>builder("MySaga").step(step1).step(step2).build()`.
 
-3. **[`SagaOrchestrator`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga/src/main/java/com/vishop/common/saga/SagaOrchestrator.java)**:
+3. **[`SagaOrchestrator`](../../platform-common/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaOrchestrator.java)**:
    * Engine thực thi tuần tự các bước.
    * Quản lý trạng thái vòng đời của Saga Instance (`STARTED` -> `EXECUTING` -> `COMPLETED` hoặc `COMPENSATING` -> `COMPENSATED` / `FAILED`).
    * Tự động kích hoạt bù trừ ngược chiều (LIFO - Last In First Out) khi bất kỳ bước nào gặp lỗi.
    * Sử dụng transaction độc lập `REQUIRES_NEW` khi lưu log trạng thái vào bảng `saga_instances` để đảm bảo không bị rollback khi business transaction gặp ngoại lệ.
 
-4. **[`SagaInstanceEntity`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga/src/main/java/com/vishop/common/saga/SagaInstanceEntity.java)**:
+4. **[`SagaInstanceEntity`](../../platform-common/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaInstanceEntity.java)**:
    * Bảng lưu trữ trạng thái của từng instance để phục vụ tracing, audit và phục hồi lỗi.
 
 ---

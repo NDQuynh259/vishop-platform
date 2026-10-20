@@ -229,7 +229,7 @@ sequenceDiagram
 
 ## 6. Distributed Transactions — Saga Pattern
 
-Để xử lý các giao dịch phức tạp cần bảo đảm tính nhất quán sau cùng (Eventual Consistency) trải dài qua nhiều microservices, ViShop sử dụng **Saga Orchestrator** trong [`platform-common:common-saga`](file:///c:/Users/ndquynh/Documents/vishop-platform/platform-common/common-saga):
+Để xử lý các giao dịch phức tạp cần bảo đảm tính nhất quán sau cùng (Eventual Consistency) trải dài qua nhiều microservices, ViShop sử dụng **Saga Orchestrator** trong [`platform-common:common-saga`](../../platform-common/common-saga):
 * **State Machine**: Vòng đời Saga (`STARTED`, `EXECUTING`, `COMPENSATING`, `COMPENSATED`, `COMPLETED`, `FAILED`).
 * **Reverse Compensation**: Tự động rollback các bước trước đó theo chiều ngược lại (LIFO) khi có bất kỳ step nào fail.
 * **Persistent Instances**: Lưu trữ trạng thái Saga trong bảng `saga_instances` bằng transaction độc lập `REQUIRES_NEW`.

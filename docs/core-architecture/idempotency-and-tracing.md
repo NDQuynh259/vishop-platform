@@ -25,7 +25,7 @@ Trong mạng phân tán, cơ chế giao nhận thông điệp của Apache Kafka
 ViShop Platform áp dụng `idempotencyId` tại 3 điểm trọng yếu:
 
 ### 2.1. Trong Kafka Event Consumer (`IdempotentConsumer`)
-Tại [`platform-common:common-persistence`](../../platform-common/common-persistence/src/main/java/com/vishop/common/persistence/idempotency/IdempotentConsumer.java), class [`IdempotentConsumer`](../../platform-common/common-persistence/src/main/java/com/vishop/common/persistence/idempotency/IdempotentConsumer.java) sử dụng bảng `consumed_messages` làm chốt chặn:
+Tại [`platform-common:common-persistence`](../../platform-common/common-persistence/src/main/java/io/github/coreplatform/common/persistence/idempotency/IdempotentConsumer.java), class [`IdempotentConsumer`](../../platform-common/common-persistence/src/main/java/io/github/coreplatform/common/persistence/idempotency/IdempotentConsumer.java) sử dụng bảng `consumed_messages` làm chốt chặn:
 
 ```java
 @Transactional
@@ -82,7 +82,7 @@ if (requestId == null || requestId.isBlank()) {
 ```
 
 ### 3.2. Lan truyền qua Event Bus (`EventEnvelope`)
-Khi một service phát hành Domain Event lên Kafka, [`EventEnvelope.java`](../../platform-common/common-events/src/main/java/com/vishop/common/events/EventEnvelope.java) luôn mang theo metadata truy vết:
+Khi một service phát hành Domain Event lên Kafka, [`EventEnvelope.java`](../../platform-common/common-events/src/main/java/io/github/coreplatform/common/events/EventEnvelope.java) luôn mang theo metadata truy vết:
 
 ```java
 public record EventEnvelope(
@@ -104,7 +104,7 @@ public record EventEnvelope(
 - **`causationId`**: Định danh của sự kiện hoặc request trực tiếp gây ra sự kiện này (Direct Cause).
 
 ### 3.3. Xuyên suốt trong Saga Orchestrator
-Trong giao dịch phân tán dài hạn ([`SagaOrchestrator.java`](../../platform-common/common-saga/src/main/java/com/vishop/common/saga/SagaOrchestrator.java)), `correlationId` liên kết toàn bộ trạng thái thực thi và các bước đền bù (compensating steps) trong bảng `saga_instances`:
+Trong giao dịch phân tán dài hạn ([`SagaOrchestrator.java`](../../platform-common/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaOrchestrator.java)), `correlationId` liên kết toàn bộ trạng thái thực thi và các bước đền bù (compensating steps) trong bảng `saga_instances`:
 
 ```java
 Optional<SagaInstanceEntity> findByCorrelationId(UUID correlationId);
@@ -158,6 +158,6 @@ sequenceDiagram
 1. **Không bao giờ dùng `trackingId` (`correlationId`) làm `idempotencyId`**:
    - `correlationId` đại diện cho một luồng nghiệp vụ dài (chứa nhiều event khác nhau). Nếu lấy `correlationId` làm khóa idempotent, các event sinh ra sau trong cùng một luồng sẽ bị coi là trùng lặp và bị bỏ qua nhầm!
 2. **Khởi tạo UUID v7**:
-   - Cả `idempotencyId` lẫn `trackingId` đều được khuyến nghị sử dụng chuẩn **UUID v7** (có sẵn trong `com.vishop.common.domain.UuidV7`) để đảm bảo tính tuần tự theo thời gian, tối ưu hiệu năng đánh index B-Tree trong cơ sở dữ liệu.
+   - Cả `idempotencyId` lẫn `trackingId` đều được khuyến nghị sử dụng chuẩn **UUID v7** (có sẵn trong `io.github.coreplatform.common.domain.UuidV7`) để đảm bảo tính tuần tự theo thời gian, tối ưu hiệu năng đánh index B-Tree trong cơ sở dữ liệu.
 3. **Luôn truyền `correlationId` khi gọi API downstream hoặc publish event**:
    - Khi tạo `EventEnvelope` mới từ một sự kiện đầu vào, phải luôn truyền tiếp `correlationId` nhận được, và gán `causationId` bằng `eventId` của sự kiện trực tiếp trước đó.
