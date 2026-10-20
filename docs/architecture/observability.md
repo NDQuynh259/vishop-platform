@@ -196,6 +196,8 @@ Dashboard Grafana của ViShop theo dõi 4 tín hiệu sống còn theo chuẩn 
 
 ## 4. Trụ cột 3: Distributed Tracing (Truy Vết Phân Tán)
 
+![Distributed Tracing Overview](./images/distributed-tracing-overview.jpg)
+
 ### 4.1. Chuẩn W3C Trace Context (`traceparent`)
 Khi một request di chuyển qua các ranh giới mạng (từ Gateway $\rightarrow$ Commerce Core $\rightarrow$ Kafka $\rightarrow$ Audit Service), header chuẩn W3C `traceparent` tự động được đính kèm:
 

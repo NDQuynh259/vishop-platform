@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <springProperty scope="context" name="springAppName" source="spring.application.name" defaultValue="vishop-service"/>
+
+    <!-- Development / Local: Human readable with colors & correlation/trace tags -->
+    <springProfile name="!prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([${springAppName}]){yellow} %clr([t:%X{traceId:-},s:%X{spanId:-}]){cyan} %clr([corr:%X{correlationId:-}]){magenta} %clr([tenant:%X{tenantId:-}]){blue} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- Production: JSON structured logging for Loki / ELK -->
+    <springProfile name="prod">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+                <providers>
+                    <timestamp>
+                        <timeZone>UTC</timeZone>
+                    </timestamp>
+                    <pattern>
+                        <pattern>
+                            {
+                              "timestamp": "%date{ISO8601}",
+                              "level": "%level",
+                              "service": "${springAppName}",
+                              "traceId": "%X{traceId:-}",
+                              "spanId": "%X{spanId:-}",
+                              "correlationId": "%X{correlationId:-}",
+                              "requestId": "%X{requestId:-}",
+                              "tenantId": "%X{tenantId:-}",
+                              "thread": "%thread",
+                              "logger": "%logger{40}",
+                              "message": "%message",
+                              "exception": "%ex"
+                            }
+                        </pattern>
+                    </pattern>
+                </providers>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>

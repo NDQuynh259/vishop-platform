@@ -1,4 +1,4 @@
-rootProject.name = "vishop-platform"
+rootProject.name = "core-platform"
 
 include(
     // Platform common modules
@@ -10,10 +10,4 @@ include(
     "platform-common:common-observability",
     "platform-common:common-saga",
     "platform-common:common-test",
-
-    // Services
-    "services:api-gateway",
-    "services:identity-service",
-    "services:tenant-service",
-    "services:audit-service"
 )

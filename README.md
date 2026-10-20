@@ -1,110 +1,37 @@
-# ViShop Platform
+# Core Platform
 
-Nền tảng thương mại điện tử đa kênh và quản lý bán hàng đa tổ chức (Multi-Tenant E-Commerce Platform) được phát triển theo kiến trúc **Microservices, Domain-Driven Design (DDD), CQRS và Apache Kafka** trên nền **Java 21 LTS** và **Spring Boot 3.3.x**.
+Reusable Java 21 and Spring Boot 3.3 libraries for building service-oriented applications. The platform is modular: include only the shared capabilities an application needs, and keep business services and deployment choices in the consuming project.
 
----
+## Technology
 
-## 1. Công nghệ nền tảng (Tech Stack)
+- Java 21
+- Spring Boot 3.3.5 and Gradle Kotlin DSL
+- JUnit 5
+- Micrometer and OpenTelemetry for observability integrations
 
-* **Ngôn ngữ**: Java 21 LTS
-* **Framework**: Spring Boot 3.3.5
-* **Build Tool**: Gradle Multi-Module (Kotlin DSL)
-* **Kiến trúc**: Domain-Driven Design (DDD), Hexagonal Architecture (Ports & Adapters), CQRS
-* **Event Broker**: Apache Kafka (KRaft mode — không cần Zookeeper)
-* **Reliability Pattern**: Transactional Outbox Pattern + Idempotent Consumer
-* **Cơ sở dữ liệu**: PostgreSQL 16 (Database-per-service), Flyway Migrations, Spring Data JPA
-* **Cache & Lock**: Redis 7
-* **API Standard**: RESTful, RFC 9457 Problem Details, Cursor Pagination
-* **Quan sát & Giám sát**: Spring Boot Actuator, Micrometer Prometheus, OpenTelemetry, SLF4J MDC
-* **Kiểm thử**: JUnit 5, Testcontainers
+## Modules
 
----
+- `common-domain`: DDD building blocks, CQRS contracts, and domain exceptions
+- `common-web`: Spring web adapters, pagination, and CQRS dispatch
+- `common-security`: request context primitives
+- `common-events`: event envelope and Kafka integration
+- `common-persistence`: outbox and idempotent consumer support
+- `common-saga`: saga orchestration primitives
+- `common-observability`: Actuator, metrics, tracing, and structured logging integration
+- `common-test`: shared test utilities
 
-## 2. Cấu trúc Monorepo
+Shared code uses the `io.github.coreplatform.common` Java package namespace. See [Core Architecture](docs/core-architecture/README.md) and [Module Boundaries](docs/core-architecture/module-boundaries.md) for design and dependency guidance.
 
-```text
-vishop-platform/
-├── platform-common/                     # Thư viện nền tảng dùng chung
-│   ├── common-domain/                   # DDD Core: AggregateRoot, Entity, VO, Event, CQRS interfaces, DomainException
-│   ├── common-web/                      # Web & CQRS Bus: SpringCommandBus, SpringQueryBus, Problem Details (RFC 9457)
-│   ├── common-security/                 # Multi-Tenancy: TenantContext, TenantContextFilter
-│   ├── common-events/                   # Kafka Backbone: EventEnvelope, KafkaTopicNaming, KafkaEventPublisher, DLQ
-│   ├── common-persistence/              # Transactional Outbox, OutboxPublisher, ConsumedMessage (Idempotency)
-│   ├── common-saga/                     # Saga Pattern Orchestrator (Distributed Transactions with Compensation)
-│   ├── common-observability/            # Spring Actuator & Prometheus
-│   └── common-test/                     # Testcontainers helpers
-│
-├── services/                            # Các Microservices độc lập (Bounded Contexts)
-│   ├── api-gateway/                     # Spring Cloud Gateway (:8000) - Điểm chạm trung tâm & định tuyến
-│   ├── tenant-service/                  # Quản lý Tenant, tổ chức, gian hàng (DDD + CQRS + Outbox)
-│   ├── identity-service/                # Quản lý người dùng, tài khoản & xác thực
-│   └── audit-service/                   # Kafka Event Consumer ghi nhận lịch sử audit log
-│
-├── infra/
-│   └── docker-compose/                  # Hạ tầng chạy local: Kafka KRaft, Kafka UI, Postgres 16, Redis 7
-│
-├── build.gradle.kts                      # Cấu hình Gradle chung
-├── settings.gradle.kts                   # Khai báo subprojects
-└── docs/                                # Toàn bộ tài liệu kiến trúc & hướng dẫn
-```
+## Build and test
 
----
-
-## 3. Khởi động nhanh (Quick Start)
-
-### 3.1. Khởi động hạ tầng cục bộ (Docker Compose)
 ```powershell
-docker compose -f infra/docker-compose/docker-compose.yml up -d
-```
-* **Kafka Broker**: `localhost:29092`
-* **Kafka UI**: [http://localhost:8088](http://localhost:8088)
-* **PostgreSQL 16**: `localhost:5432` (user/pass: `vishop`/`vishop_secret`)
-* **Redis 7**: `localhost:6379`
-
-### 3.2. Biên dịch & Kiểm thử
-```powershell
-# Biên dịch
-.\gradlew.bat compileJava
-
-# Chạy toàn bộ Unit & Integration tests
-.\gradlew.bat test
+.\gradlew.bat clean test
 ```
 
-### 3.3. Khởi chạy Microservices
-```powershell
-# Chạy API Gateway (Port 8000)
-.\gradlew.bat :services:api-gateway:bootRun
+## Contribution rules
 
-# Chạy tenant-service (Port 8081)
-.\gradlew.bat :services:tenant-service:bootRun
+See [CONTRIBUTING.md](CONTRIBUTING.md) for Conventional Commit messages, branch naming, and pull request expectations.
 
-# Chạy identity-service (Port 8080)
-.\gradlew.bat :services:identity-service:bootRun
+## Preserved source-project documentation
 
-# Chạy audit-service (Port 8082)
-.\gradlew.bat :services:audit-service:bootRun
-```
-
----
-
-## 4. Tài liệu chi tiết trong `docs/`
-
-### 4.1. Kiến trúc hệ thống (`docs/architecture/`)
-* [Tổng quan Kiến trúc (Architecture Overview)](./docs/architecture/architecture.md)
-* [API Gateway & Routing](./docs/architecture/api-gateway.md)
-* [Saga Pattern — Distributed Transactions](./docs/architecture/saga-pattern.md)
-* [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./docs/architecture/domain-module-anatomy.md)
-* [Kiến trúc Đa người thuê (Multi-Tenancy)](./docs/architecture/tenancy.md)
-* [Chống trùng lặp & Truy vết Phân tán (Idempotency & Tracing)](./docs/architecture/idempotency-and-tracing.md)
-* [Giám sát & Quan sát Hệ thống (Observability)](./docs/architecture/observability.md)
-* [Chiến lược Microservices & Bounded Contexts](./docs/architecture/scaling-to-services.md)
-* [Kế hoạch di trú sang Spring Boot Microservices](./docs/architecture/spring-boot-microservices-migration-plan.md)
-
-### 4.2. Hướng dẫn & Tiêu chuẩn phát triển
-* [Tạo mới Microservice](./docs/creating-a-module.md)
-* [Hướng dẫn cài đặt & khởi chạy (Getting Started)](./docs/getting-started.md)
-* [Chuẩn mực lập trình (Code Standards)](./docs/code-standards.md)
-* [Xử lý ngoại lệ chuẩn RFC 9457 (Error Handling)](./docs/error-handling.md)
-* [Hướng dẫn vận hành Observability (Observability Guide)](./docs/observability-guide.md)
-* [Khắc phục sự cố (Troubleshooting)](./docs/troubleshooting.md)
-* [Hướng dẫn triển khai (Deployment)](./docs/deployment.md)
+Existing documents under `docs/architecture/`, `docs/product/`, and other `docs/` directories are preserved from the ViShop source project. They remain available for reference; reusable core architecture is documented under `docs/core-architecture/`.

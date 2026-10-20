@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.vishop.common.domain.AggregateRootTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-05T05:07:58" hostname="QUYNH" time="0.027">
-  <properties/>
-  <testcase name="shouldRegisterAndPullDomainEvents()" classname="com.vishop.common.domain.AggregateRootTest" time="0.027"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
