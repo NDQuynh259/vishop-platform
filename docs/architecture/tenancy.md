@@ -28,18 +28,18 @@ users ──< tenant_members >── tenants ──< roles ──< role_permissi
 
 ### 3.1. Luồng HTTP Request (REST API)
 1. Client gửi request kèm header `X-Tenant-Id: <uuid>`.
-2. [TenantContextFilter.java](../platform-common/common-security/src/main/java/com/vishop/common/security/TenantContextFilter.java) (Spring OncePerRequestFilter) tự động:
+2. [TenantContextFilter.java](../../platform-common/common-security/src/main/java/com/vishop/common/security/TenantContextFilter.java) (Spring OncePerRequestFilter) tự động:
    * Trích xuất giá trị UUID từ header `X-Tenant-Id`.
-   * Gán vào [TenantContext.java](../platform-common/common-security/src/main/java/com/vishop/common/security/TenantContext.java) (`ThreadLocal<UUID>`).
+   * Gán vào [TenantContext.java](../../platform-common/common-security/src/main/java/com/vishop/common/security/TenantContext.java) (`ThreadLocal<UUID>`).
    * Thực thi request chain.
    * Gọi `TenantContext.clear()` trong khối `finally` để giải phóng thread an toàn.
 
 ### 3.2. Luồng Kafka Event (Asynchronous Messaging)
-1. Khi phát hành event ra Kafka, [KafkaEventPublisher.java](../platform-common/common-events/src/main/java/com/vishop/common/events/publisher/KafkaEventPublisher.java) tự động đính kèm header Kafka `X-Tenant-Id`.
-2. Khi Consumer nhận record, [TenantRecordInterceptor.java](../platform-common/common-events/src/main/java/com/vishop/common/events/consumer/TenantRecordInterceptor.java) trích xuất header này và thiết lập vào `TenantContext` trước khi `@KafkaListener` xử lý, sau đó giải phóng context khi hoàn tất.
+1. Khi phát hành event ra Kafka, [KafkaEventPublisher.java](../../platform-common/common-events/src/main/java/com/vishop/common/events/publisher/KafkaEventPublisher.java) tự động đính kèm header Kafka `X-Tenant-Id`.
+2. Khi Consumer nhận record, [TenantRecordInterceptor.java](../../platform-common/common-events/src/main/java/com/vishop/common/events/consumer/TenantRecordInterceptor.java) trích xuất header này và thiết lập vào `TenantContext` trước khi `@KafkaListener` xử lý, sau đó giải phóng context khi hoàn tất.
 
 ### 3.3. Tầng lưu trữ (Database Persistence)
-* Toàn bộ Entity JPA của dữ liệu phân tán theo tenant kế thừa từ [BaseTenantJpaEntity.java](../platform-common/common-persistence/src/main/java/com/vishop/common/persistence/BaseTenantJpaEntity.java):
+* Toàn bộ Entity JPA của dữ liệu phân tán theo tenant kế thừa từ [BaseTenantJpaEntity.java](../../platform-common/common-persistence/src/main/java/com/vishop/common/persistence/BaseTenantJpaEntity.java):
   ```java
   @MappedSuperclass
   public abstract class BaseTenantJpaEntity {

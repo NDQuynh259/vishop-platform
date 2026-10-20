@@ -2,7 +2,7 @@
 
 Practical how-to for the three signals (logs, traces, metrics) and the alerting/dashboard stack.
 For the design rationale (why ParentBased sampling, why single-writer metrics, why the health split),
-read [`observability.md`](./observability.md) first — this file is the operational companion.
+read [`observability.md`](./architecture/observability.md) first — this file is the operational companion.
 
 ## 1. Enable the local stack
 

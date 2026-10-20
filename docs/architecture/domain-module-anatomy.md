@@ -1,6 +1,6 @@
 # Cấu trúc giải phẫu Microservice (Domain Module Anatomy)
 
-Tài liệu này giải thích chi tiết mục đích và trách nhiệm của từng file bên trong một Microservice theo chuẩn **Domain-Driven Design (DDD) + Hexagonal Architecture + CQRS**, lấy ví dụ thực tế từ [`services/tenant-service`](../services/tenant-service).
+Tài liệu này giải thích chi tiết mục đích và trách nhiệm của từng file bên trong một Microservice theo chuẩn **Domain-Driven Design (DDD) + Hexagonal Architecture + CQRS**, lấy ví dụ thực tế từ [`services/tenant-service`](../../services/tenant-service).
 
 ---
 

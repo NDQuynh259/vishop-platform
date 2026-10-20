@@ -89,16 +89,22 @@ docker compose -f infra/docker-compose/docker-compose.yml up -d
 
 ## 4. Tài liệu chi tiết trong `docs/`
 
-* [Kiến trúc hệ thống (Architecture)](./docs/architecture.md)
-* [API Gateway & Routing](./docs/api-gateway.md)
-* [Saga Pattern — Distributed Transactions](./docs/saga-pattern.md)
-* [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./docs/domain-module-anatomy.md)
+### 4.1. Kiến trúc hệ thống (`docs/architecture/`)
+* [Tổng quan Kiến trúc (Architecture Overview)](./docs/architecture/architecture.md)
+* [API Gateway & Routing](./docs/architecture/api-gateway.md)
+* [Saga Pattern — Distributed Transactions](./docs/architecture/saga-pattern.md)
+* [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./docs/architecture/domain-module-anatomy.md)
+* [Kiến trúc Đa người thuê (Multi-Tenancy)](./docs/architecture/tenancy.md)
+* [Chống trùng lặp & Truy vết Phân tán (Idempotency & Tracing)](./docs/architecture/idempotency-and-tracing.md)
+* [Giám sát & Quan sát Hệ thống (Observability)](./docs/architecture/observability.md)
+* [Chiến lược Microservices & Bounded Contexts](./docs/architecture/scaling-to-services.md)
+* [Kế hoạch di trú sang Spring Boot Microservices](./docs/architecture/spring-boot-microservices-migration-plan.md)
+
+### 4.2. Hướng dẫn & Tiêu chuẩn phát triển
 * [Tạo mới Microservice](./docs/creating-a-module.md)
 * [Hướng dẫn cài đặt & khởi chạy (Getting Started)](./docs/getting-started.md)
 * [Chuẩn mực lập trình (Code Standards)](./docs/code-standards.md)
 * [Xử lý ngoại lệ chuẩn RFC 9457 (Error Handling)](./docs/error-handling.md)
-* [Kiến trúc Đa người thuê (Multi-Tenancy)](./docs/tenancy.md)
-* [Chiến lược Microservices & Bounded Contexts](./docs/scaling-to-services.md)
-* [Giám sát hệ thống (Observability)](./docs/observability.md)
+* [Hướng dẫn vận hành Observability (Observability Guide)](./docs/observability-guide.md)
 * [Khắc phục sự cố (Troubleshooting)](./docs/troubleshooting.md)
 * [Hướng dẫn triển khai (Deployment)](./docs/deployment.md)

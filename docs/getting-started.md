@@ -97,7 +97,8 @@ Mỗi Microservice là một ứng dụng Spring Boot độc lập có thể ch�
 
 ## 6. Đọc tiếp các tài liệu quan trọng
 
-1. [Kiến trúc hệ thống (Architecture)](./architecture.md) — Tổng quan kiến trúc đa module, quy tắc phân tầng DDD, CQRS và Outbox relay.
-2. [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./domain-module-anatomy.md) — Hướng dẫn chi tiết từng file trong 4 tầng: Domain, Application, Infrastructure, Presentation.
-3. [Tạo mới Microservice](./creating-a-module.md) — Hướng dẫn scaffold một service mới.
-4. [Chuẩn mực lập trình (Code Standards)](./code-standards.md) — Quy ước viết code Java 21, Logging, Exception handling.
+1. [Kiến trúc hệ thống (Architecture)](./architecture/architecture.md) — Tổng quan kiến trúc đa module, quy tắc phân tầng DDD, CQRS và Outbox relay.
+2. [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./architecture/domain-module-anatomy.md) — Hướng dẫn chi tiết từng file trong 4 tầng: Domain, Application, Infrastructure, Presentation.
+3. [Chống trùng lặp & Truy vết Phân tán (Idempotency & Tracing)](./architecture/idempotency-and-tracing.md) — Cơ chế chống lặp message/order và xâu chuỗi log qua correlationId.
+4. [Tạo mới Microservice](./creating-a-module.md) — Hướng dẫn scaffold một service mới.
+5. [Chuẩn mực lập trình (Code Standards)](./code-standards.md) — Quy ước viết code Java 21, Logging, Exception handling.

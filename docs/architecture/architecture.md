@@ -38,42 +38,80 @@ Mỗi Microservice tuân thủ chặt chẽ mô hình **Hexagonal Architecture (
 
 ```mermaid
 flowchart TD
-    subgraph Presentation["Presentation Layer (HTTP REST / Events)"]
-        Controller["RestController (TenantController)"]
+    %% ==========================================
+    %% 1. PRESENTATION LAYER
+    %% ==========================================
+    subgraph Presentation["1. Presentation Layer (Driving Adapters)"]
+        Controller["RestController\n(TenantController)"]
+        KafkaSub["Kafka Consumer / Listeners\n(TenantEventListener)"]
     end
 
-    subgraph Application["Application Layer (Use Cases & CQRS)"]
+    %% ==========================================
+    %% 2. APPLICATION LAYER
+    %% ==========================================
+    subgraph Application["2. Application Layer (Use Cases & CQRS)"]
         direction TB
-        CommandBus["CommandBus / QueryBus"]
-        CmdHandler["CommandHandlers (CreateTenantCommandHandler)"]
-        QryHandler["QueryHandlers (ListTenantsQueryHandler)"]
-        DTOs["DTOs (CreateTenantRequest, TenantResponseDto)"]
+        DTOs["DTOs\n(CreateTenantRequest, TenantResponseDto)"]
+        CommandBus["CQRS Dispatcher\n(SpringCommandBus / SpringQueryBus)"]
+        CmdHandler["Command Handlers\n(CreateTenantCommandHandler)"]
+        QryHandler["Query Handlers\n(ListTenantsQueryHandler)"]
     end
 
-    subgraph Domain["Domain Layer (Pure Business Core)"]
+    %% ==========================================
+    %% 3. DOMAIN LAYER
+    %% ==========================================
+    subgraph Domain["3. Domain Layer (Pure Business Core - POJO)"]
         direction TB
-        Aggregate["AggregateRoot (Tenant)"]
-        VO["ValueObjects (TenantCode)"]
-        DomainEvents["DomainEvents (TenantCreatedEvent)"]
-        Ports["Domain Repository Ports (TenantRepositoryPort)"]
+        Aggregate["AggregateRoot & Value Objects\n(Tenant & TenantCode)"]
+        DomainEvents["Domain Events\n(TenantCreatedEvent)"]
+        Ports["Domain Repository Ports\n(TenantRepositoryPort Interface)"]
     end
 
-    subgraph Infrastructure["Infrastructure Layer (Adapters)"]
+    %% ==========================================
+    %% 4. INFRASTRUCTURE LAYER
+    %% ==========================================
+    subgraph Infrastructure["4. Infrastructure Layer (Driven Adapters)"]
         direction TB
-        RepoAdapter["TenantRepositoryAdapter (Spring Data JPA)"]
-        OutboxRelay["OutboxService & OutboxPublisher"]
-        KafkaPub["KafkaEventPublisher"]
-        KafkaSub["Kafka Consumer / Listeners"]
+        RepoAdapter["TenantRepositoryAdapter\n(Spring Data JPA)"]
+        OutboxRelay["OutboxService & OutboxPublisher\n(Transactional Outbox)"]
+        KafkaPub["KafkaEventPublisher\n(Kafka Producer)"]
     end
 
-    Controller --> CommandBus
-    CommandBus --> CmdHandler
-    CommandBus --> QryHandler
-    CmdHandler --> Ports
-    CmdHandler --> Aggregate
-    CmdHandler --> OutboxRelay
+    %% --- External Triggers ---
+    Client([HTTP Client]) -->|1. REST Request| Controller
+    KafkaBroker([Apache Kafka Broker]) -.->|Inbound Event| KafkaSub
+
+    %% --- Presentation to Application ---
+    Controller -->|Bọc Request| DTOs
+    DTOs -->|Gửi Command / Query| CommandBus
+    KafkaSub -->|Gửi Command từ Event| CommandBus
+    CommandBus -->|Write Action| CmdHandler
+    CommandBus -->|Read Action| QryHandler
+
+    %% --- Application to Domain & Persistence ---
+    CmdHandler -->|2. Thực thi Business Rule| Aggregate
+    Aggregate -.->|3. Phát sinh| DomainEvents
+    CmdHandler -->|4. Lưu Aggregate qua Port| Ports
+    CmdHandler -->|5. Ghi nhận sự kiện| OutboxRelay
+    QryHandler -->|Truy vấn dữ liệu| Ports
+
+    %% --- Infrastructure Implementations ---
     RepoAdapter -.->|implements| Ports
-    OutboxRelay --> KafkaPub
+    OutboxRelay -->|6. Chuyển tiếp Outbox| KafkaPub
+    KafkaPub -.->|7. Bắn Message ra Topic| KafkaBroker
+
+    %% --- Styling & Color Themes ---
+    classDef pres fill:#EBF5FB,stroke:#2980B9,stroke-width:2px,color:#1B4F72;
+    classDef app fill:#F4ECF7,stroke:#8E44AD,stroke-width:2px,color:#512E5F;
+    classDef domain fill:#E8F8F5,stroke:#16A085,stroke-width:2px,color:#0E6251;
+    classDef infra fill:#FEF9E7,stroke:#D4AC0D,stroke-width:2px,color:#7D6608;
+    classDef ext fill:#EAEDED,stroke:#5D6D7E,stroke-width:2px,color:#2C3E50;
+
+    class Controller,KafkaSub pres;
+    class DTOs,CommandBus,CmdHandler,QryHandler app;
+    class Aggregate,DomainEvents,Ports domain;
+    class RepoAdapter,OutboxRelay,KafkaPub infra;
+    class Client,KafkaBroker ext;
 ```
 
 ### Quy tắc phụ thuộc (Dependency Rules):
@@ -195,7 +233,7 @@ sequenceDiagram
 * **State Machine**: Vòng đời Saga (`STARTED`, `EXECUTING`, `COMPENSATING`, `COMPENSATED`, `COMPLETED`, `FAILED`).
 * **Reverse Compensation**: Tự động rollback các bước trước đó theo chiều ngược lại (LIFO) khi có bất kỳ step nào fail.
 * **Persistent Instances**: Lưu trữ trạng thái Saga trong bảng `saga_instances` bằng transaction độc lập `REQUIRES_NEW`.
-* Chi tiết xem thêm tại [docs/saga-pattern.md](file:///c:/Users/ndquynh/Documents/vishop-platform/docs/saga-pattern.md).
+* Chi tiết xem thêm tại [saga-pattern.md](./saga-pattern.md).
 
 ---
 
@@ -206,5 +244,5 @@ sequenceDiagram
 * **Distributed Tracing**: Tự động sinh hoặc kế thừa `X-Correlation-Id` qua `CorrelationIdGlobalFilter`.
 * **Multi-Tenancy**: Kiểm tra và chuyển tiếp `X-Tenant-Id` qua `TenantResolutionGlobalFilter`.
 * **Error Normalization**: Bắt các lỗi hạ tầng (503 Service Unavailable, timeout) và chuẩn hóa về **RFC 9457 Problem Details**.
-* Chi tiết xem thêm tại [docs/api-gateway.md](file:///c:/Users/ndquynh/Documents/vishop-platform/docs/api-gateway.md).
+* Chi tiết xem thêm tại [api-gateway.md](./api-gateway.md).
 

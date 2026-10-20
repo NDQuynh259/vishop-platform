@@ -244,7 +244,7 @@ FAILED`, derived from `startedAt`/`completedAt`/`failedReason`/the failed counte
    channel.
 
 Both upsert commands key on the existing `(platform, shopId, external<Entity>Id)` composite unique
-(see `docs/domain-module-anatomy.md#marketplace-sync-idempotency`), so a retried job safely re-pages
+(see `docs/architecture/domain-module-anatomy.md#marketplace-sync-idempotency`), so a retried job safely re-pages
 from the start instead of needing a checkpoint — a page that gets fully retried re-upserts items
 already marked `done`/`failed` on a prior attempt, which is safe because the upsert is idempotent,
 not because the counters are deduplicated across attempts.

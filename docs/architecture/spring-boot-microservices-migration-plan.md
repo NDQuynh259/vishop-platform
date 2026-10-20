@@ -46,8 +46,8 @@ Nguồn tham chiếu:
 
 - `CLAUDE.md`: quy ước kiến trúc, API, database và eventing.
 - `docs/product/vishop-erd.md`: mô hình dữ liệu nghiệp vụ.
-- `docs/architecture.md`: DDD, contract và outbox.
-- `docs/scaling-to-services.md`: chiến lược tách service hiện có.
+- `docs/architecture/architecture.md`: DDD, contract và outbox.
+- `docs/architecture/scaling-to-services.md`: chiến lược tách service hiện có.
 - `prisma/schema.prisma`: schema thực tế, là nguồn chính khi migrate database.
 
 ## 3. Kiến trúc đích
