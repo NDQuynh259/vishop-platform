@@ -34,8 +34,8 @@ Tổng hợp các sự cố thường gặp trong quá trình phát triển cụ
 ### 2.1. Không kết nối được tới PostgreSQL (`Connection refused: localhost:5432`)
 * **Nguyên nhân**: Container Postgres chưa khởi động hoặc port 5432 bị chiếm bởi service Postgres local khác.
 * **Cách khắc phục**:
-  1. Kiểm tra trạng thái: `docker compose -f infra/docker-compose/docker-compose.yml ps`
-  2. Khởi động lại: `docker compose -f infra/docker-compose/docker-compose.yml up -d postgres`
+  1. Kiểm tra trạng thái: `docker compose -f infra/compose/docker-compose.infra.yml ps`
+  2. Khởi động lại: `docker compose -f infra/compose/docker-compose.infra.yml up -d postgres`
   3. Kiểm tra log: `docker logs vishop-postgres`
 
 ### 2.2. Lỗi `Flyway: Migration checksum mismatch`

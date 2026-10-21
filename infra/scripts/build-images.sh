@@ -13,10 +13,10 @@ echo " Context root: ${ROOT_DIR}"
 echo "=========================================================="
 
 services=(
-  "api-gateway:deploy/docker/Dockerfile.api-gateway"
-  "identity-service:deploy/docker/Dockerfile.identity-service"
-  "tenant-service:deploy/docker/Dockerfile.tenant-service"
-  "audit-service:deploy/docker/Dockerfile.audit-service"
+  "api-gateway:infra/docker/Dockerfile.api-gateway"
+  "identity-service:infra/docker/Dockerfile.identity-service"
+  "tenant-service:infra/docker/Dockerfile.tenant-service"
+  "audit-service:infra/docker/Dockerfile.audit-service"
 )
 
 cd "${ROOT_DIR}"

@@ -24,7 +24,7 @@ services:
       POSTGRES_DB: vishop_platform
     volumes:
       - postgres-dev-data:/var/lib/postgresql/data
-      - ../infra/docker-compose/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - ../postgres/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vishop -d vishop_platform"]
       interval: 5s
@@ -121,7 +121,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ../infra/docker-compose/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-dev-data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -136,7 +136,7 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ../infra/docker-compose/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - ../loki/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki-dev-data:/loki
 
   grafana:
@@ -150,7 +150,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - ../infra/docker-compose/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-dev-data:/var/lib/grafana
     depends_on:
       - prometheus
@@ -166,8 +166,8 @@ services:
   # ---------------------------------------------------------------------------
   identity-service:
     build:
-      context: ..
-      dockerfile: deploy/docker/Dockerfile.dev
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dev
       args:
         SERVICE_NAME: identity-service
         SERVICE_PORT: 8080
@@ -198,8 +198,8 @@ services:
   # ---------------------------------------------------------------------------
   tenant-service:
     build:
-      context: ..
-      dockerfile: deploy/docker/Dockerfile.dev
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dev
       args:
         SERVICE_NAME: tenant-service
         SERVICE_PORT: 8081
@@ -230,8 +230,8 @@ services:
   # ---------------------------------------------------------------------------
   audit-service:
     build:
-      context: ..
-      dockerfile: deploy/docker/Dockerfile.dev
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dev
       args:
         SERVICE_NAME: audit-service
         SERVICE_PORT: 8082
@@ -262,8 +262,8 @@ services:
   # ---------------------------------------------------------------------------
   api-gateway:
     build:
-      context: ..
-      dockerfile: deploy/docker/Dockerfile.dev
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dev
       args:
         SERVICE_NAME: api-gateway
         SERVICE_PORT: 8000

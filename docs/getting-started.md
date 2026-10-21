@@ -18,7 +18,7 @@ Tài liệu hướng dẫn thiết lập môi trường phát triển cục bộ
 ### Bước 1: Khởi động các hạ tầng phụ trợ (Docker Compose)
 Chạy cụm Kafka (KRaft), Kafka UI, Postgres và Redis:
 ```powershell
-docker compose -f infra/docker-compose/docker-compose.yml up -d
+docker compose -f infra/compose/docker-compose.infra.yml up -d
 ```
 
 Sau khi khởi động thành công, các dịch vụ sẽ hoạt động tại:

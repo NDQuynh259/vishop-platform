@@ -12,7 +12,7 @@ COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 RUN dos2unix gradlew && chmod +x gradlew
 
-COPY platform-common ./platform-common
+COPY libs ./libs
 COPY services ./services
 
 ARG SERVICE_NAME

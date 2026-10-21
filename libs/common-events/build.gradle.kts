@@ -1,6 +1,6 @@
 dependencies {
-    api(project(":platform-common:common-domain"))
-    api(project(":platform-common:common-security"))
+    api(project(":libs:common-domain"))
+    api(project(":libs:common-security"))
     api("org.springframework.kafka:spring-kafka")
     api("org.springframework.boot:spring-boot-autoconfigure")
     api("com.fasterxml.jackson.core:jackson-databind")

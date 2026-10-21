@@ -7,11 +7,11 @@ dependencies {
 
     compileOnlyApi("org.springframework:spring-web")
     compileOnlyApi("jakarta.servlet:jakarta.servlet-api")
-    api(project(":platform-common:common-domain"))
-    compileOnly(project(":platform-common:common-security"))
+    api(project(":libs:common-domain"))
+    compileOnly(project(":libs:common-security"))
 
     testImplementation("jakarta.servlet:jakarta.servlet-api")
     testImplementation("org.springframework:spring-web")
-    testImplementation(project(":platform-common:common-domain"))
-    testImplementation(project(":platform-common:common-security"))
+    testImplementation(project(":libs:common-domain"))
+    testImplementation(project(":libs:common-security"))
 }

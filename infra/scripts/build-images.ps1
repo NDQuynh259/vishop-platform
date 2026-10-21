@@ -16,10 +16,10 @@ Write-Host " Context root: $rootDir" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $services = @(
-    @{ Name = "api-gateway"; Dockerfile = "deploy/docker/Dockerfile.api-gateway" },
-    @{ Name = "identity-service"; Dockerfile = "deploy/docker/Dockerfile.identity-service" },
-    @{ Name = "tenant-service"; Dockerfile = "deploy/docker/Dockerfile.tenant-service" },
-    @{ Name = "audit-service"; Dockerfile = "deploy/docker/Dockerfile.audit-service" }
+    @{ Name = "api-gateway"; Dockerfile = "infra/docker/Dockerfile.api-gateway" },
+    @{ Name = "identity-service"; Dockerfile = "infra/docker/Dockerfile.identity-service" },
+    @{ Name = "tenant-service"; Dockerfile = "infra/docker/Dockerfile.tenant-service" },
+    @{ Name = "audit-service"; Dockerfile = "infra/docker/Dockerfile.audit-service" }
 )
 
 $cacheArg = if ($NoCache) { "--no-cache" } else { "" }

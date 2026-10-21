@@ -3,11 +3,11 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":platform-common:common-web"))
-    implementation(project(":platform-common:common-security"))
-    implementation(project(":platform-common:common-events"))
-    implementation(project(":platform-common:common-persistence"))
-    implementation(project(":platform-common:common-observability"))
+    implementation(project(":libs:common-web"))
+    implementation(project(":libs:common-security"))
+    implementation(project(":libs:common-events"))
+    implementation(project(":libs:common-persistence"))
+    implementation(project(":libs:common-observability"))
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.kafka:spring-kafka")

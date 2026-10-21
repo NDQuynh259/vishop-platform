@@ -310,7 +310,7 @@ ViShop Platform thiết lập **5 tầng cô lập** nhằm đảm bảo không 
 ## 7. An ninh Hạ tầng, Mạng & DevSecOps
 
 ### 7.1. Cô lập Mạng Container
-* **Môi trường Production ([docker-compose.prod.yml](../../deploy/docker-compose.prod.yml))**:
+* **Môi trường Production ([docker-compose.prod.yml](../../infra/compose/docker-compose.prod.yml))**:
   * Chỉ duy nhất cổng Ingress **8000** (API Gateway) và **3000** (Grafana) được mở ra ngoài host.
   * Toàn bộ PostgreSQL (5432), Kafka (9092), Redis (6379) và các dịch vụ nghiệp vụ chạy trong mạng nội bộ kín `vishop-prod-network`.
 * **Chạy phi đặc quyền (Non-Root Container)**:
