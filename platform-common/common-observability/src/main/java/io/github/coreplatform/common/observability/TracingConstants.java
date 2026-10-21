@@ -9,6 +9,7 @@ public final class TracingConstants {
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
     public static final String TENANT_ID_HEADER = "X-Tenant-Id";
     public static final String USER_ID_HEADER = "X-User-Id";
+    public static final String TRACE_ID_HEADER = "X-Trace-Id";
 
     // SLF4J MDC Keys
     public static final String MDC_CORRELATION_ID = "correlationId";

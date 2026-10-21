@@ -1,7 +1,7 @@
 package com.vishop.tenant.domain.event;
 
-import com.vishop.common.domain.DomainEvent;
-import com.vishop.common.domain.UuidV7;
+import io.github.coreplatform.common.domain.DomainEvent;
+import io.github.coreplatform.common.domain.UuidV7;
 import com.vishop.tenant.domain.TenantStatus;
 import java.time.Instant;
 import java.util.UUID;

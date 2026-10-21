@@ -10,4 +10,10 @@ include(
     "platform-common:common-observability",
     "platform-common:common-saga",
     "platform-common:common-test",
+
+    // Microservices
+    "services:api-gateway",
+    "services:identity-service",
+    "services:tenant-service",
+    "services:audit-service",
 )

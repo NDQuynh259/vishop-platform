@@ -71,6 +71,7 @@ public class CorrelationMdcFilter extends OncePerRequestFilter implements Ordere
                 if (currentSpan != null) {
                     MDC.put(MDC_TRACE_ID, currentSpan.context().traceId());
                     MDC.put(MDC_SPAN_ID, currentSpan.context().spanId());
+                    response.setHeader(TRACE_ID_HEADER, currentSpan.context().traceId());
                 }
             }
 

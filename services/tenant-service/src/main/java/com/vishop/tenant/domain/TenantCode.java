@@ -1,7 +1,7 @@
 package com.vishop.tenant.domain;
 
-import com.vishop.common.domain.ValueObject;
-import com.vishop.common.domain.exception.DomainException;
+import io.github.coreplatform.common.domain.ValueObject;
+import io.github.coreplatform.common.domain.exception.DomainException;
 import java.util.regex.Pattern;
 
 /**

@@ -1,7 +1,7 @@
 package com.vishop.tenant.application.query;
 
-import com.vishop.common.domain.cqrs.QueryHandler;
-import com.vishop.common.domain.exception.EntityNotFoundException;
+import io.github.coreplatform.common.domain.cqrs.QueryHandler;
+import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 import com.vishop.tenant.domain.TenantRepositoryPort;
 import org.springframework.stereotype.Service;

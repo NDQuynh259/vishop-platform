@@ -1,8 +1,8 @@
 package com.vishop.tenant.domain;
 
-import com.vishop.common.domain.AggregateRoot;
-import com.vishop.common.domain.UuidV7;
-import com.vishop.common.domain.exception.DomainException;
+import io.github.coreplatform.common.domain.AggregateRoot;
+import io.github.coreplatform.common.domain.UuidV7;
+import io.github.coreplatform.common.domain.exception.DomainException;
 import com.vishop.tenant.domain.event.TenantCreatedEvent;
 import com.vishop.tenant.domain.event.TenantStatusChangedEvent;
 import java.time.Instant;

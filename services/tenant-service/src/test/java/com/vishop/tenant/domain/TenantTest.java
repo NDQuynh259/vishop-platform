@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.vishop.common.domain.DomainEvent;
-import com.vishop.common.domain.exception.DomainException;
+import io.github.coreplatform.common.domain.DomainEvent;
+import io.github.coreplatform.common.domain.exception.DomainException;
 import com.vishop.tenant.domain.event.TenantCreatedEvent;
 import com.vishop.tenant.domain.event.TenantStatusChangedEvent;
 import java.util.List;
