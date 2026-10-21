@@ -1,7 +1,7 @@
 package com.vishop.tenant.application.query;
 
 import io.github.coreplatform.common.domain.cqrs.Query;
-import io.github.coreplatform.common.web.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.ListEnvelope;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 
 public record ListTenantsQuery(int limit, String cursor, String requestUrl)
