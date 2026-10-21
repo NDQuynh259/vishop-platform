@@ -149,5 +149,63 @@ class CorrelationMdcFilterTest {
 
         assertEquals("trace-abc-123", mdcTrace.get());
         assertEquals("span-xyz-789", mdcSpan.get());
+        assertEquals("trace-abc-123", response.getHeader(TRACE_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Should demonstrate full MDC lifecycle and logging integration")
+    void shouldLogWithFullMdcContextDuringExecution() throws ServletException, IOException {
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CorrelationMdcFilterTest.class);
+
+        Tracer mockTracer = Mockito.mock(Tracer.class);
+        Span mockSpan = Mockito.mock(Span.class);
+        TraceContext mockContext = Mockito.mock(TraceContext.class);
+
+        when(mockContext.traceId()).thenReturn("0af7651916cd43dd8448eb211c80319c");
+        when(mockContext.spanId()).thenReturn("b7ad6b7169203331");
+        when(mockSpan.context()).thenReturn(mockContext);
+        when(mockTracer.currentSpan()).thenReturn(mockSpan);
+
+        @SuppressWarnings("unchecked")
+        ObjectProvider<Tracer> tracerProvider = Mockito.mock(ObjectProvider.class);
+        when(tracerProvider.getIfAvailable()).thenReturn(mockTracer);
+
+        CorrelationMdcFilter filter = new CorrelationMdcFilter(tracerProvider);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/tenants");
+        request.addHeader(TENANT_ID_HEADER, "0192e2b3-8c4d-7000-8000-000000000001");
+        request.addHeader(USER_ID_HEADER, "usr_9999");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<java.util.Map<String, String>> capturedMdc = new AtomicReference<>();
+
+        MockFilterChain filterChain = new MockFilterChain() {
+            @Override
+            public void doFilter(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res) {
+                // Capture all MDC keys
+                capturedMdc.set(MDC.getCopyOfContextMap());
+                // Emit sample log to demonstrate MDC presence in log output
+                log.info("Processing request inside controller with MDC context: {}", MDC.getCopyOfContextMap());
+            }
+        };
+
+        filter.doFilter(request, response, filterChain);
+
+        java.util.Map<String, String> mdc = capturedMdc.get();
+        assertNotNull(mdc);
+        assertEquals("0af7651916cd43dd8448eb211c80319c", mdc.get(MDC_TRACE_ID));
+        assertEquals("b7ad6b7169203331", mdc.get(MDC_SPAN_ID));
+        assertEquals("0192e2b3-8c4d-7000-8000-000000000001", mdc.get(MDC_TENANT_ID));
+        assertEquals("usr_9999", mdc.get(MDC_USER_ID));
+        assertNotNull(mdc.get(MDC_CORRELATION_ID));
+        assertNotNull(mdc.get(MDC_REQUEST_ID));
+
+        // Response headers check
+        assertEquals("0af7651916cd43dd8448eb211c80319c", response.getHeader(TRACE_ID_HEADER));
+        assertEquals(mdc.get(MDC_CORRELATION_ID), response.getHeader(CORRELATION_ID_HEADER));
+        assertEquals("0192e2b3-8c4d-7000-8000-000000000001", response.getHeader(TENANT_ID_HEADER));
+
+        // MDC cleaned up
+        assertNull(MDC.getCopyOfContextMap());
     }
 }

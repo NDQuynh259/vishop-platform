@@ -7,7 +7,7 @@ dependencies {
 
     compileOnly("org.springframework:spring-web")
     compileOnly("jakarta.servlet:jakarta.servlet-api")
-    compileOnly(project(":platform-common:common-domain"))
+    api(project(":platform-common:common-domain"))
     compileOnly(project(":platform-common:common-security"))
 
     testImplementation("jakarta.servlet:jakarta.servlet-api")
