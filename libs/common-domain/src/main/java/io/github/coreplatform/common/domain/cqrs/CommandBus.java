@@ -6,6 +6,7 @@ package io.github.coreplatform.common.domain.cqrs;
  */
 public interface CommandBus {
 
+    // #region dispatch
     /**
      * Dispatches a command to its registered handler.
      *
@@ -14,4 +15,5 @@ public interface CommandBus {
      * @return execution result
      */
     <R> R dispatch(Command<R> command);
+    // #endregion
 }

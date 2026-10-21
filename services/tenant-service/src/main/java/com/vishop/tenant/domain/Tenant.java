@@ -21,6 +21,7 @@ public class Tenant extends AggregateRoot<UUID> {
     private final Instant createdAt;
     private Instant updatedAt;
 
+    // #region Tenant
     private Tenant(UUID id, TenantCode code, String name, TenantStatus status,
                    Instant createdAt, Instant updatedAt, Long version) {
         super(id, version);
@@ -30,7 +31,9 @@ public class Tenant extends AggregateRoot<UUID> {
         this.createdAt = createdAt != null ? createdAt : Instant.now();
         this.updatedAt = updatedAt != null ? updatedAt : this.createdAt;
     }
+    // #endregion
 
+    // #region create
     /**
      * Factory method to create a brand new Tenant aggregate.
      */
@@ -43,7 +46,9 @@ public class Tenant extends AggregateRoot<UUID> {
         tenant.registerEvent(TenantCreatedEvent.of(id, code.value(), tenant.name, TenantStatus.ACTIVE));
         return tenant;
     }
+    // #endregion
 
+    // #region reconstitute
     /**
      * Reconstitutes an existing Tenant from persistence layer (no domain events emitted).
      */
@@ -51,7 +56,9 @@ public class Tenant extends AggregateRoot<UUID> {
                                       Instant createdAt, Instant updatedAt, Long version) {
         return new Tenant(id, code, name, status, createdAt, updatedAt, version);
     }
+    // #endregion
 
+    // #region updateName
     /**
      * Updates tenant display name.
      */
@@ -65,7 +72,9 @@ public class Tenant extends AggregateRoot<UUID> {
         this.name = newName.trim();
         this.updatedAt = Instant.now();
     }
+    // #endregion
 
+    // #region activate
     /**
      * Activates the tenant.
      */
@@ -81,7 +90,9 @@ public class Tenant extends AggregateRoot<UUID> {
         this.updatedAt = Instant.now();
         registerEvent(TenantStatusChangedEvent.of(getId(), old, TenantStatus.ACTIVE));
     }
+    // #endregion
 
+    // #region suspend
     /**
      * Suspends the tenant.
      */
@@ -97,7 +108,9 @@ public class Tenant extends AggregateRoot<UUID> {
         this.updatedAt = Instant.now();
         registerEvent(TenantStatusChangedEvent.of(getId(), old, TenantStatus.SUSPENDED));
     }
+    // #endregion
 
+    // #region archive
     /**
      * Archives the tenant.
      */
@@ -110,10 +123,21 @@ public class Tenant extends AggregateRoot<UUID> {
         this.updatedAt = Instant.now();
         registerEvent(TenantStatusChangedEvent.of(getId(), old, TenantStatus.ARCHIVED));
     }
+    // #endregion
 
+    // #region getCode
     public TenantCode getCode() { return code; }
+    // #endregion
+    // #region getName
     public String getName() { return name; }
+    // #endregion
+    // #region getStatus
     public TenantStatus getStatus() { return status; }
+    // #endregion
+    // #region getCreatedAt
     public Instant getCreatedAt() { return createdAt; }
+    // #endregion
+    // #region getUpdatedAt
     public Instant getUpdatedAt() { return updatedAt; }
+    // #endregion
 }

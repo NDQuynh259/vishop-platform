@@ -15,6 +15,7 @@ public class LoggingGlobalFilter implements GlobalFilter, Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingGlobalFilter.class);
 
+    // #region filter
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         long startTime = System.currentTimeMillis();
@@ -29,9 +30,12 @@ public class LoggingGlobalFilter implements GlobalFilter, Ordered {
                     method, path, status != null ? status.value() : "unknown", duration, correlationId);
         });
     }
+    // #endregion
 
+    // #region getOrder
     @Override
     public int getOrder() {
         return Ordered.LOWEST_PRECEDENCE;
     }
+    // #endregion
 }

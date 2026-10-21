@@ -11,6 +11,7 @@ import java.util.UUID;
 @Component("shopSecurity")
 public class ShopSecurity {
 
+    // #region hasAccess
     /**
      * Checks if the currently authenticated user has access to the specified shop.
      */
@@ -22,4 +23,5 @@ public class ShopSecurity {
                 .map(user -> user.hasShopAccess(shopId))
                 .orElse(false);
     }
+    // #endregion
 }

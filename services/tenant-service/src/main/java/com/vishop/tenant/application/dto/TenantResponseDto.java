@@ -12,6 +12,7 @@ public record TenantResponseDto(
         Instant createdAt,
         Instant updatedAt) {
 
+    // #region from
     public static TenantResponseDto from(Tenant tenant) {
         return new TenantResponseDto(
                 tenant.getId(),
@@ -22,4 +23,5 @@ public record TenantResponseDto(
                 tenant.getUpdatedAt()
         );
     }
+    // #endregion
 }

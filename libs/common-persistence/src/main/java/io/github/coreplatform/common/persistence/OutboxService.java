@@ -25,11 +25,14 @@ public class OutboxService {
     private final OutboxEventRepository repository;
     private final ObjectMapper objectMapper;
 
+    // #region OutboxService
     public OutboxService(OutboxEventRepository repository, ObjectMapper objectMapper) {
         this.repository = repository;
         this.objectMapper = objectMapper;
     }
+    // #endregion
 
+    // #region saveEventsFor
     /**
      * Pulls domain events from the aggregate root, wraps each into an {@link EventEnvelope},
      * and persists it into the outbox table.
@@ -60,7 +63,9 @@ public class OutboxService {
             }
         }
     }
+    // #endregion
 
+    // #region saveEventsFor
     /**
      * Overload using null correlation/causation if not in an active trace.
      */
@@ -68,4 +73,5 @@ public class OutboxService {
     public void saveEventsFor(AggregateRoot<?> aggregateRoot, String producer) {
         saveEventsFor(aggregateRoot, producer, null, null);
     }
+    // #endregion
 }

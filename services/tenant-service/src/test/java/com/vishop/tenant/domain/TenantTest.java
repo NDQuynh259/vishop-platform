@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 class TenantTest {
 
+    // #region shouldCreateTenantAndEmitCreatedEvent
     @Test
     void shouldCreateTenantAndEmitCreatedEvent() {
         TenantCode code = TenantCode.of("my-shop-vn");
@@ -27,7 +28,9 @@ class TenantTest {
         assertEquals(1, events.size());
         assertTrueEventIs(events.get(0), TenantCreatedEvent.class);
     }
+    // #endregion
 
+    // #region shouldValidateTenantCodeFormat
     @Test
     void shouldValidateTenantCodeFormat() {
         assertThrows(DomainException.class, () -> TenantCode.of(""));
@@ -35,7 +38,9 @@ class TenantTest {
         assertThrows(DomainException.class, () -> TenantCode.of("-invalid-start"));
         assertThrows(DomainException.class, () -> TenantCode.of("INVALID_UPPERCASE"));
     }
+    // #endregion
 
+    // #region shouldChangeStatusAndEmitStatusChangedEvent
     @Test
     void shouldChangeStatusAndEmitStatusChangedEvent() {
         Tenant tenant = Tenant.create(TenantCode.of("my-store"), "My Store");
@@ -50,7 +55,9 @@ class TenantTest {
         assertEquals(TenantStatus.ACTIVE, event.oldStatus());
         assertEquals(TenantStatus.SUSPENDED, event.newStatus());
     }
+    // #endregion
 
+    // #region shouldRejectMutationOnArchivedTenant
     @Test
     void shouldRejectMutationOnArchivedTenant() {
         Tenant tenant = Tenant.create(TenantCode.of("shop-archive"), "Shop Archive");
@@ -61,8 +68,11 @@ class TenantTest {
         assertThrows(DomainException.class, () -> tenant.suspend());
         assertThrows(DomainException.class, () -> tenant.updateName("New Name"));
     }
+    // #endregion
 
+    // #region assertTrueEventIs
     private void assertTrueEventIs(DomainEvent event, Class<?> expectedClass) {
         assertEquals(expectedClass, event.getClass());
     }
+    // #endregion
 }

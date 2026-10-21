@@ -10,8 +10,11 @@ import java.util.UUID;
  */
 public final class SecurityContextHelper {
 
+    // #region SecurityContextHelper
     private SecurityContextHelper() {}
+    // #endregion
 
+    // #region getCurrentUser
     /**
      * Retrieves the current authenticated CommonUserDetails if present.
      */
@@ -22,7 +25,9 @@ public final class SecurityContextHelper {
         }
         return Optional.empty();
     }
+    // #endregion
 
+    // #region requiredCurrentUser
     /**
      * Retrieves the current authenticated CommonUserDetails or throws IllegalStateException.
      */
@@ -30,21 +35,27 @@ public final class SecurityContextHelper {
         return getCurrentUser()
                 .orElseThrow(() -> new IllegalStateException("Authenticated user context is required for this operation"));
     }
+    // #endregion
 
+    // #region getCurrentUserId
     /**
      * Retrieves the current authenticated userId if present.
      */
     public static Optional<UUID> getCurrentUserId() {
         return getCurrentUser().map(CommonUserDetails::userId);
     }
+    // #endregion
 
+    // #region requiredCurrentUserId
     /**
      * Retrieves the current authenticated userId or throws IllegalStateException.
      */
     public static UUID requiredCurrentUserId() {
         return requiredCurrentUser().userId();
     }
+    // #endregion
 
+    // #region getCurrentTenantId
     /**
      * Retrieves the current tenantId from user context or TenantContext.
      */
@@ -55,7 +66,9 @@ public final class SecurityContextHelper {
         }
         return Optional.ofNullable(TenantContext.get());
     }
+    // #endregion
 
+    // #region requiredCurrentTenantId
     /**
      * Retrieves the current tenantId or throws IllegalStateException.
      */
@@ -63,4 +76,5 @@ public final class SecurityContextHelper {
         return getCurrentTenantId()
                 .orElseThrow(() -> new IllegalStateException("Tenant context is required for this operation"));
     }
+    // #endregion
 }

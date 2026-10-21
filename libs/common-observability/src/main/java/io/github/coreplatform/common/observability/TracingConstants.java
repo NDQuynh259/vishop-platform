@@ -2,7 +2,9 @@ package io.github.coreplatform.common.observability;
 
 public final class TracingConstants {
 
+    // #region TracingConstants
     private TracingConstants() {}
+    // #endregion
 
     // HTTP / Kafka Headers
     public static final String CORRELATION_ID_HEADER = "X-Correlation-Id";

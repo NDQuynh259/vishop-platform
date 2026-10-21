@@ -6,7 +6,9 @@ package io.github.coreplatform.common.security.constants;
  */
 public final class SecurityHeaders {
 
+    // #region SecurityHeaders
     private SecurityHeaders() {}
+    // #endregion
 
     public static final String X_USER_ID = "X-User-Id";
     public static final String X_TENANT_ID = "X-Tenant-Id";

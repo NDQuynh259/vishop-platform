@@ -25,11 +25,14 @@ public class SagaOrchestrator {
     private final SagaInstanceRepository sagaRepository;
     private final ObjectMapper objectMapper;
 
+    // #region SagaOrchestrator
     public SagaOrchestrator(SagaInstanceRepository sagaRepository, ObjectMapper objectMapper) {
         this.sagaRepository = sagaRepository;
         this.objectMapper = objectMapper;
     }
+    // #endregion
 
+    // #region execute
     /**
      * Executes an entire saga definition synchronously in sequence.
      * If any step fails, triggers compensating transactions in reverse order.
@@ -82,7 +85,9 @@ public class SagaOrchestrator {
 
         return context;
     }
+    // #endregion
 
+    // #region compensate
     private <T> boolean compensate(SagaDefinition<T> sagaDefinition, T context,
                                    SagaInstanceEntity instance, int fromStepIndex, Exception cause) {
         List<SagaStep<T>> steps = sagaDefinition.steps();
@@ -121,7 +126,9 @@ public class SagaOrchestrator {
 
         return allCompensationsSucceeded;
     }
+    // #endregion
 
+    // #region saveInstance
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     protected void saveInstance(SagaInstanceEntity entity) {
         try {
@@ -130,7 +137,9 @@ public class SagaOrchestrator {
             log.error("Failed to persist SagaInstanceEntity state [{}]", entity.getId(), e);
         }
     }
+    // #endregion
 
+    // #region serialize
     private String serialize(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);
@@ -138,4 +147,5 @@ public class SagaOrchestrator {
             return "{}";
         }
     }
+    // #endregion
 }

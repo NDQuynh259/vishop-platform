@@ -11,24 +11,35 @@ import org.junit.jupiter.api.Test;
 class AggregateRootTest {
 
     private record TestDomainEvent(UUID eventId, UUID aggregateId) implements DomainEvent {
+        // #region occurredAt
         @Override
         public Instant occurredAt() { return Instant.now(); }
+        // #endregion
+        // #region eventType
         @Override
         public String eventType() { return "test.event"; }
+        // #endregion
+        // #region aggregateType
         @Override
         public String aggregateType() { return "TestAggregate"; }
+        // #endregion
     }
 
     private static class SampleAggregate extends AggregateRoot<UUID> {
+        // #region SampleAggregate
         public SampleAggregate(UUID id) {
             super(id);
         }
+        // #endregion
 
+        // #region doSomething
         public void doSomething() {
             registerEvent(new TestDomainEvent(UuidV7.nextId(), getId()));
         }
+        // #endregion
     }
 
+    // #region shouldRegisterAndPullDomainEvents
     @Test
     void shouldRegisterAndPullDomainEvents() {
         UUID id = UuidV7.nextId();
@@ -46,4 +57,5 @@ class AggregateRootTest {
         // After pulling, internal state is cleared
         assertTrue(aggregate.getDomainEvents().isEmpty());
     }
+    // #endregion
 }

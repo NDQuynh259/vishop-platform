@@ -8,7 +8,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class IdentityApplication {
 
+    // #region main
     public static void main(String[] args) {
         SpringApplication.run(IdentityApplication.class, args);
     }
+    // #endregion
 }

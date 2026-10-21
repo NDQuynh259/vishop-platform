@@ -13,6 +13,7 @@ public final class RequestIdFilter extends OncePerRequestFilter {
     public static final String REQUEST_ID_ATTRIBUTE = "vishop.requestId";
     public static final String HEADER = "X-Request-Id";
 
+    // #region doFilterInternal
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -26,4 +27,5 @@ public final class RequestIdFilter extends OncePerRequestFilter {
         response.setHeader(HEADER, requestId);
         filterChain.doFilter(request, response);
     }
+    // #endregion
 }

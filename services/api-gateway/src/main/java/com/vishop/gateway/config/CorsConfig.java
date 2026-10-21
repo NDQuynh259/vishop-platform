@@ -11,6 +11,7 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 @Configuration
 public class CorsConfig {
 
+    // #region corsWebFilter
     @Bean
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration config = new CorsConfiguration();
@@ -35,4 +36,5 @@ public class CorsConfig {
 
         return new CorsWebFilter(source);
     }
+    // #endregion
 }

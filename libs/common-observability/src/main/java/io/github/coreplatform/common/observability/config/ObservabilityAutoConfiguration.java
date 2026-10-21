@@ -12,10 +12,12 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 public class ObservabilityAutoConfiguration {
 
+    // #region correlationMdcFilter
     @Bean
     @ConditionalOnClass(Filter.class)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public CorrelationMdcFilter correlationMdcFilter(ObjectProvider<Tracer> tracerProvider) {
         return new CorrelationMdcFilter(tracerProvider);
     }
+    // #endregion
 }

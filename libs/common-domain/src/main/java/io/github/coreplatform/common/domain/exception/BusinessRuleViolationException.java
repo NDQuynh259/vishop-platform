@@ -8,11 +8,21 @@ import io.github.coreplatform.common.domain.BusinessRule;
  */
 public class BusinessRuleViolationException extends DomainException {
 
+    // #region BusinessRuleViolationException
+    public BusinessRuleViolationException(String message) {
+        super("business_rule_violation", message);
+    }
+    // #endregion
+
+    // #region BusinessRuleViolationException
     public BusinessRuleViolationException(String code, String message) {
         super(code, message);
     }
+    // #endregion
 
+    // #region BusinessRuleViolationException
     public BusinessRuleViolationException(BusinessRule rule) {
         super(rule.getCode(), rule.getMessage());
     }
+    // #endregion
 }

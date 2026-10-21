@@ -32,6 +32,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 public class InternalHeaderAuthFilter extends OncePerRequestFilter {
 
+    // #region doFilterInternal
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -98,7 +99,9 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
             TenantContext.clear();
         }
     }
+    // #endregion
 
+    // #region parseUuid
     private UUID parseUuid(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -109,4 +112,5 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
             return null;
         }
     }
+    // #endregion
 }

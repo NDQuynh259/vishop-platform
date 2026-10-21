@@ -15,6 +15,7 @@ import org.springframework.kafka.listener.RecordInterceptor;
  */
 public class TenantRecordInterceptor<K, V> implements RecordInterceptor<K, V> {
 
+    // #region intercept
     @Override
     public ConsumerRecord<K, V> intercept(ConsumerRecord<K, V> record, Consumer<K, V> consumer) {
         Header tenantHeader = record.headers().lastHeader(KafkaHeaders.TENANT_ID);
@@ -30,9 +31,12 @@ public class TenantRecordInterceptor<K, V> implements RecordInterceptor<K, V> {
         }
         return record;
     }
+    // #endregion
 
+    // #region afterRecord
     @Override
     public void afterRecord(ConsumerRecord<K, V> record, Consumer<K, V> consumer) {
         TenantContext.clear();
     }
+    // #endregion
 }

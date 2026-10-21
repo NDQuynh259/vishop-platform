@@ -12,6 +12,7 @@ public record TenantCode(String value) implements ValueObject {
 
     private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$");
 
+    // #region TenantCode
     public TenantCode {
         if (value == null || value.isBlank()) {
             throw new DomainException("invalid_tenant_code", "Tenant code cannot be empty");
@@ -23,13 +24,18 @@ public record TenantCode(String value) implements ValueObject {
         }
         value = normalized;
     }
+    // #endregion
 
+    // #region of
     public static TenantCode of(String value) {
         return new TenantCode(value);
     }
+    // #endregion
 
+    // #region toString
     @Override
     public String toString() {
         return value;
     }
+    // #endregion
 }

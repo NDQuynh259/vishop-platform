@@ -16,11 +16,14 @@ public class CreateTenantCommandHandler implements CommandHandler<CreateTenantCo
     private final TenantRepositoryPort tenantRepository;
     private final OutboxService outboxService;
 
+    // #region CreateTenantCommandHandler
     public CreateTenantCommandHandler(TenantRepositoryPort tenantRepository, OutboxService outboxService) {
         this.tenantRepository = tenantRepository;
         this.outboxService = outboxService;
     }
+    // #endregion
 
+    // #region handle
     @Override
     @Transactional
     public TenantResponseDto handle(CreateTenantCommand command) {
@@ -38,4 +41,5 @@ public class CreateTenantCommandHandler implements CommandHandler<CreateTenantCo
 
         return TenantResponseDto.from(tenant);
     }
+    // #endregion
 }

@@ -17,11 +17,14 @@ class SpringSecurityAuditorAwareTest {
 
     private final SpringSecurityAuditorAware auditorAware = new SpringSecurityAuditorAware();
 
+    // #region tearDown
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
     }
+    // #endregion
 
+    // #region shouldReturnUserIdWhenAuthenticated
     @Test
     @DisplayName("Should return userId as current auditor when authenticated")
     void shouldReturnUserIdWhenAuthenticated() {
@@ -34,10 +37,13 @@ class SpringSecurityAuditorAwareTest {
 
         assertThat(auditorAware.getCurrentAuditor()).contains(userId);
     }
+    // #endregion
 
+    // #region shouldReturnEmptyWhenUnauthenticated
     @Test
     @DisplayName("Should return empty optional when not authenticated")
     void shouldReturnEmptyWhenUnauthenticated() {
         assertThat(auditorAware.getCurrentAuditor()).isEmpty();
     }
+    // #endregion
 }

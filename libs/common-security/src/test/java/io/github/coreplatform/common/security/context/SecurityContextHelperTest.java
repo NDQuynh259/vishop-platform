@@ -15,12 +15,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SecurityContextHelperTest {
 
+    // #region tearDown
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
         TenantContext.clear();
     }
+    // #endregion
 
+    // #region shouldExtractCurrentUserWhenAuthenticated
     @Test
     @DisplayName("Should extract current user and tenant details when authenticated")
     void shouldExtractCurrentUserWhenAuthenticated() {
@@ -39,7 +42,9 @@ class SecurityContextHelperTest {
         assertThat(SecurityContextHelper.getCurrentTenantId()).contains(tenantId);
         assertThat(SecurityContextHelper.requiredCurrentTenantId()).isEqualTo(tenantId);
     }
+    // #endregion
 
+    // #region shouldFallbackToTenantContextWhenNotAuthenticated
     @Test
     @DisplayName("Should fall back to TenantContext when user is not authenticated")
     void shouldFallbackToTenantContextWhenNotAuthenticated() {
@@ -50,7 +55,9 @@ class SecurityContextHelperTest {
         assertThat(SecurityContextHelper.getCurrentTenantId()).contains(tenantId);
         assertThat(SecurityContextHelper.requiredCurrentTenantId()).isEqualTo(tenantId);
     }
+    // #endregion
 
+    // #region shouldThrowExceptionWhenRequiredContextMissing
     @Test
     @DisplayName("Should throw IllegalStateException when required user or tenant is absent")
     void shouldThrowExceptionWhenRequiredContextMissing() {
@@ -66,4 +73,5 @@ class SecurityContextHelperTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Tenant context is required");
     }
+    // #endregion
 }

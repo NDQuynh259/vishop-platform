@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ObservabilityAutoConfigurationRegistrationTest {
 
+    // #region importsFileNamesExistingAutoConfigurationClasses
     @Test
     void importsFileNamesExistingAutoConfigurationClasses() throws IOException {
         String importsPath = "META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports";
@@ -33,4 +34,5 @@ class ObservabilityAutoConfigurationRegistrationTest {
             }
         });
     }
+    // #endregion
 }

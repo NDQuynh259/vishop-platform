@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CommonUserDetailsTest {
 
+    // #region shouldCreateCommonUserDetailsSuccessfully
     @Test
     @DisplayName("Should create CommonUserDetails with all fields and check access")
     void shouldCreateCommonUserDetailsSuccessfully() {
@@ -51,7 +52,9 @@ class CommonUserDetailsTest {
         assertThat(user.hasAuthority("product.delete")).isFalse();
         assertThat(user.hasAuthority(null)).isFalse();
     }
+    // #endregion
 
+    // #region shouldThrowExceptionWhenRequiredFieldsAreNull
     @Test
     @DisplayName("Should throw NullPointerException when userId or tenantId is null")
     void shouldThrowExceptionWhenRequiredFieldsAreNull() {
@@ -65,7 +68,9 @@ class CommonUserDetailsTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("tenantId must not be null");
     }
+    // #endregion
 
+    // #region shouldHandleNullCollectionsGracefully
     @Test
     @DisplayName("Should handle null collections gracefully by assigning empty immutable collections")
     void shouldHandleNullCollectionsGracefully() {
@@ -79,4 +84,5 @@ class CommonUserDetailsTest {
         assertThat(user.hasShopAccess(UUID.randomUUID())).isFalse();
         assertThat(user.hasAuthority("any.perm")).isFalse();
     }
+    // #endregion
 }

@@ -11,12 +11,18 @@ import java.util.UUID;
  */
 public interface TenantRepositoryPort extends DomainRepository<Tenant, UUID> {
 
+    // #region findByCode
     Optional<Tenant> findByCode(String code);
+    // #endregion
 
+    // #region existsByCode
     boolean existsByCode(String code);
+    // #endregion
 
+    // #region findTenants
     /**
      * Cursor-based list of tenants ordered by createdAt desc, id desc.
      */
     List<Tenant> findTenants(Instant cursorCreatedAt, UUID cursorId, int limit);
+    // #endregion
 }

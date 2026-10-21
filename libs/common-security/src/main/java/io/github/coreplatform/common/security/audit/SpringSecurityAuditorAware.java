@@ -11,8 +11,10 @@ import java.util.UUID;
  */
 public class SpringSecurityAuditorAware implements AuditorAware<UUID> {
 
+    // #region getCurrentAuditor
     @Override
     public Optional<UUID> getCurrentAuditor() {
         return SecurityContextHelper.getCurrentUserId();
     }
+    // #endregion
 }

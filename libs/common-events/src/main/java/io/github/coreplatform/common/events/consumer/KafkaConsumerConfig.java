@@ -28,6 +28,7 @@ public class KafkaConsumerConfig {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaConsumerConfig.class);
 
+    // #region kafkaErrorHandler
     @Bean
     @ConditionalOnBean(KafkaTemplate.class)
     public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<Object, Object> kafkaTemplate) {
@@ -46,7 +47,9 @@ public class KafkaConsumerConfig {
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
         return errorHandler;
     }
+    // #endregion
 
+    // #region kafkaListenerContainerFactory
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory,
@@ -59,4 +62,5 @@ public class KafkaConsumerConfig {
         factory.setRecordInterceptor(new TenantRecordInterceptor<>());
         return factory;
     }
+    // #endregion
 }

@@ -27,6 +27,7 @@ public class AuditKafkaListener {
     private final IdempotentConsumer idempotentConsumer;
     private final ObjectMapper objectMapper;
 
+    // #region AuditKafkaListener
     public AuditKafkaListener(AuditLogRepository auditLogRepository,
                               IdempotentConsumer idempotentConsumer,
                               ObjectMapper objectMapper) {
@@ -34,7 +35,9 @@ public class AuditKafkaListener {
         this.idempotentConsumer = idempotentConsumer;
         this.objectMapper = objectMapper;
     }
+    // #endregion
 
+    // #region onEvent
     @KafkaListener(
             topics = {"vishop.tenant.events"},
             groupId = CONSUMER_GROUP,
@@ -71,4 +74,5 @@ public class AuditKafkaListener {
             throw new RuntimeException("Error processing audit event", e);
         }
     }
+    // #endregion
 }

@@ -8,7 +8,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class TenantApplication {
 
+    // #region main
     public static void main(String[] args) {
         SpringApplication.run(TenantApplication.class, args);
     }
+    // #endregion
 }

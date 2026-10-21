@@ -19,6 +19,7 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
     public static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
 
+    // #region filter
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
@@ -48,9 +49,12 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
 
         return chain.filter(exchange.mutate().request(mutatedRequest).build());
     }
+    // #endregion
 
+    // #region getOrder
     @Override
     public int getOrder() {
         return Ordered.HIGHEST_PRECEDENCE;
     }
+    // #endregion
 }

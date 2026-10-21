@@ -27,13 +27,16 @@ class SagaOrchestratorTest {
         public boolean orderConfirmed = false;
     }
 
+    // #region setUp
     @BeforeEach
     void setUp() {
         repository = mock(SagaInstanceRepository.class);
         when(repository.saveAndFlush(any(SagaInstanceEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         orchestrator = new SagaOrchestrator(repository, new ObjectMapper());
     }
+    // #endregion
 
+    // #region shouldExecuteAllStepsSuccessfully
     @Test
     void shouldExecuteAllStepsSuccessfully() {
         OrderContext context = new OrderContext();
@@ -67,7 +70,9 @@ class SagaOrchestratorTest {
         assertTrue(result.paymentProcessed);
         assertTrue(result.orderConfirmed);
     }
+    // #endregion
 
+    // #region shouldCompensateInReverseOrderWhenStepFails
     @Test
     void shouldCompensateInReverseOrderWhenStepFails() {
         OrderContext context = new OrderContext();
@@ -114,4 +119,5 @@ class SagaOrchestratorTest {
         // Verify sequence: Step1 executed, Step2 failed, Step1 compensated
         assertEquals(List.of("EXECUTE_STEP1", "EXECUTE_STEP2", "COMPENSATE_STEP1"), executionLog);
     }
+    // #endregion
 }

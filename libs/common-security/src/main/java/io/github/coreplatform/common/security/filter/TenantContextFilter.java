@@ -23,6 +23,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
 
     public static final String TENANT_HEADER = SecurityHeaders.X_TENANT_ID;
 
+    // #region doFilterInternal
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -44,4 +45,5 @@ public class TenantContextFilter extends OncePerRequestFilter {
             TenantContext.clear();
         }
     }
+    // #endregion
 }

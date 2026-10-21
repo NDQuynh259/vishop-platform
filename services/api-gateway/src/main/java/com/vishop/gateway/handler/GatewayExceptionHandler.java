@@ -26,6 +26,7 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GatewayExceptionHandler.class);
 
+    // #region handle
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {
         ServerHttpResponse response = exchange.getResponse();
@@ -88,4 +89,5 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
         DataBuffer buffer = response.bufferFactory().wrap(json.getBytes(StandardCharsets.UTF_8));
         return response.writeWith(Mono.just(buffer));
     }
+    // #endregion
 }

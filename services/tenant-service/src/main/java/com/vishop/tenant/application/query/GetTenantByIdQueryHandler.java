@@ -12,10 +12,13 @@ public class GetTenantByIdQueryHandler implements QueryHandler<GetTenantByIdQuer
 
     private final TenantRepositoryPort tenantRepository;
 
+    // #region GetTenantByIdQueryHandler
     public GetTenantByIdQueryHandler(TenantRepositoryPort tenantRepository) {
         this.tenantRepository = tenantRepository;
     }
+    // #endregion
 
+    // #region handle
     @Override
     @Transactional(readOnly = true)
     public TenantResponseDto handle(GetTenantByIdQuery query) {
@@ -23,4 +26,5 @@ public class GetTenantByIdQueryHandler implements QueryHandler<GetTenantByIdQuer
                 .map(TenantResponseDto::from)
                 .orElseThrow(() -> new EntityNotFoundException("Tenant", query.tenantId()));
     }
+    // #endregion
 }

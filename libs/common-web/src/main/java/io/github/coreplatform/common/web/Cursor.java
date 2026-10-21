@@ -18,15 +18,20 @@ public final class Cursor {
     private final Instant createdAt;
     private final String id;
 
+    // #region Cursor
     private Cursor(Instant createdAt, String id) {
         this.createdAt = createdAt;
         this.id = Objects.requireNonNull(id);
     }
+    // #endregion
 
+    // #region of
     public static Cursor of(Instant createdAt, String id) {
         return new Cursor(createdAt, id);
     }
+    // #endregion
 
+    // #region decode
     public static Cursor decode(String opaque) {
         if (opaque == null || opaque.isBlank()) {
             return null;
@@ -40,17 +45,24 @@ public final class Cursor {
         String id = decoded.substring(split + 1);
         return new Cursor(Instant.ofEpochMilli(epochMillis), id);
     }
+    // #endregion
 
+    // #region encode
     public String encode() {
         return ENCODER.encodeToString(
                 (createdAt.toEpochMilli() + ":" + id).getBytes());
     }
+    // #endregion
 
+    // #region createdAt
     public Instant createdAt() {
         return createdAt;
     }
+    // #endregion
 
+    // #region id
     public String id() {
         return id;
     }
+    // #endregion
 }

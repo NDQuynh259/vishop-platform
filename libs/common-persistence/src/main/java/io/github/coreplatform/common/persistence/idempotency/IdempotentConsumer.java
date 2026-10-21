@@ -18,10 +18,13 @@ public class IdempotentConsumer {
 
     private final ConsumedMessageRepository repository;
 
+    // #region IdempotentConsumer
     public IdempotentConsumer(ConsumedMessageRepository repository) {
         this.repository = repository;
     }
+    // #endregion
 
+    // #region executeIfNotProcessed
     /**
      * Executes the given action if and only if this message has not yet been processed
      * by the specified consumer group.
@@ -46,4 +49,5 @@ public class IdempotentConsumer {
         log.debug("Marked message [{}] as processed for consumer group [{}]", msgId, consumerGroup);
         return true;
     }
+    // #endregion
 }

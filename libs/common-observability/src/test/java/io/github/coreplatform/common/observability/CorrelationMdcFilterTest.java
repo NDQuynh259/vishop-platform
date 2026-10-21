@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 
 class CorrelationMdcFilterTest {
 
+    // #region shouldExtractExistingHeadersAndSetResponse
     @Test
     @DisplayName("Should extract existing headers, populate MDC during execution, and set response headers")
     void shouldExtractExistingHeadersAndSetResponse() throws ServletException, IOException {
@@ -78,7 +79,9 @@ class CorrelationMdcFilterTest {
         assertNull(MDC.get(MDC_TENANT_ID));
         assertNull(MDC.get(MDC_USER_ID));
     }
+    // #endregion
 
+    // #region shouldGenerateFallbackIdsWhenMissing
     @Test
     @DisplayName("Should generate fallback UUIDs when correlation and request IDs are missing")
     void shouldGenerateFallbackIdsWhenMissing() throws ServletException, IOException {
@@ -112,7 +115,9 @@ class CorrelationMdcFilterTest {
         assertEquals(mdcCorr.get(), response.getHeader(CORRELATION_ID_HEADER));
         assertEquals(mdcReq.get(), response.getHeader(REQUEST_ID_HEADER));
     }
+    // #endregion
 
+    // #region shouldInjectTraceAndSpanIdWhenTracerPresent
     @Test
     @DisplayName("Should inject traceId and spanId to MDC when Tracer has current span")
     void shouldInjectTraceAndSpanIdWhenTracerPresent() throws ServletException, IOException {
@@ -151,7 +156,9 @@ class CorrelationMdcFilterTest {
         assertEquals("span-xyz-789", mdcSpan.get());
         assertEquals("trace-abc-123", response.getHeader(TRACE_ID_HEADER));
     }
+    // #endregion
 
+    // #region shouldLogWithFullMdcContextDuringExecution
     @Test
     @DisplayName("Should demonstrate full MDC lifecycle and logging integration")
     void shouldLogWithFullMdcContextDuringExecution() throws ServletException, IOException {
@@ -208,4 +215,5 @@ class CorrelationMdcFilterTest {
         // MDC cleaned up
         assertNull(MDC.getCopyOfContextMap());
     }
+    // #endregion
 }

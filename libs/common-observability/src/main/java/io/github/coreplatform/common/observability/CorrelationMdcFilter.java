@@ -24,10 +24,13 @@ public class CorrelationMdcFilter extends OncePerRequestFilter implements Ordere
 
     private final ObjectProvider<Tracer> tracerProvider;
 
+    // #region CorrelationMdcFilter
     public CorrelationMdcFilter(ObjectProvider<Tracer> tracerProvider) {
         this.tracerProvider = tracerProvider;
     }
+    // #endregion
 
+    // #region doFilterInternal
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -81,10 +84,13 @@ public class CorrelationMdcFilter extends OncePerRequestFilter implements Ordere
             MDC.clear();
         }
     }
+    // #endregion
 
+    // #region getOrder
     @Override
     public int getOrder() {
         // Run immediately after basic security/cors filters, but before application controllers
         return Ordered.HIGHEST_PRECEDENCE + 5;
     }
+    // #endregion
 }

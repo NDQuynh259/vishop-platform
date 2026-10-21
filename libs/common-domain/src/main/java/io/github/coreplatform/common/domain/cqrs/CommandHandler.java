@@ -8,6 +8,7 @@ package io.github.coreplatform.common.domain.cqrs;
  */
 public interface CommandHandler<C extends Command<R>, R> {
 
+    // #region handle
     /**
      * Executes the command within an application transaction.
      *
@@ -15,4 +16,5 @@ public interface CommandHandler<C extends Command<R>, R> {
      * @return the command result
      */
     R handle(C command);
+    // #endregion
 }

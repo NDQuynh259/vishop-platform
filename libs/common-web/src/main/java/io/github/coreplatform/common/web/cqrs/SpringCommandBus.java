@@ -21,10 +21,13 @@ public class SpringCommandBus implements CommandBus {
     private final ApplicationContext applicationContext;
     private final Map<Class<?>, CommandHandler<?, ?>> handlerRegistry = new ConcurrentHashMap<>();
 
+    // #region SpringCommandBus
     public SpringCommandBus(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
     }
+    // #endregion
 
+    // #region registerHandlers
     @PostConstruct
     public void registerHandlers() {
         Map<String, CommandHandler> beans = applicationContext.getBeansOfType(CommandHandler.class);
@@ -37,7 +40,9 @@ public class SpringCommandBus implements CommandBus {
             }
         }
     }
+    // #endregion
 
+    // #region dispatch
     @Override
     @SuppressWarnings("unchecked")
     public <R> R dispatch(Command<R> command) {
@@ -54,7 +59,9 @@ public class SpringCommandBus implements CommandBus {
         }
         return handler.handle(command);
     }
+    // #endregion
 
+    // #region findHandler
     private CommandHandler<?, ?> findHandler(Class<?> commandClass) {
         Map<String, CommandHandler> beans = applicationContext.getBeansOfType(CommandHandler.class);
         for (CommandHandler<?, ?> handler : beans.values()) {
@@ -68,4 +75,5 @@ public class SpringCommandBus implements CommandBus {
         }
         return null;
     }
+    // #endregion
 }

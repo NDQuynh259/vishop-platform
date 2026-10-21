@@ -29,18 +29,30 @@ public class ConsumedMessageEntity {
     @Column(name = "processed_at", nullable = false)
     private Instant processedAt;
 
+    // #region ConsumedMessageEntity
     protected ConsumedMessageEntity() {
     }
+    // #endregion
 
+    // #region ConsumedMessageEntity
     public ConsumedMessageEntity(String messageId, String consumerGroup, String eventType, Instant processedAt) {
         this.messageId = messageId;
         this.consumerGroup = consumerGroup;
         this.eventType = eventType;
         this.processedAt = processedAt;
     }
+    // #endregion
 
+    // #region getMessageId
     public String getMessageId() { return messageId; }
+    // #endregion
+    // #region getConsumerGroup
     public String getConsumerGroup() { return consumerGroup; }
+    // #endregion
+    // #region getEventType
     public String getEventType() { return eventType; }
+    // #endregion
+    // #region getProcessedAt
     public Instant getProcessedAt() { return processedAt; }
+    // #endregion
 }

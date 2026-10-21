@@ -9,13 +9,17 @@ import java.util.List;
  */
 public interface SagaDefinition<T> {
 
+    // #region sagaType
     /**
      * Unique identifier for the type of saga (e.g. "CreateOrderSaga", "TransferTenantSaga").
      */
     String sagaType();
+    // #endregion
 
+    // #region steps
     /**
      * Ordered list of steps to execute sequentially.
      */
     List<SagaStep<T>> steps();
+    // #endregion
 }

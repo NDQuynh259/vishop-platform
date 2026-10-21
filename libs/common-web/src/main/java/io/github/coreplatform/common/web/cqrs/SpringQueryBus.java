@@ -21,10 +21,13 @@ public class SpringQueryBus implements QueryBus {
     private final ApplicationContext applicationContext;
     private final Map<Class<?>, QueryHandler<?, ?>> handlerRegistry = new ConcurrentHashMap<>();
 
+    // #region SpringQueryBus
     public SpringQueryBus(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
     }
+    // #endregion
 
+    // #region registerHandlers
     @PostConstruct
     public void registerHandlers() {
         Map<String, QueryHandler> beans = applicationContext.getBeansOfType(QueryHandler.class);
@@ -37,7 +40,9 @@ public class SpringQueryBus implements QueryBus {
             }
         }
     }
+    // #endregion
 
+    // #region dispatch
     @Override
     @SuppressWarnings("unchecked")
     public <R> R dispatch(Query<R> query) {
@@ -54,7 +59,9 @@ public class SpringQueryBus implements QueryBus {
         }
         return handler.handle(query);
     }
+    // #endregion
 
+    // #region findHandler
     private QueryHandler<?, ?> findHandler(Class<?> queryClass) {
         Map<String, QueryHandler> beans = applicationContext.getBeansOfType(QueryHandler.class);
         for (QueryHandler<?, ?> handler : beans.values()) {
@@ -68,4 +75,5 @@ public class SpringQueryBus implements QueryBus {
         }
         return null;
     }
+    // #endregion
 }

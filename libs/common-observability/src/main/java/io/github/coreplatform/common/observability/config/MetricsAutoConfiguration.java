@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 public class MetricsAutoConfiguration {
 
+    // #region commonMetricsTags
     @Bean
     public MeterRegistryCustomizer<MeterRegistry> commonMetricsTags(
             @Value("${spring.application.name:unknown-service}") String applicationName,
@@ -17,4 +18,5 @@ public class MetricsAutoConfiguration {
                 .commonTags("application", applicationName)
                 .commonTags("env", environment);
     }
+    // #endregion
 }

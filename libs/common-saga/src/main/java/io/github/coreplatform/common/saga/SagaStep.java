@@ -8,11 +8,14 @@ package io.github.coreplatform.common.saga;
  */
 public interface SagaStep<T> {
 
+    // #region name
     /**
      * Unique name identifying this step.
      */
     String name();
+    // #endregion
 
+    // #region execute
     /**
      * Executes the forward business logic of this step.
      *
@@ -20,7 +23,9 @@ public interface SagaStep<T> {
      * @throws Exception if execution fails, triggering compensation
      */
     void execute(T context) throws Exception;
+    // #endregion
 
+    // #region compensate
     /**
      * Executes the compensating (rollback) action if a subsequent step in the saga fails.
      * Must be idempotent and resilient to retries.
@@ -28,4 +33,5 @@ public interface SagaStep<T> {
      * @param context shared saga context
      */
     void compensate(T context);
+    // #endregion
 }

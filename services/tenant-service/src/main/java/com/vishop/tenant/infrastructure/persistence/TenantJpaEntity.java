@@ -41,9 +41,12 @@ public class TenantJpaEntity {
     @Column(name = "version")
     private Long version;
 
+    // #region TenantJpaEntity
     protected TenantJpaEntity() {
     }
+    // #endregion
 
+    // #region TenantJpaEntity
     public TenantJpaEntity(UUID id, String code, String name, TenantStatus status,
                            Instant createdAt, Instant updatedAt, Long version) {
         this.id = id;
@@ -54,7 +57,9 @@ public class TenantJpaEntity {
         this.updatedAt = updatedAt;
         this.version = version;
     }
+    // #endregion
 
+    // #region fromDomain
     public static TenantJpaEntity fromDomain(Tenant tenant) {
         return new TenantJpaEntity(
                 tenant.getId(),
@@ -66,7 +71,9 @@ public class TenantJpaEntity {
                 tenant.getVersion()
         );
     }
+    // #endregion
 
+    // #region toDomain
     public Tenant toDomain() {
         return Tenant.reconstitute(
                 id,
@@ -78,12 +85,27 @@ public class TenantJpaEntity {
                 version
         );
     }
+    // #endregion
 
+    // #region getId
     public UUID getId() { return id; }
+    // #endregion
+    // #region getCode
     public String getCode() { return code; }
+    // #endregion
+    // #region getName
     public String getName() { return name; }
+    // #endregion
+    // #region getStatus
     public TenantStatus getStatus() { return status; }
+    // #endregion
+    // #region getCreatedAt
     public Instant getCreatedAt() { return createdAt; }
+    // #endregion
+    // #region getUpdatedAt
     public Instant getUpdatedAt() { return updatedAt; }
+    // #endregion
+    // #region getVersion
     public Long getVersion() { return version; }
+    // #endregion
 }

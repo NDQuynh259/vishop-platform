@@ -12,6 +12,7 @@ import java.util.Optional;
  */
 public interface DomainRepository<AR extends AggregateRoot<ID>, ID> {
 
+    // #region save
     /**
      * Persists the given aggregate root (insert or update).
      *
@@ -19,7 +20,9 @@ public interface DomainRepository<AR extends AggregateRoot<ID>, ID> {
      * @return saved aggregate
      */
     AR save(AR aggregate);
+    // #endregion
 
+    // #region findById
     /**
      * Finds an aggregate root by its identifier.
      *
@@ -27,14 +30,18 @@ public interface DomainRepository<AR extends AggregateRoot<ID>, ID> {
      * @return aggregate if found
      */
     Optional<AR> findById(ID id);
+    // #endregion
 
+    // #region delete
     /**
      * Deletes the given aggregate root.
      *
      * @param aggregate aggregate to delete
      */
     void delete(AR aggregate);
+    // #endregion
 
+    // #region existsById
     /**
      * Checks if an aggregate with the given identifier exists.
      *
@@ -42,4 +49,5 @@ public interface DomainRepository<AR extends AggregateRoot<ID>, ID> {
      * @return true if exists
      */
     boolean existsById(ID id);
+    // #endregion
 }

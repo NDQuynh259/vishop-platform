@@ -28,11 +28,14 @@ public class KafkaEventPublisher {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
+    // #region KafkaEventPublisher
     public KafkaEventPublisher(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
     }
+    // #endregion
 
+    // #region publish
     /**
      * Publishes an event envelope to a topic automatically derived from its aggregate type.
      */
@@ -40,7 +43,9 @@ public class KafkaEventPublisher {
         String topic = KafkaTopicNaming.topicFor(envelope.aggregateType());
         return publish(topic, envelope);
     }
+    // #endregion
 
+    // #region publish
     /**
      * Publishes an event envelope to an explicit topic.
      */
@@ -93,4 +98,5 @@ public class KafkaEventPublisher {
             return future;
         }
     }
+    // #endregion
 }

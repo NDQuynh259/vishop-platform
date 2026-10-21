@@ -7,8 +7,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AuditLogRepository extends JpaRepository<AuditLogEntity, UUID> {
 
+    // #region findByTenantIdOrderByOccurredAtDesc
     List<AuditLogEntity> findByTenantIdOrderByOccurredAtDesc(UUID tenantId, Pageable pageable);
+    // #endregion
 
+    // #region findByAggregateTypeAndAggregateIdOrderByOccurredAtDesc
     List<AuditLogEntity> findByAggregateTypeAndAggregateIdOrderByOccurredAtDesc(
             String aggregateType, UUID aggregateId, Pageable pageable);
+    // #endregion
 }

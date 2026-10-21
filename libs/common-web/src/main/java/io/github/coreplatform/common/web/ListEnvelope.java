@@ -18,9 +18,11 @@ public record ListEnvelope<T>(
         List<T> data,
         PageInfo pageInfo) {
 
+    // #region of
     public static <T> ListEnvelope<T> of(String url, List<T> data, boolean hasNextPage, String nextCursor) {
         return new ListEnvelope<>("list", url, data, new PageInfo(hasNextPage, nextCursor));
     }
+    // #endregion
 
     public record PageInfo(boolean hasNextPage, String nextCursor) {}
 }

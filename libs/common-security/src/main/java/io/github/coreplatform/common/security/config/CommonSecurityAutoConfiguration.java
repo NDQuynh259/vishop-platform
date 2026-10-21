@@ -30,29 +30,36 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @ConditionalOnClass({SecurityFilterChain.class, HttpSecurity.class})
 public class CommonSecurityAutoConfiguration {
 
+    // #region internalHeaderAuthFilter
     @Bean
     @ConditionalOnMissingBean
     public InternalHeaderAuthFilter internalHeaderAuthFilter() {
         return new InternalHeaderAuthFilter();
     }
+    // #endregion
 
+    // #region shopSecurity
     @Bean
     @ConditionalOnMissingBean
     public ShopSecurity shopSecurity() {
         return new ShopSecurity();
     }
+    // #endregion
 
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(AuditorAware.class)
     public static class JpaAuditingConfiguration {
 
+        // #region springSecurityAuditorAware
         @Bean
         @ConditionalOnMissingBean(AuditorAware.class)
         public SpringSecurityAuditorAware springSecurityAuditorAware() {
             return new SpringSecurityAuditorAware();
         }
+        // #endregion
     }
 
+    // #region defaultSecurityFilterChain
     @Bean
     @ConditionalOnMissingBean(SecurityFilterChain.class)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -78,4 +85,5 @@ public class CommonSecurityAutoConfiguration {
                 .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
+    // #endregion
 }

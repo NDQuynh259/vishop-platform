@@ -23,12 +23,15 @@ class InternalHeaderAuthFilterTest {
 
     private final InternalHeaderAuthFilter filter = new InternalHeaderAuthFilter();
 
+    // #region tearDown
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
         TenantContext.clear();
     }
+    // #endregion
 
+    // #region shouldAuthenticateWhenValidHeadersPresent
     @Test
     @DisplayName("Should authenticate user and set tenant context when valid headers are present")
     void shouldAuthenticateWhenValidHeadersPresent() throws ServletException, IOException {
@@ -74,7 +77,9 @@ class InternalHeaderAuthFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         assertThat(TenantContext.get()).isNull();
     }
+    // #endregion
 
+    // #region shouldPassThroughWhenNoHeaders
     @Test
     @DisplayName("Should pass through without authentication when headers are missing")
     void shouldPassThroughWhenNoHeaders() throws ServletException, IOException {
@@ -95,7 +100,9 @@ class InternalHeaderAuthFilterTest {
 
         assertThat(filterChainExecuted).isTrue();
     }
+    // #endregion
 
+    // #region shouldHandleInvalidUuidsGracefully
     @Test
     @DisplayName("Should handle invalid UUIDs gracefully without throwing exception")
     void shouldHandleInvalidUuidsGracefully() throws ServletException, IOException {
@@ -119,4 +126,5 @@ class InternalHeaderAuthFilterTest {
 
         assertThat(filterChainExecuted).isTrue();
     }
+    // #endregion
 }

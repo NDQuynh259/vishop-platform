@@ -20,6 +20,7 @@ public class TenantResolutionGlobalFilter implements GlobalFilter, Ordered {
 
     public static final String TENANT_ID_HEADER = "X-Tenant-Id";
 
+    // #region filter
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String tenantHeader = exchange.getRequest().getHeaders().getFirst(TENANT_ID_HEADER);
@@ -48,9 +49,12 @@ public class TenantResolutionGlobalFilter implements GlobalFilter, Ordered {
 
         return chain.filter(exchange);
     }
+    // #endregion
 
+    // #region getOrder
     @Override
     public int getOrder() {
         return Ordered.HIGHEST_PRECEDENCE + 1;
     }
+    // #endregion
 }

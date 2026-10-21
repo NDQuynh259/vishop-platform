@@ -18,10 +18,13 @@ public class ListTenantsQueryHandler implements QueryHandler<ListTenantsQuery, L
 
     private final TenantRepositoryPort tenantRepository;
 
+    // #region ListTenantsQueryHandler
     public ListTenantsQueryHandler(TenantRepositoryPort tenantRepository) {
         this.tenantRepository = tenantRepository;
     }
+    // #endregion
 
+    // #region handle
     @Override
     @Transactional(readOnly = true)
     public ListEnvelope<TenantResponseDto> handle(ListTenantsQuery query) {
@@ -55,4 +58,5 @@ public class ListTenantsQueryHandler implements QueryHandler<ListTenantsQuery, L
 
         return ListEnvelope.of(query.requestUrl(), dtoList, hasNextPage, nextCursor);
     }
+    // #endregion
 }

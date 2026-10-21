@@ -34,12 +34,15 @@ public class OutboxPublisher {
     @Value("${vishop.outbox.max-retries:5}")
     private int maxRetries;
 
+    // #region OutboxPublisher
     public OutboxPublisher(OutboxEventRepository repository,
                            KafkaTemplate<String, String> kafkaTemplate) {
         this.repository = repository;
         this.kafkaTemplate = kafkaTemplate;
     }
+    // #endregion
 
+    // #region publishPending
     @Scheduled(fixedDelayString = "${vishop.outbox.publish-delay-ms:1000}")
     @Transactional
     public void publishPending() {
@@ -78,4 +81,5 @@ public class OutboxPublisher {
             }
         }
     }
+    // #endregion
 }

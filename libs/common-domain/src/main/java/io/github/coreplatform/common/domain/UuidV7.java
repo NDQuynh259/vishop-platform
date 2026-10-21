@@ -14,9 +14,12 @@ import java.util.UUID;
  */
 public final class UuidV7 {
 
+    // #region UuidV7
     private UuidV7() {
     }
+    // #endregion
 
+    // #region nextId
     /**
      * Creates a new time-ordered UUID v7 using the system clock.
      *
@@ -25,7 +28,9 @@ public final class UuidV7 {
     public static UUID nextId() {
         return fromTimestamp(System.currentTimeMillis());
     }
+    // #endregion
 
+    // #region fromTimestamp
     /**
      * Creates a UUID v7 for an explicit epoch-millisecond timestamp.
      *
@@ -47,11 +52,15 @@ public final class UuidV7 {
 
         return new UUID(mostSigBits, leastSigBits);
     }
+    // #endregion
 
+    // #region randomBits
     private static long randomBits() {
         return SecureRandomHolder.NEXT.nextLong();
     }
+    // #endregion
 
+    // #region timestampOf
     /**
      * Extracts the embedded millisecond timestamp from a UUID v7.
      *
@@ -65,6 +74,7 @@ public final class UuidV7 {
         }
         return uuid.getMostSignificantBits() >>> 16;
     }
+    // #endregion
 
     /**
      * Holder so the shared generator is created once per classloader.
@@ -73,7 +83,9 @@ public final class UuidV7 {
         private static final java.util.random.RandomGenerator NEXT =
                 java.util.random.RandomGenerator.getDefault();
 
+        // #region SecureRandomHolder
         private SecureRandomHolder() {
         }
+        // #endregion
     }
 }

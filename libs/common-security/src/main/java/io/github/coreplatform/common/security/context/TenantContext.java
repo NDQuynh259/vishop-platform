@@ -9,13 +9,18 @@ import java.util.UUID;
 public final class TenantContext {
     private static final ThreadLocal<UUID> CURRENT = new ThreadLocal<>();
 
+    // #region TenantContext
     private TenantContext() {
     }
+    // #endregion
 
+    // #region set
     public static void set(UUID tenantId) {
         CURRENT.set(tenantId);
     }
+    // #endregion
 
+    // #region requiredTenantId
     public static UUID requiredTenantId() {
         UUID tenantId = CURRENT.get();
         if (tenantId == null) {
@@ -23,12 +28,17 @@ public final class TenantContext {
         }
         return tenantId;
     }
+    // #endregion
 
+    // #region get
     public static UUID get() {
         return CURRENT.get();
     }
+    // #endregion
 
+    // #region clear
     public static void clear() {
         CURRENT.remove();
     }
+    // #endregion
 }

@@ -17,11 +17,14 @@ class ShopSecurityTest {
 
     private final ShopSecurity shopSecurity = new ShopSecurity();
 
+    // #region tearDown
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
     }
+    // #endregion
 
+    // #region shouldCheckShopAccessCorrectly
     @Test
     @DisplayName("Should return true when user has access to shop, false otherwise")
     void shouldCheckShopAccessCorrectly() {
@@ -45,11 +48,14 @@ class ShopSecurityTest {
         assertThat(shopSecurity.hasAccess(otherShop)).isFalse();
         assertThat(shopSecurity.hasAccess(null)).isFalse();
     }
+    // #endregion
 
+    // #region shouldReturnFalseWhenUnauthenticated
     @Test
     @DisplayName("Should return false when user is not authenticated")
     void shouldReturnFalseWhenUnauthenticated() {
         assertThat(shopSecurity.hasAccess(UUID.randomUUID())).isFalse();
         assertThat(shopSecurity.hasAccess(null)).isFalse();
     }
+    // #endregion
 }

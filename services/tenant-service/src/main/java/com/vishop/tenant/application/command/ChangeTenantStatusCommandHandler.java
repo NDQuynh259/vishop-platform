@@ -15,11 +15,14 @@ public class ChangeTenantStatusCommandHandler implements CommandHandler<ChangeTe
     private final TenantRepositoryPort tenantRepository;
     private final OutboxService outboxService;
 
+    // #region ChangeTenantStatusCommandHandler
     public ChangeTenantStatusCommandHandler(TenantRepositoryPort tenantRepository, OutboxService outboxService) {
         this.tenantRepository = tenantRepository;
         this.outboxService = outboxService;
     }
+    // #endregion
 
+    // #region handle
     @Override
     @Transactional
     public TenantResponseDto handle(ChangeTenantStatusCommand command) {
@@ -37,4 +40,5 @@ public class ChangeTenantStatusCommandHandler implements CommandHandler<ChangeTe
 
         return TenantResponseDto.from(tenant);
     }
+    // #endregion
 }

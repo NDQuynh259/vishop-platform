@@ -16,22 +16,30 @@ public record TenantStatusChangedEvent(
         TenantStatus newStatus,
         Instant occurredAt) implements DomainEvent {
 
+    // #region of
     public static TenantStatusChangedEvent of(UUID tenantId, TenantStatus oldStatus, TenantStatus newStatus) {
         return new TenantStatusChangedEvent(UuidV7.nextId(), tenantId, oldStatus, newStatus, Instant.now());
     }
+    // #endregion
 
+    // #region eventType
     @Override
     public String eventType() {
         return "tenant.status_changed";
     }
+    // #endregion
 
+    // #region aggregateType
     @Override
     public String aggregateType() {
         return "Tenant";
     }
+    // #endregion
 
+    // #region aggregateId
     @Override
     public UUID aggregateId() {
         return tenantId;
     }
+    // #endregion
 }

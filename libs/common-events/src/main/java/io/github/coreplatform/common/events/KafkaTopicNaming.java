@@ -9,9 +9,12 @@ public final class KafkaTopicNaming {
     public static final String PREFIX = "vishop";
     public static final String DLQ_SUFFIX = ".DLT";
 
+    // #region KafkaTopicNaming
     private KafkaTopicNaming() {
     }
+    // #endregion
 
+    // #region topicFor
     /**
      * Builds topic name for an aggregate type in kebab-case.
      * e.g. "Tenant" -> "vishop.tenant.events"
@@ -20,11 +23,14 @@ public final class KafkaTopicNaming {
         String clean = aggregateType.replaceAll("([a-z])([A-Z]+)", "$1-$2").toLowerCase();
         return PREFIX + "." + clean + ".events";
     }
+    // #endregion
 
+    // #region dlqTopicFor
     /**
      * Builds dead-letter topic name for a given source topic.
      */
     public static String dlqTopicFor(String sourceTopic) {
         return sourceTopic + DLQ_SUFFIX;
     }
+    // #endregion
 }

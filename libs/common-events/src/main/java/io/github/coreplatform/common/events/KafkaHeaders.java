@@ -12,6 +12,8 @@ public final class KafkaHeaders {
     public static final String PRODUCER = "X-Producer";
     public static final String SCHEMA_VERSION = "X-Schema-Version";
 
+    // #region KafkaHeaders
     private KafkaHeaders() {
     }
+    // #endregion
 }

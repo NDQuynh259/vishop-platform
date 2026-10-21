@@ -1,3 +1,10 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "[java]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    },
+    "java.compile.nullAnalysis.mode": "automatic"
 }

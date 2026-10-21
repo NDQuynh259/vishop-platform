@@ -49,9 +49,12 @@ public class OutboxEventEntity {
     @Column(name = "published_at")
     private Instant publishedAt;
 
+    // #region OutboxEventEntity
     protected OutboxEventEntity() {
     }
+    // #endregion
 
+    // #region OutboxEventEntity
     public OutboxEventEntity(UUID id, UUID tenantId, String eventType, String aggregateType,
                              UUID aggregateId, String payload, Instant occurredAt) {
         this.id = id;
@@ -64,7 +67,9 @@ public class OutboxEventEntity {
         this.retryCount = 0;
         this.occurredAt = occurredAt;
     }
+    // #endregion
 
+    // #region fromEnvelope
     public static OutboxEventEntity fromEnvelope(EventEnvelope envelope, String jsonPayload) {
         return new OutboxEventEntity(
                 envelope.eventId(),
@@ -76,24 +81,50 @@ public class OutboxEventEntity {
                 envelope.occurredAt()
         );
     }
+    // #endregion
 
+    // #region getId
     public UUID getId() { return id; }
+    // #endregion
+    // #region getTenantId
     public UUID getTenantId() { return tenantId; }
+    // #endregion
+    // #region getEventType
     public String getEventType() { return eventType; }
+    // #endregion
+    // #region getAggregateType
     public String getAggregateType() { return aggregateType; }
+    // #endregion
+    // #region getAggregateId
     public UUID getAggregateId() { return aggregateId; }
+    // #endregion
+    // #region getPayload
     public String getPayload() { return payload; }
+    // #endregion
+    // #region getStatus
     public String getStatus() { return status; }
+    // #endregion
+    // #region getRetryCount
     public int getRetryCount() { return retryCount; }
+    // #endregion
+    // #region getErrorMessage
     public String getErrorMessage() { return errorMessage; }
+    // #endregion
+    // #region getOccurredAt
     public Instant getOccurredAt() { return occurredAt; }
+    // #endregion
+    // #region getPublishedAt
     public Instant getPublishedAt() { return publishedAt; }
+    // #endregion
 
+    // #region markPublished
     public void markPublished(Instant at) {
         this.status = "PUBLISHED";
         this.publishedAt = at;
     }
+    // #endregion
 
+    // #region recordFailure
     public void recordFailure(String error, int maxRetries) {
         this.retryCount++;
         this.errorMessage = error != null && error.length() > 950 ? error.substring(0, 950) : error;
@@ -101,4 +132,5 @@ public class OutboxEventEntity {
             this.status = "FAILED";
         }
     }
+    // #endregion
 }

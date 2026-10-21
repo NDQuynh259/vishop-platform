@@ -35,25 +35,32 @@ public class TenantController {
     private final CommandBus commandBus;
     private final QueryBus queryBus;
 
+    // #region TenantController
     public TenantController(CommandBus commandBus, QueryBus queryBus) {
         this.commandBus = commandBus;
         this.queryBus = queryBus;
     }
+    // #endregion
 
+    // #region createTenant
     @PostMapping
     public ResponseEntity<TenantResponseDto> createTenant(@Valid @RequestBody CreateTenantRequest request) {
         CreateTenantCommand command = new CreateTenantCommand(request.code(), request.name());
         TenantResponseDto response = commandBus.dispatch(command);
         return ResponseEntity.created(URI.create("/api/v1/tenants/" + response.id())).body(response);
     }
+    // #endregion
 
+    // #region getTenantById
     @GetMapping("/{id}")
     public ResponseEntity<TenantResponseDto> getTenantById(@PathVariable("id") UUID id) {
         GetTenantByIdQuery query = new GetTenantByIdQuery(id);
         TenantResponseDto response = queryBus.dispatch(query);
         return ResponseEntity.ok(response);
     }
+    // #endregion
 
+    // #region listTenants
     @GetMapping
     public ResponseEntity<ListEnvelope<TenantResponseDto>> listTenants(
             @RequestParam(name = "limit", defaultValue = "20") int limit,
@@ -65,7 +72,9 @@ public class TenantController {
         ListEnvelope<TenantResponseDto> response = queryBus.dispatch(query);
         return ResponseEntity.ok(response);
     }
+    // #endregion
 
+    // #region changeStatus
     @PatchMapping("/{id}/status")
     public ResponseEntity<TenantResponseDto> changeStatus(
             @PathVariable("id") UUID id,
@@ -75,4 +84,5 @@ public class TenantController {
         TenantResponseDto response = commandBus.dispatch(command);
         return ResponseEntity.ok(response);
     }
+    // #endregion
 }

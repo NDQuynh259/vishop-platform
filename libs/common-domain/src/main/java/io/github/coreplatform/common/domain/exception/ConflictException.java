@@ -6,7 +6,15 @@ package io.github.coreplatform.common.domain.exception;
  */
 public class ConflictException extends DomainException {
 
+    // #region ConflictException
+    public ConflictException(String message) {
+        super("conflict", message);
+    }
+    // #endregion
+
+    // #region ConflictException
     public ConflictException(String code, String message) {
         super(code, message);
     }
+    // #endregion
 }

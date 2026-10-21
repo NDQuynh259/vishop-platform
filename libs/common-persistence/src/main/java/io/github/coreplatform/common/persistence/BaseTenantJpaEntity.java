@@ -32,6 +32,7 @@ public abstract class BaseTenantJpaEntity {
     @Column(name = "version")
     private Long version;
 
+    // #region onPrePersist
     @PrePersist
     protected void onPrePersist() {
         if (createdAt == null) {
@@ -41,20 +42,43 @@ public abstract class BaseTenantJpaEntity {
             updatedAt = createdAt;
         }
     }
+    // #endregion
 
+    // #region onPreUpdate
     @PreUpdate
     protected void onPreUpdate() {
         updatedAt = Instant.now();
     }
+    // #endregion
 
+    // #region getId
     public UUID getId() { return id; }
+    // #endregion
+    // #region setId
     public void setId(UUID id) { this.id = id; }
+    // #endregion
+    // #region getTenantId
     public UUID getTenantId() { return tenantId; }
+    // #endregion
+    // #region setTenantId
     public void setTenantId(UUID tenantId) { this.tenantId = tenantId; }
+    // #endregion
+    // #region getCreatedAt
     public Instant getCreatedAt() { return createdAt; }
+    // #endregion
+    // #region setCreatedAt
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    // #endregion
+    // #region getUpdatedAt
     public Instant getUpdatedAt() { return updatedAt; }
+    // #endregion
+    // #region setUpdatedAt
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    // #endregion
+    // #region getVersion
     public Long getVersion() { return version; }
+    // #endregion
+    // #region setVersion
     public void setVersion(Long version) { this.version = version; }
+    // #endregion
 }

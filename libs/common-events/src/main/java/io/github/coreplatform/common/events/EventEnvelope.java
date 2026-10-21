@@ -26,6 +26,7 @@ public record EventEnvelope(
         UUID causationId,
         JsonNode payload) {
 
+    // #region create
     public static EventEnvelope create(
             String eventType,
             String producer,
@@ -48,7 +49,9 @@ public record EventEnvelope(
                 causationId,
                 payload);
     }
+    // #endregion
 
+    // #region fromDomainEvent
     /**
      * Converts a domain event to an EventEnvelope.
      */
@@ -72,7 +75,9 @@ public record EventEnvelope(
                 causationId,
                 payloadNode);
     }
+    // #endregion
 
+    // #region getPayloadAs
     /**
      * Extracts and deserializes the payload into a typed object.
      */
@@ -83,4 +88,5 @@ public record EventEnvelope(
             throw new IllegalArgumentException("Failed to deserialize event payload to " + targetClass.getName(), e);
         }
     }
+    // #endregion
 }

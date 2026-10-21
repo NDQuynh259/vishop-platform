@@ -8,6 +8,7 @@ package io.github.coreplatform.common.domain.cqrs;
  */
 public interface QueryHandler<Q extends Query<R>, R> {
 
+    // #region handle
     /**
      * Executes the query and returns the requested data.
      *
@@ -15,4 +16,5 @@ public interface QueryHandler<Q extends Query<R>, R> {
      * @return the query result
      */
     R handle(Q query);
+    // #endregion
 }
