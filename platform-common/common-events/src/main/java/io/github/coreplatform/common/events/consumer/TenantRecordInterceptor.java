@@ -1,7 +1,7 @@
 package io.github.coreplatform.common.events.consumer;
 
 import io.github.coreplatform.common.events.KafkaHeaders;
-import io.github.coreplatform.common.security.TenantContext;
+import io.github.coreplatform.common.security.context.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.Consumer;

@@ -1,2 +1,21 @@
+# Gradle & Java Build
 .gradle/
 **/build/
+bin/
+
+# IDE & Editor files
+.project
+.classpath
+.settings/
+.idea/
+*.iml
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+.env.prod
+*.env
+.env.*
+!.env.example
+!.env.*.example

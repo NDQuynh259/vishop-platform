@@ -19,6 +19,7 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Multi-tenancy](./tenancy.md) | Tenant context propagation through HTTP, Kafka, and persistence |
 | [Idempotency and tracing](./idempotency-and-tracing.md) | Deduplication and request/message correlation |
 | [Observability](./observability.md) | Logs, metrics, distributed tracing, and alerting |
+| [Security architecture](./security-architecture.md) | Authentication, RBAC authorization, multi-tenancy isolation, secrets, and DevSecOps |
 | [Spring Boot migration plan](./spring-boot-microservices-migration-plan.md) | Migration strategy and operational considerations |
 
 ## Core principles

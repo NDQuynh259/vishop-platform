@@ -1,8 +1,11 @@
-package io.github.coreplatform.common.security;
+package io.github.coreplatform.common.security.context;
 
 import java.util.UUID;
 
-/** Request-scoped tenant context. Must be set by trusted gateway/security headers. */
+/**
+ * Request-scoped tenant context holding the current tenantId in ThreadLocal.
+ * Must be set by trusted gateway/security headers and cleared after execution.
+ */
 public final class TenantContext {
     private static final ThreadLocal<UUID> CURRENT = new ThreadLocal<>();
 

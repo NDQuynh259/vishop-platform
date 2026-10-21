@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "3.3.5" apply false
     id("io.spring.dependency-management") version "1.1.6" apply false
+    eclipse
 }
 
 allprojects {
@@ -16,6 +17,7 @@ allprojects {
 subprojects {
     apply(plugin = "java-library")
     apply(plugin = "io.spring.dependency-management")
+    apply(plugin = "eclipse")
 
     configure<JavaPluginExtension> {
         toolchain {

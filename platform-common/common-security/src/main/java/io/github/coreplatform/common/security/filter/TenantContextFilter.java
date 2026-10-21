@@ -1,5 +1,7 @@
-package io.github.coreplatform.common.security;
+package io.github.coreplatform.common.security.filter;
 
+import io.github.coreplatform.common.security.constants.SecurityHeaders;
+import io.github.coreplatform.common.security.context.TenantContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,7 +21,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class TenantContextFilter extends OncePerRequestFilter {
 
-    public static final String TENANT_HEADER = "X-Tenant-Id";
+    public static final String TENANT_HEADER = SecurityHeaders.X_TENANT_ID;
 
     @Override
     protected void doFilterInternal(

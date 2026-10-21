@@ -1,1 +1,2 @@
-io.github.coreplatform.common.observability.ObservabilityAutoConfiguration
+io.github.coreplatform.common.observability.config.ObservabilityAutoConfiguration
+io.github.coreplatform.common.observability.config.MetricsAutoConfiguration
