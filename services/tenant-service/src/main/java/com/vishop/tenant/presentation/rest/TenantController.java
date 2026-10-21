@@ -1,8 +1,8 @@
 package com.vishop.tenant.presentation.rest;
 
-import com.vishop.common.domain.cqrs.CommandBus;
-import com.vishop.common.domain.cqrs.QueryBus;
-import com.vishop.common.web.ListEnvelope;
+import io.github.coreplatform.common.domain.cqrs.CommandBus;
+import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import io.github.coreplatform.common.web.ListEnvelope;
 import com.vishop.tenant.application.command.ChangeTenantStatusCommand;
 import com.vishop.tenant.application.command.CreateTenantCommand;
 import com.vishop.tenant.application.dto.ChangeTenantStatusRequest;

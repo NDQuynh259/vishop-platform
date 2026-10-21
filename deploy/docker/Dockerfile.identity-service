@@ -1,0 +1,33 @@
+# =============================================================================
+# Identity Service Dockerfile
+# =============================================================================
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /build
+
+RUN apk add --no-cache dos2unix
+COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
+COPY gradle ./gradle
+RUN dos2unix gradlew && chmod +x gradlew
+
+COPY platform-common ./platform-common
+COPY services/identity-service ./services/identity-service
+
+RUN ./gradlew :services:identity-service:bootJar --no-daemon -x test
+RUN cp services/identity-service/build/libs/*.jar /build/app.jar
+
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+RUN apk add --no-cache curl
+RUN addgroup -S appgroup -g 1001 && adduser -S appuser -u 1001 -G appgroup
+COPY --from=builder --chown=appuser:appgroup /build/app.jar /app/app.jar
+USER appuser:appgroup
+
+ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -Djava.security.egd=file:/dev/./urandom"
+ENV SPRING_PROFILES_ACTIVE="prod"
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=30s \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

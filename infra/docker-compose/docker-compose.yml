@@ -160,4 +160,8 @@ volumes:
   loki-data:
   grafana-data:
 
+networks:
+  default:
+    name: vishop-network
+
 

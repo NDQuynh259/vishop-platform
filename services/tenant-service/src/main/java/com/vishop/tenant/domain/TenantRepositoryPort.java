@@ -1,6 +1,6 @@
 package com.vishop.tenant.domain;
 
-import com.vishop.common.domain.DomainRepository;
+import io.github.coreplatform.common.domain.DomainRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

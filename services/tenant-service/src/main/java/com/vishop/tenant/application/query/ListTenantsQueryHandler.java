@@ -1,8 +1,8 @@
 package com.vishop.tenant.application.query;
 
-import com.vishop.common.domain.cqrs.QueryHandler;
-import com.vishop.common.web.Cursor;
-import com.vishop.common.web.ListEnvelope;
+import io.github.coreplatform.common.domain.cqrs.QueryHandler;
+import io.github.coreplatform.common.web.Cursor;
+import io.github.coreplatform.common.web.ListEnvelope;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 import com.vishop.tenant.domain.Tenant;
 import com.vishop.tenant.domain.TenantRepositoryPort;

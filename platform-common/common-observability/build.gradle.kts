@@ -5,8 +5,8 @@ dependencies {
     api("io.opentelemetry:opentelemetry-exporter-otlp")
     api("net.logstash.logback:logstash-logback-encoder:7.4")
 
-    compileOnly("org.springframework:spring-web")
-    compileOnly("jakarta.servlet:jakarta.servlet-api")
+    compileOnlyApi("org.springframework:spring-web")
+    compileOnlyApi("jakarta.servlet:jakarta.servlet-api")
     api(project(":platform-common:common-domain"))
     compileOnly(project(":platform-common:common-security"))
 

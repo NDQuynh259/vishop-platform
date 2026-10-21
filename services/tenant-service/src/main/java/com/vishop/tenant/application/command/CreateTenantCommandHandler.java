@@ -1,8 +1,8 @@
 package com.vishop.tenant.application.command;
 
-import com.vishop.common.domain.cqrs.CommandHandler;
-import com.vishop.common.domain.exception.ConflictException;
-import com.vishop.common.persistence.OutboxService;
+import io.github.coreplatform.common.domain.cqrs.CommandHandler;
+import io.github.coreplatform.common.domain.exception.ConflictException;
+import io.github.coreplatform.common.persistence.OutboxService;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 import com.vishop.tenant.domain.Tenant;
 import com.vishop.tenant.domain.TenantCode;

@@ -1,6 +1,6 @@
 package com.vishop.tenant.application.query;
 
-import com.vishop.common.domain.cqrs.Query;
+import io.github.coreplatform.common.domain.cqrs.Query;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 import java.util.UUID;
 

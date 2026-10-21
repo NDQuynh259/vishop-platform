@@ -1,0 +1,125 @@
+version: "3.8"
+
+services:
+  # ===========================================================================
+  # 1. Identity Service
+  # ===========================================================================
+  identity-service:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.identity-service
+    image: vishop/identity-service:latest
+    container_name: vishop-identity-service
+    restart: unless-stopped
+    ports:
+      - "${IDENTITY_PORT:-8080}:8080"
+    environment:
+      SERVER_PORT: 8080
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/vishop_identity
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  # 2. Tenant Service
+  # ===========================================================================
+  tenant-service:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.tenant-service
+    image: vishop/tenant-service:latest
+    container_name: vishop-tenant-service
+    restart: unless-stopped
+    ports:
+      - "${TENANT_PORT:-8081}:8081"
+    environment:
+      SERVER_PORT: 8081
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/vishop_tenant
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  # 3. Audit Service
+  # ===========================================================================
+  audit-service:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.audit-service
+    image: vishop/audit-service:latest
+    container_name: vishop-audit-service
+    restart: unless-stopped
+    ports:
+      - "${AUDIT_PORT:-8082}:8082"
+    environment:
+      SERVER_PORT: 8082
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/vishop_audit
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  # 4. API Gateway
+  # ===========================================================================
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.api-gateway
+    image: vishop/api-gateway:latest
+    container_name: vishop-api-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    environment:
+      SERVER_PORT: 8000
+      SPRING_PROFILES_ACTIVE: prod
+      TENANT_SERVICE_URL: http://tenant-service:8081
+      IDENTITY_SERVICE_URL: http://identity-service:8080
+      AUDIT_SERVICE_URL: http://audit-service:8082
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0}
+    depends_on:
+      - identity-service
+      - tenant-service
+      - audit-service
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  default:
+    name: vishop-network

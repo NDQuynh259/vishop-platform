@@ -1,6 +1,6 @@
 package com.vishop.gateway.filter;
 
-import com.vishop.common.domain.UuidV7;
+import io.github.coreplatform.common.domain.UuidV7;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
