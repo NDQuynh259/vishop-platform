@@ -2,6 +2,7 @@ package io.github.coreplatform.common.web.pagination;
 
 import io.github.coreplatform.common.domain.pagination.CursorParams;
 import io.github.coreplatform.common.domain.pagination.OffsetPagination;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Unified web request parameter object supporting both Cursor-based and Offset-based pagination.
@@ -16,9 +17,26 @@ import io.github.coreplatform.common.domain.pagination.OffsetPagination;
  * @param page 1-indexed page number (optional, defaults to 1 when cursor is absent)
  * @param limit maximum items per page (defaults to 20, clamped between 1 and 100)
  */
+@Schema(description = "Unified pagination request parameters (prioritizes cursor; falls back to offset when cursor is absent)")
 public record PaginationRequest(
+        @Schema(
+                description = "Opaque cursor token for keyset pagination. Takes precedence when provided.",
+                example = "MTcyOTU3NDAwMDAwMDpmYjM0MzE1LTQ3MTgtNGYwYy1iOTlhLWQ2YTQwZDlkNmZhZA"
+        )
         String cursor,
+
+        @Schema(
+                description = "1-indexed page number for offset pagination. Used when cursor is omitted.",
+                defaultValue = "1",
+                example = "1"
+        )
         Integer page,
+
+        @Schema(
+                description = "Maximum number of items to return (clamped between 1 and 100).",
+                defaultValue = "20",
+                example = "20"
+        )
         Integer limit
 ) {
 

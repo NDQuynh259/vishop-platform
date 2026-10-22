@@ -1,4 +1,4 @@
-package io.github.coreplatform.common.web;
+package io.github.coreplatform.common.web.exception;
 
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.exception.BusinessRuleViolationException;

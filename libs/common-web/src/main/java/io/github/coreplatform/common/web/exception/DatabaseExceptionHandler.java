@@ -1,5 +1,6 @@
-package io.github.coreplatform.common.web;
+package io.github.coreplatform.common.web.exception;
 
+import io.github.coreplatform.common.web.filter.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.time.Instant;

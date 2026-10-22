@@ -1,4 +1,4 @@
-package io.github.coreplatform.common.web;
+package io.github.coreplatform.common.web.filter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

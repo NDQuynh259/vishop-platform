@@ -1,4 +1,4 @@
-package io.github.coreplatform.common.web;
+package io.github.coreplatform.common.web.exception;
 
 /**
  * Represents an individual field or parameter validation failure.

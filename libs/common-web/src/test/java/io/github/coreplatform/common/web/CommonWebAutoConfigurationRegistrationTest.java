@@ -24,7 +24,7 @@ class CommonWebAutoConfigurationRegistrationTest {
                     .toList();
         }
 
-        assertTrue(imports.contains("io.github.coreplatform.common.web.config.CommonWebAutoConfiguration"));
+        assertTrue(imports.contains("io.github.coreplatform.common.web.CommonWebAutoConfiguration"));
         imports.forEach(className -> {
             try {
                 Class<?> configurationClass = Class.forName(className);
