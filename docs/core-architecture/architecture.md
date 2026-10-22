@@ -163,7 +163,7 @@ HTTP GET /api/v1/tenants?limit=20&cursor=...
    │
    ▼
 TenantController
-   │ queryBus.dispatch(new ListTenantsQuery(limit, cursor))
+   │ queryBus.dispatch(new ListTenantsQuery(filter, pagination))
    ▼
 SpringQueryBus
    │

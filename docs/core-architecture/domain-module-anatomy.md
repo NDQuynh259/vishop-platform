@@ -111,8 +111,8 @@ Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
   5. Trả về `TenantResponseDto`.
 
 #### `query/ListTenantsQuery.java` & `ListTenantsQueryHandler.java`
-* `Query` đại diện cho yêu cầu đọc dữ liệu (`@Transactional(readOnly = true)`), chỉ nhận tham số đọc thuần túy (`limit`, `cursor`), không phụ thuộc vào HTTP request URL.
-* `ListTenantsQueryHandler` giải mã cursor (`CursorPagination.decode(...)`), query dữ liệu trực tiếp và trả về `PagedResult<TenantResponseDto>` kèm theo `nextCursor`. Tại tầng Presentation, Controller sẽ bọc `PagedResult` thành `ListEnvelope` kèm theo URL hiện tại để trả về client.
+* `Query` đại diện cho yêu cầu đọc dữ liệu (`@Transactional(readOnly = true)`), kết hợp giữa `TenantFilter` (nghiệp vụ lọc `search`, `status`) và phân trang (`CursorParams` hoặc `OffsetPagination`).
+* `ListTenantsQueryHandler` xử lý theo quy tắc: **Ưu tiên cursor**, nếu có `cursor` thì giải mã keyset cursor và query trực tiếp trả về `PagedResult.ofCursor(...)`; nếu không truyền cursor thì chuyển sang phân trang **Offset** (`Pageable` + count query) trả về `PagedResult.ofOffset(...)`. Tại tầng Presentation, Controller bọc `PagedResult` thành `ListEnvelope` để tự động trả về metadata tương ứng cho client.
 
 ---
 

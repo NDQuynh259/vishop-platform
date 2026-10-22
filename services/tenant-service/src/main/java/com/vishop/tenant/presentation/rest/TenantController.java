@@ -4,13 +4,16 @@ import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.pagination.PagedResult;
 import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import com.vishop.tenant.application.command.ChangeTenantStatusCommand;
 import com.vishop.tenant.application.command.CreateTenantCommand;
 import com.vishop.tenant.application.dto.ChangeTenantStatusRequest;
 import com.vishop.tenant.application.dto.CreateTenantRequest;
+import com.vishop.tenant.application.dto.TenantFilter;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 import com.vishop.tenant.application.query.GetTenantByIdQuery;
 import com.vishop.tenant.application.query.ListTenantsQuery;
+import com.vishop.tenant.domain.TenantStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -64,11 +67,16 @@ public class TenantController {
     // #region listTenants
     @GetMapping
     public ResponseEntity<ListEnvelope<TenantResponseDto>> listTenants(
-            @RequestParam(name = "limit", defaultValue = "20") int limit,
-            @RequestParam(name = "cursor", required = false) String cursor,
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "status", required = false) TenantStatus status,
+            PaginationRequest pagination,
             HttpServletRequest request) {
 
-        ListTenantsQuery query = new ListTenantsQuery(limit, cursor);
+        TenantFilter filter = new TenantFilter(search, status);
+        ListTenantsQuery query = pagination.isCursor()
+                ? ListTenantsQuery.ofCursor(filter, pagination.toCursorParams())
+                : ListTenantsQuery.ofOffset(filter, pagination.toOffsetPagination());
+
         PagedResult<TenantResponseDto> response = queryBus.dispatch(query);
         return ResponseEntity.ok(ListEnvelope.from(request.getRequestURI(), response));
     }
