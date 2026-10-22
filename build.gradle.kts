@@ -19,6 +19,21 @@ subprojects {
     apply(plugin = "io.spring.dependency-management")
     apply(plugin = "eclipse")
 
+    configure<org.gradle.plugins.ide.eclipse.model.EclipseModel> {
+        classpath {
+            plusConfigurations.add(configurations.getByName("compileClasspath"))
+            file.whenMerged {
+                val cp = this as org.gradle.plugins.ide.eclipse.model.Classpath
+                val mainCompileFiles = configurations.findByName("compileClasspath")?.files ?: emptySet()
+                cp.entries.filterIsInstance<org.gradle.plugins.ide.eclipse.model.Library>().forEach { entry ->
+                    if (File(entry.path) in mainCompileFiles) {
+                        entry.entryAttributes["gradle_used_by_scope"] = "main,test"
+                    }
+                }
+            }
+        }
+    }
+
     configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(21))
