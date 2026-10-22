@@ -32,6 +32,45 @@ spring:
           predicates:
             - Path=/api/v1/audit/**
 
+        # ---------------------------------------------------------------------
+        # 4. OpenAPI / Swagger Documentation Aggregation
+        # ---------------------------------------------------------------------
+        - id: tenant-service-docs
+          uri: ${TENANT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/v3/api-docs/tenant-service
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: identity-service-docs
+          uri: ${IDENTITY_SERVICE_URL:http://localhost:8080}
+          predicates:
+            - Path=/v3/api-docs/identity-service
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: audit-service-docs
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/v3/api-docs/audit-service
+          filters:
+            - SetPath=/v3/api-docs
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    urls:
+      - name: Tenant Service
+        url: /v3/api-docs/tenant-service
+      - name: Identity Service
+        url: /v3/api-docs/identity-service
+      - name: Audit Service
+        url: /v3/api-docs/audit-service
+
 management:
   endpoints:
     web:

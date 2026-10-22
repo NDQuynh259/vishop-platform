@@ -55,7 +55,7 @@ API Gateway được xây dựng trên **Spring Cloud Gateway (Spring WebFlux / 
 Được định cấu hình tại [`CorsConfig.java`](../../services/api-gateway/src/main/java/com/vishop/gateway/config/CorsConfig.java), hỗ trợ đầy đủ preflight request (`OPTIONS`), cho phép các headers phổ biến (`X-Tenant-Id`, `X-Correlation-Id`, `Authorization`, `Content-Type`) và hỗ trợ credentials.
 
 ### 2.4. Global Exception & Problem Details (RFC 9457)
-Tại [`GatewayExceptionHandler.java`](../../services/api-gateway/src/main/java/com/vishop/gateway/filter/GatewayExceptionHandler.java):
+Tại [`GatewayExceptionHandler.java`](../../services/api-gateway/src/main/java/com/vishop/gateway/handler/GatewayExceptionHandler.java):
 * Khi downstream service bị sập (`503 Service Unavailable` hoặc `ConnectException` / `TimeoutException`), Gateway trả về chuẩn **RFC 9457 Problem Details** (JSON) thay vì HTML mặc định của trình duyệt/container.
 
 Ví dụ phản hồi lỗi khi downstream service không hoạt động:
@@ -64,10 +64,20 @@ Ví dụ phản hồi lỗi khi downstream service không hoạt động:
   "type": "https://api.vishop.vn/errors/service-unavailable",
   "title": "Service Unavailable",
   "status": 503,
-  "detail": "Upstream service is temporarily unavailable or unreachable",
-  "instance": "/api/v1/tenants"
+  "detail": "The target microservice is currently unreachable. Please try again shortly.",
+  "code": "service-unavailable",
+  "requestId": "0192a6df-10a4-7f12-a1b2-c3d4e5f60789"
 }
 ```
+
+### 2.5. OpenAPI / Swagger UI Aggregation
+API Gateway đóng vai trò làm cổng gom tài liệu Swagger UI tập trung (`http://localhost:8000/swagger-ui.html`):
+- Sử dụng thư viện `org.springdoc:springdoc-openapi-starter-webflux-ui:2.6.0`.
+- Tự động gom tài liệu từ các microservices qua các route:
+  - `/v3/api-docs/tenant-service` $\rightarrow$ `tenant-service` (`:8081/v3/api-docs`)
+  - `/v3/api-docs/identity-service` $\rightarrow$ `identity-service` (`:8080/v3/api-docs`)
+  - `/v3/api-docs/audit-service` $\rightarrow$ `audit-service` (`:8082/v3/api-docs`)
+- Lập trình viên và đối tác chỉ cần truy cập đúng một URL duy nhất tại Gateway để xem toàn bộ API specs của hệ thống.
 
 ---
 

@@ -17,7 +17,7 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
         config.setAllowedOriginPatterns(List.of(
-                "http://localhost:[*]",
+                "http://localhost:*",
                 "https://*.vishop.com",
                 "https://*.vishop.vn"
         ));

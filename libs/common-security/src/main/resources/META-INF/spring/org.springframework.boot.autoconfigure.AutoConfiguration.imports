@@ -1,1 +1,2 @@
 io.github.coreplatform.common.security.config.CommonSecurityAutoConfiguration
+io.github.coreplatform.common.security.jwt.JwtAutoConfiguration

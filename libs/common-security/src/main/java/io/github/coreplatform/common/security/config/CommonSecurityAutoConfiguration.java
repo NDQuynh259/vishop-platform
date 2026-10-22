@@ -27,7 +27,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @AutoConfiguration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
-@ConditionalOnClass({SecurityFilterChain.class, HttpSecurity.class})
+@ConditionalOnClass(name = "jakarta.servlet.Filter")
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class CommonSecurityAutoConfiguration {
 
     // #region internalHeaderAuthFilter
