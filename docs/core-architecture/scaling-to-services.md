@@ -151,7 +151,7 @@ Mỗi Service sở hữu hoàn toàn Bounded Context và Database riêng của m
 ### Quy tắc 2: Zero Synchronous Write (Không gọi HTTP chéo để ghi dữ liệu)
 - Không dùng HTTP `POST / PUT / DELETE` gọi trực tiếp từ Service A sang Service B để cập nhật dữ liệu.
 - Mọi thao tác ghi dữ liệu liên service **bắt buộc sử dụng Transactional Outbox Pattern + Kafka Event**.
-- *Chỉ cho phép HTTP GET*: Áp dụng rất hạn chế cho các truy vấn tra cứu thông tin tức thời (Read-only lookup) hoặc kiểm tra validation khẩn cấp mà cache chưa kịp có.
+- *Chỉ cho phép HTTP GET hoặc gRPC*: Áp dụng cho các truy vấn tra cứu thông tin tức thời (Read-only lookup) hoặc kiểm tra validation khẩn cấp mà cache chưa kịp có. Chi tiết xem tại [Chiến lược giao tiếp liên dịch vụ (Kafka vs REST vs gRPC)](./inter-service-communication.md).
 
 ### Quy tắc 3: Idempotent Consumer ở mọi đầu nhận
 - Do cơ chế của Kafka là *At-Least-Once Delivery*, mọi consumer nhận sự kiện bắt buộc phải kiểm tra trùng lặp thông qua [`IdempotentConsumer`](../../platform-common/common-persistence/src/main/java/io/github/coreplatform/common/persistence/idempotency/IdempotentConsumer.java) và bảng `consumed_messages`.

@@ -20,6 +20,7 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Idempotency and tracing](./idempotency-and-tracing.md) | Deduplication and request/message correlation |
 | [Observability](./observability.md) | Logs, metrics, distributed tracing, and alerting |
 | [Security architecture](./security-architecture.md) | Authentication, RBAC authorization, multi-tenancy isolation, secrets, and DevSecOps |
+| [Inter-service communication](./inter-service-communication.md) | Protocols: Kafka event-driven, REST/HTTPS, and gRPC decision framework |
 | [Spring Boot migration plan](./spring-boot-microservices-migration-plan.md) | Migration strategy and operational considerations |
 
 ## Core principles

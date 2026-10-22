@@ -81,8 +81,14 @@ if (requestId == null || requestId.isBlank()) {
 // Đồng thời gán vào Response header trả về cho Client
 ```
 
-### 3.2. Lan truyền qua Event Bus (`EventEnvelope`)
-Khi một service phát hành Domain Event lên Kafka, [`EventEnvelope.java`](../../platform-common/common-events/src/main/java/io/github/coreplatform/common/events/EventEnvelope.java) luôn mang theo metadata truy vết:
+### 3.2. Điểm tiếp nhận tại từng Microservice (`RequestIdFilter`)
+Tại mỗi service sử dụng thư viện `common-web`, [`RequestIdFilter`](../../libs/common-web/src/main/java/io/github/coreplatform/common/web/filter/RequestIdFilter.java) đảm bảo mọi request HTTP đều có định danh truy vết cục bộ:
+- Đọc header `X-Request-Id` được chuyển tiếp từ API Gateway (hoặc tự động sinh UUID mới nếu request gọi trực tiếp).
+- Lưu vào request attribute `request.setAttribute(RequestIdFilter.REQUEST_ID_ATTRIBUTE, requestId)` để các Exception Handler (`GlobalExceptionHandler`, `SecurityExceptionHandler`, `DatabaseExceptionHandler`) trích xuất và đính kèm vào RFC 7807 Problem Details khi có lỗi.
+- Đặt header `X-Request-Id` vào HTTP Response Header gửi ngược lại cho client.
+
+### 3.3. Lan truyền qua Event Bus (`EventEnvelope`)
+Khi một service phát hành Domain Event lên Kafka, [`EventEnvelope.java`](../../libs/common-events/src/main/java/io/github/coreplatform/common/events/EventEnvelope.java) luôn mang theo metadata truy vết:
 
 ```java
 public record EventEnvelope(
@@ -103,14 +109,14 @@ public record EventEnvelope(
 - **`correlationId`**: Định danh của request khởi nguồn (Root Cause).
 - **`causationId`**: Định danh của sự kiện hoặc request trực tiếp gây ra sự kiện này (Direct Cause).
 
-### 3.3. Xuyên suốt trong Saga Orchestrator
-Trong giao dịch phân tán dài hạn ([`SagaOrchestrator.java`](../../platform-common/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaOrchestrator.java)), `correlationId` liên kết toàn bộ trạng thái thực thi và các bước đền bù (compensating steps) trong bảng `saga_instances`:
+### 3.4. Xuyên suốt trong Saga Orchestrator
+Trong giao dịch phân tán dài hạn ([`SagaOrchestrator.java`](../../libs/common-saga/src/main/java/io/github/coreplatform/common/saga/SagaOrchestrator.java)), `correlationId` liên kết toàn bộ trạng thái thực thi và các bước đền bù (compensating steps) trong bảng `saga_instances`:
 
 ```java
 Optional<SagaInstanceEntity> findByCorrelationId(UUID correlationId);
 ```
 
-### 3.4. Cấu hình Logging (SLF4J MDC)
+### 3.5. Cấu hình Logging (SLF4J MDC)
 Mọi dòng log trong hệ thống đều tự động bổ sung `correlationId` vào MDC:
 ```text
 2026-10-20 14:10:05.123 [INFO] [order-service] [correlationId=0192a6df-10a4-7f12-a1b2-c3d4e5f60789] [tenantId=0192a6df-...] Order created with ID: 999
