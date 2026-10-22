@@ -2,6 +2,7 @@ package com.vishop.tenant.presentation.rest;
 
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
 import io.github.coreplatform.common.web.pagination.ListEnvelope;
 import com.vishop.tenant.application.command.ChangeTenantStatusCommand;
 import com.vishop.tenant.application.command.CreateTenantCommand;
@@ -67,10 +68,9 @@ public class TenantController {
             @RequestParam(name = "cursor", required = false) String cursor,
             HttpServletRequest request) {
 
-        String requestUrl = request.getRequestURI();
-        ListTenantsQuery query = new ListTenantsQuery(limit, cursor, requestUrl);
-        ListEnvelope<TenantResponseDto> response = queryBus.dispatch(query);
-        return ResponseEntity.ok(response);
+        ListTenantsQuery query = new ListTenantsQuery(limit, cursor);
+        PagedResult<TenantResponseDto> response = queryBus.dispatch(query);
+        return ResponseEntity.ok(ListEnvelope.from(request.getRequestURI(), response));
     }
     // #endregion
 

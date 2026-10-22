@@ -1,8 +1,8 @@
 package com.vishop.tenant.application.query;
 
 import io.github.coreplatform.common.domain.cqrs.QueryHandler;
-import io.github.coreplatform.common.web.pagination.Cursor;
-import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.domain.pagination.CursorPagination;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
 import com.vishop.tenant.application.dto.TenantResponseDto;
 import com.vishop.tenant.domain.Tenant;
 import com.vishop.tenant.domain.TenantRepositoryPort;
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class ListTenantsQueryHandler implements QueryHandler<ListTenantsQuery, ListEnvelope<TenantResponseDto>> {
+public class ListTenantsQueryHandler implements QueryHandler<ListTenantsQuery, PagedResult<TenantResponseDto>> {
 
     private final TenantRepositoryPort tenantRepository;
 
@@ -27,15 +27,15 @@ public class ListTenantsQueryHandler implements QueryHandler<ListTenantsQuery, L
     // #region handle
     @Override
     @Transactional(readOnly = true)
-    public ListEnvelope<TenantResponseDto> handle(ListTenantsQuery query) {
+    public PagedResult<TenantResponseDto> handle(ListTenantsQuery query) {
         Instant cursorCreatedAt = null;
         UUID cursorId = null;
 
         if (query.cursor() != null && !query.cursor().isBlank()) {
-            Cursor cursor = Cursor.decode(query.cursor());
+            CursorPagination cursor = CursorPagination.decode(query.cursor());
             if (cursor != null) {
                 cursorCreatedAt = cursor.createdAt();
-                cursorId = UUID.fromString(cursor.id());
+                cursorId = cursor.idAsUuid();
             }
         }
 
@@ -49,14 +49,14 @@ public class ListTenantsQueryHandler implements QueryHandler<ListTenantsQuery, L
         String nextCursor = null;
         if (hasNextPage && !pageTenants.isEmpty()) {
             Tenant last = pageTenants.get(pageTenants.size() - 1);
-            nextCursor = Cursor.of(last.getCreatedAt(), last.getId().toString()).encode();
+            nextCursor = CursorPagination.of(last.getCreatedAt(), last.getId()).encode();
         }
 
         List<TenantResponseDto> dtoList = pageTenants.stream()
                 .map(TenantResponseDto::from)
                 .toList();
 
-        return ListEnvelope.of(query.requestUrl(), dtoList, hasNextPage, nextCursor);
+        return PagedResult.ofCursor(dtoList, hasNextPage, nextCursor);
     }
     // #endregion
 }

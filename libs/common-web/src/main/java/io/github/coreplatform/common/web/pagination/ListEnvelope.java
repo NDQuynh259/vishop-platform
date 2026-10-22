@@ -1,6 +1,7 @@
 package io.github.coreplatform.common.web.pagination;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
 import java.util.List;
 
 /**
@@ -17,6 +18,28 @@ public record ListEnvelope<T>(
         String url,
         List<T> data,
         PageInfo pageInfo) {
+
+    // #region from
+    /**
+     * Converts a domain/application PagedResult into a web ListEnvelope.
+     *
+     * @param url request URL
+     * @param pagedResult domain/application paginated result
+     * @return web ListEnvelope
+     */
+    public static <T> ListEnvelope<T> from(String url, PagedResult<T> pagedResult) {
+        if (pagedResult == null) {
+            return null;
+        }
+        if (pagedResult.page() != null || pagedResult.total() != null) {
+            int page = pagedResult.page() != null ? pagedResult.page() : 1;
+            int limit = pagedResult.limit() != null ? pagedResult.limit() : pagedResult.items().size();
+            long total = pagedResult.total() != null ? pagedResult.total() : 0L;
+            return ofOffset(url, pagedResult.items(), page, limit, total);
+        }
+        return ofCursor(url, pagedResult.items(), pagedResult.hasNextPage(), pagedResult.nextCursor());
+    }
+    // #endregion
 
     // #region of
     /**

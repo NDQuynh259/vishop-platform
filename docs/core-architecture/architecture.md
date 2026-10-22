@@ -163,15 +163,18 @@ HTTP GET /api/v1/tenants?limit=20&cursor=...
    │
    ▼
 TenantController
-   │ queryBus.dispatch(new ListTenantsQuery(limit, cursor, url))
+   │ queryBus.dispatch(new ListTenantsQuery(limit, cursor))
    ▼
 SpringQueryBus
    │
    ▼
 ListTenantsQueryHandler (@Transactional(readOnly = true))
-   ├── 1. Giải mã opaque cursor (Cursor.decode(cursor))
+   ├── 1. Giải mã opaque cursor (CursorPagination.decode(cursor))
    ├── 2. Query trực tiếp DB tối ưu qua Spring Data JPA
-   └── 3. Bọc kết quả trong ListEnvelope<TenantResponseDto> (có hasNextPage và nextCursor)
+   └── 3. Trả về PagedResult<TenantResponseDto> (có hasNextPage và nextCursor)
+   ▼
+TenantController
+   └── Bọc PagedResult vào ListEnvelope<TenantResponseDto> (kèm request URL) trả về HTTP client
 ```
 
 ---

@@ -67,4 +67,35 @@ class ListEnvelopeTest {
         assertFalse(json.contains("\"nextCursor\":"));
     }
     // #endregion
+
+    // #region fromPagedResult
+    @Test
+    void fromPagedResultCursor() {
+        List<String> items = List.of("item1", "item2");
+        io.github.coreplatform.common.domain.pagination.PagedResult<String> paged =
+                io.github.coreplatform.common.domain.pagination.PagedResult.ofCursor(items, true, "cur123");
+
+        ListEnvelope<String> envelope = ListEnvelope.from("/api/v1/items", paged);
+        assertEquals("list", envelope.object());
+        assertEquals("/api/v1/items", envelope.url());
+        assertEquals(2, envelope.data().size());
+        assertTrue(envelope.pageInfo().hasNextPage());
+        assertEquals("cur123", envelope.pageInfo().nextCursor());
+    }
+
+    @Test
+    void fromPagedResultOffset() {
+        List<String> items = List.of("item1", "item2");
+        io.github.coreplatform.common.domain.pagination.PagedResult<String> paged =
+                io.github.coreplatform.common.domain.pagination.PagedResult.ofOffset(items, 2, 10, 25);
+
+        ListEnvelope<String> envelope = ListEnvelope.from("/api/v1/items", paged);
+        assertEquals("list", envelope.object());
+        assertEquals(2, envelope.pageInfo().page());
+        assertEquals(10, envelope.pageInfo().limit());
+        assertEquals(25L, envelope.pageInfo().total());
+        assertEquals(3, envelope.pageInfo().totalPages());
+        assertTrue(envelope.pageInfo().hasNextPage());
+    }
+    // #endregion
 }
