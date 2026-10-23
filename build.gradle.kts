@@ -26,6 +26,7 @@ subprojects {
                 val cp = this as org.gradle.plugins.ide.eclipse.model.Classpath
                 val mainCompileFiles = configurations.findByName("compileClasspath")?.files ?: emptySet()
                 cp.entries.filterIsInstance<org.gradle.plugins.ide.eclipse.model.Library>().forEach { entry ->
+                    entry.isExported = true
                     if (File(entry.path) in mainCompileFiles) {
                         entry.entryAttributes["gradle_used_by_scope"] = "main,test"
                     }
