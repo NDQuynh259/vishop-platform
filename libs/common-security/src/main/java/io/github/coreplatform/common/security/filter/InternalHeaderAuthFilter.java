@@ -1,116 +1,105 @@
 package io.github.coreplatform.common.security.filter;
 
-import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import io.github.coreplatform.common.security.context.CommonUserDetails;
 import io.github.coreplatform.common.security.context.TenantContext;
+import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * Filter that intercepts incoming HTTP requests from the API Gateway,
- * parses trusted internal security headers, and populates SecurityContextHolder
- * and TenantContext. Guarantees ThreadLocal cleanup in finally block.
- */
-@Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 5)
+/** Verifies signed tokens; identity headers alone confer no authority. */
 public class InternalHeaderAuthFilter extends OncePerRequestFilter {
+  private final JwtTokenProvider tokens;
 
-    // #region doFilterInternal
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
+  public InternalHeaderAuthFilter(JwtTokenProvider tokens) {
+    this.tokens = tokens;
+  }
 
-        String userIdHeader = request.getHeader(SecurityHeaders.X_USER_ID);
-        String tenantIdHeader = request.getHeader(SecurityHeaders.X_TENANT_ID);
-        String rolesHeader = request.getHeader(SecurityHeaders.X_USER_ROLES);
-        String permissionsHeader = request.getHeader(SecurityHeaders.X_USER_PERMISSIONS);
-        String shopsHeader = request.getHeader(SecurityHeaders.X_USER_SHOPS);
-
-        UUID tenantId = parseUuid(tenantIdHeader);
-        UUID userId = parseUuid(userIdHeader);
-
-        if (tenantId != null) {
-            TenantContext.set(tenantId);
-        }
-
-        if (userId != null && tenantId != null) {
-            List<GrantedAuthority> authorities = new ArrayList<>();
-
-            // 1. Parse Roles (Ensure ROLE_ prefix for Spring Security hasRole() support)
-            if (rolesHeader != null && !rolesHeader.isBlank()) {
-                Arrays.stream(rolesHeader.split(","))
-                        .map(String::trim)
-                        .filter(r -> !r.isEmpty())
-                        .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
-                        .map(SimpleGrantedAuthority::new)
-                        .forEach(authorities::add);
-            }
-
-            // 2. Parse Permissions (e.g. order.create, product.view)
-            if (permissionsHeader != null && !permissionsHeader.isBlank()) {
-                Arrays.stream(permissionsHeader.split(","))
-                        .map(String::trim)
-                        .filter(p -> !p.isEmpty())
-                        .map(SimpleGrantedAuthority::new)
-                        .forEach(authorities::add);
-            }
-
-            // 3. Parse Accessible Shop IDs
-            Set<UUID> accessibleShopIds = new HashSet<>();
-            if (shopsHeader != null && !shopsHeader.isBlank()) {
-                Arrays.stream(shopsHeader.split(","))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .map(this::parseUuid)
-                        .filter(s -> s != null)
-                        .forEach(accessibleShopIds::add);
-            }
-
-            CommonUserDetails userDetails = new CommonUserDetails(userId, tenantId, accessibleShopIds, authorities);
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-        }
-
+  @Override
+  protected void doFilterInternal(
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+      throws ServletException, IOException {
+    SecurityContextHolder.clearContext();
+    TenantContext.clear();
+    try {
+      String token = extractToken(request);
+      if (token != null) {
+        CommonUserDetails principal;
         try {
-            filterChain.doFilter(request, response);
-        } finally {
-            SecurityContextHolder.clearContext();
-            TenantContext.clear();
+          var claims = tokens.parseClaims(token);
+          if (claims.getExpiration() == null) {
+            throw new IllegalArgumentException("Token expiration is required");
+          }
+          if (!"iam-service".equals(claims.getIssuer())
+              || claims.getAudience() == null
+              || !claims.getAudience().contains("vishop-api")
+              || !"access".equals(claims.get("token_use"))) {
+            throw new IllegalArgumentException("An IAM access token is required");
+          }
+          UUID.fromString(claims.get("sid", String.class));
+          UUID userId = UUID.fromString(claims.getSubject());
+          UUID tenantId = UUID.fromString(claims.get("tenantId", String.class));
+          var authorities = new ArrayList<GrantedAuthority>();
+          addAuthorities(authorities, claims.get("roles"), true);
+          addAuthorities(authorities, claims.get("permissions"), false);
+          String systemRole = claims.get("systemRole", String.class);
+          if (!Set.of("USER", "PLATFORM_ADMIN").contains(systemRole)) {
+            throw new IllegalArgumentException("Invalid system role");
+          }
+          authorities.add(new SimpleGrantedAuthority("SYSTEM_" + systemRole));
+          principal = new CommonUserDetails(userId, tenantId, Set.of(), authorities);
+        } catch (RuntimeException invalidToken) {
+          response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid authentication token");
+          return;
         }
+        TenantContext.set(principal.tenantId());
+        SecurityContextHolder.getContext()
+            .setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                    principal, null, principal.getAuthorities()));
+      }
+      chain.doFilter(request, response);
+    } finally {
+      SecurityContextHolder.clearContext();
+      TenantContext.clear();
     }
-    // #endregion
+  }
 
-    // #region parseUuid
-    private UUID parseUuid(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return UUID.fromString(value.trim());
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
+  private static void addAuthorities(
+      ArrayList<GrantedAuthority> target, Object values, boolean roles) {
+    if (!(values instanceof java.util.List<?> list)) return;
+    for (Object value : list) {
+      if (!(value instanceof String name) || name.isBlank()) {
+        throw new IllegalArgumentException("Invalid authority claim");
+      }
+      target.add(new SimpleGrantedAuthority(roles ? "TENANT_ROLE_" + name : name));
     }
-    // #endregion
+  }
+
+  private static String extractToken(HttpServletRequest request) {
+    String authorization = request.getHeader("Authorization");
+    if (authorization != null) {
+      return authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "";
+    }
+    if (request.getCookies() != null) {
+      for (Cookie cookie : request.getCookies()) {
+        if (Set.of("better-auth.session_token", "vishop_session", "vishop_token")
+            .contains(cookie.getName())) {
+          return cookie.getValue();
+        }
+      }
+    }
+    return null;
+  }
 }

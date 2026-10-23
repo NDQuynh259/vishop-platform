@@ -10,9 +10,9 @@ echo "Waiting for Kafka to be available at ${KAFKA_BROKER}..."
 cub kafka-ready -b "${KAFKA_BROKER}" 1 30 || true
 
 TOPICS=(
-  "tenant.events:3:1"
-  "identity.events:3:1"
-  "audit.events:3:1"
+  "vishop.tenant.events:3:1"
+  "vishop.user.events:3:1"
+  "vishop.audit.events:3:1"
 )
 
 echo "Creating core Kafka topics..."

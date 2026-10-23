@@ -10,10 +10,10 @@ import io.github.coreplatform.common.domain.pagination.PagedResult;
  */
 public interface PaginatedQuery<F, R> extends Query<PagedResult<R>> {
 
-    /**
-     * Business filter criteria.
-     *
-     * @return filter object
-     */
-    F filter();
+  /**
+   * Business filter criteria.
+   *
+   * @return filter object
+   */
+  F filter();
 }

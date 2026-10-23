@@ -12,7 +12,9 @@ Tài liệu này không lặp lại spec nghiệp vụ. Nó quy định cách vi
 
 Backend ViShop: **Java 21 LTS, Spring Boot 3.3.x, Gradle Multi-Module, PostgreSQL 16 + Flyway + Spring Data JPA, kiến trúc DDD/CQRS** (`CommandBus`/`QueryBus`), Transactional Outbox pattern, Apache Kafka làm event broker phân tán, OpenTelemetry + Micrometer Prometheus cho quan sát.
 
-Kiến trúc bao gồm nền tảng `platform-common` và các microservices độc lập (`tenant-service`, `identity-service`, `audit-service`...). Module mới tiếp tục đi **bên trong** khung DDD/CQRS hiện hữu. Tám điều dưới đây là ràng buộc cứng, PR vi phạm bị chặn:
+Các runtime hiện tại là `iam-service`, `api-gateway`, `audit-service`, dùng thư viện chung trong `libs`.
+IAM dùng domain records, application service và JDBC repository theo [IAM README](../../services/iam-service/README.md).
+Các nguyên tắc DDD/CQRS dưới đây áp dụng cho module lựa chọn cấu trúc đó:
 
 1. **Tạo service chuẩn cấu trúc 4 tầng:** Đăng ký trong `settings.gradle.kts`, cấu hình `build.gradle.kts` kế thừa các module `platform-common`, và phân chia đầy đủ 4 tầng (`domain`, `application`, `infrastructure`, `presentation`).
 2. **Handler không biết HTTP status.** Vi phạm nghiệp vụ thì `throw new DomainException` với mã lỗi nghiệp vụ tương ứng (`EntityNotFoundException`, `ConflictException`, `BusinessRuleViolationException`), **không bao giờ** hardcode mã HTTP trong domain entity hay application handler.

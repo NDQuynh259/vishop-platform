@@ -4,8 +4,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Domain & Application level container for paginated query results.
- * Completely free of web/HTTP concepts (e.g. request URLs, HTTP envelopes).
+ * Domain & Application level container for paginated query results. Completely free of web/HTTP
+ * concepts (e.g. request URLs, HTTP envelopes).
  *
  * @param items page items
  * @param hasNextPage whether more items exist after this page
@@ -16,31 +16,33 @@ import java.util.List;
  * @param totalPages total number of pages (offset pagination)
  */
 public record PagedResult<T>(
-        List<T> items,
-        boolean hasNextPage,
-        String nextCursor,
-        Integer page,
-        Integer limit,
-        Long total,
-        Integer totalPages) {
+    List<T> items,
+    boolean hasNextPage,
+    String nextCursor,
+    Integer page,
+    Integer limit,
+    Long total,
+    Integer totalPages) {
 
-    // #region PagedResult
-    public PagedResult {
-        items = items == null ? Collections.emptyList() : Collections.unmodifiableList(items);
-    }
-    // #endregion
+  // #region PagedResult
+  public PagedResult {
+    items = items == null ? Collections.emptyList() : Collections.unmodifiableList(items);
+  }
 
-    // #region ofCursor
-    public static <T> PagedResult<T> ofCursor(List<T> items, boolean hasNextPage, String nextCursor) {
-        return new PagedResult<>(items, hasNextPage, nextCursor, null, null, null, null);
-    }
-    // #endregion
+  // #endregion
 
-    // #region ofOffset
-    public static <T> PagedResult<T> ofOffset(List<T> items, int page, int limit, long total) {
-        int totalPages = limit > 0 ? (int) Math.ceil((double) total / limit) : 0;
-        boolean hasNext = page < totalPages;
-        return new PagedResult<>(items, hasNext, null, page, limit, total, totalPages);
-    }
-    // #endregion
+  // #region ofCursor
+  public static <T> PagedResult<T> ofCursor(List<T> items, boolean hasNextPage, String nextCursor) {
+    return new PagedResult<>(items, hasNextPage, nextCursor, null, null, null, null);
+  }
+
+  // #endregion
+
+  // #region ofOffset
+  public static <T> PagedResult<T> ofOffset(List<T> items, int page, int limit, long total) {
+    int totalPages = limit > 0 ? (int) Math.ceil((double) total / limit) : 0;
+    boolean hasNext = page < totalPages;
+    return new PagedResult<>(items, hasNext, null, page, limit, total, totalPages);
+  }
+  // #endregion
 }

@@ -1,3 +1,7 @@
+> Historical design proposal: service boundaries and security flows below predate the IAM merge.
+> Current runtime/configuration is documented in [IAM README](../../services/iam-service/README.md).
+> The separate identity/tenant service source directories have been removed.
+
 # ViShop — Kế hoạch chuyển đổi sang Java Spring Boot Microservices
 
 ## 1. Mục tiêu

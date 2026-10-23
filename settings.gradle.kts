@@ -12,8 +12,7 @@ include(
     "libs:common-test",
 
     // Microservices
+    "services:iam-service",
     "services:api-gateway",
-    "services:identity-service",
-    "services:tenant-service",
     "services:audit-service",
 )

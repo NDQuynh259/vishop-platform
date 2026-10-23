@@ -17,8 +17,7 @@ infra/
 │   ├── Dockerfile.dev               # Dev Dockerfile (JDK runtime, remote debug)
 │   ├── Dockerfile.prod              # Prod Dockerfile (Minimal Alpine JRE 21, Non-root)
 │   ├── Dockerfile.api-gateway       # Specialized Dockerfile cho Gateway
-│   ├── Dockerfile.identity-service  # Specialized Dockerfile cho Identity Service
-│   ├── Dockerfile.tenant-service    # Specialized Dockerfile cho Tenant Service
+│   ├── Dockerfile.iam-service       # Identity, tenant access và CMS
 │   └── Dockerfile.audit-service     # Specialized Dockerfile cho Audit Service
 │
 ├── scripts/                         # Script tự động hoá

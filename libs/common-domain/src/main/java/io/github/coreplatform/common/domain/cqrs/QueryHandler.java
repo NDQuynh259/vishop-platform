@@ -8,13 +8,13 @@ package io.github.coreplatform.common.domain.cqrs;
  */
 public interface QueryHandler<Q extends Query<R>, R> {
 
-    // #region handle
-    /**
-     * Executes the query and returns the requested data.
-     *
-     * @param query the query object
-     * @return the query result
-     */
-    R handle(Q query);
-    // #endregion
+  // #region handle
+  /**
+   * Executes the query and returns the requested data.
+   *
+   * @param query the query object
+   * @return the query result
+   */
+  R handle(Q query);
+  // #endregion
 }

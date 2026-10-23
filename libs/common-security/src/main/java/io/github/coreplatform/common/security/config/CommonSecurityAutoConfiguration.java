@@ -20,71 +20,75 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Boot AutoConfiguration for Core Platform Security.
- * Provides pre-configured stateless SecurityFilterChain, internal header filter,
- * ShopSecurity SpEL evaluator, and Spring Data AuditorAware.
+ * Spring Boot AutoConfiguration for Core Platform Security. Provides pre-configured stateless
+ * SecurityFilterChain, internal header filter, ShopSecurity SpEL evaluator, and Spring Data
+ * AuditorAware.
  */
-@AutoConfiguration
+@AutoConfiguration(after = io.github.coreplatform.common.security.jwt.JwtAutoConfiguration.class)
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 @ConditionalOnClass(name = "jakarta.servlet.Filter")
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class CommonSecurityAutoConfiguration {
 
-    // #region internalHeaderAuthFilter
+  // #region internalHeaderAuthFilter
+  @Bean
+  @ConditionalOnMissingBean
+  public InternalHeaderAuthFilter internalHeaderAuthFilter(
+      io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens) {
+    return new InternalHeaderAuthFilter(tokens);
+  }
+
+  // #endregion
+
+  // #region shopSecurity
+  @Bean
+  @ConditionalOnMissingBean
+  public ShopSecurity shopSecurity() {
+    return new ShopSecurity();
+  }
+
+  // #endregion
+
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(AuditorAware.class)
+  public static class JpaAuditingConfiguration {
+
+    // #region springSecurityAuditorAware
     @Bean
-    @ConditionalOnMissingBean
-    public InternalHeaderAuthFilter internalHeaderAuthFilter() {
-        return new InternalHeaderAuthFilter();
+    @ConditionalOnMissingBean(AuditorAware.class)
+    public SpringSecurityAuditorAware springSecurityAuditorAware() {
+      return new SpringSecurityAuditorAware();
     }
     // #endregion
+  }
 
-    // #region shopSecurity
-    @Bean
-    @ConditionalOnMissingBean
-    public ShopSecurity shopSecurity() {
-        return new ShopSecurity();
-    }
-    // #endregion
+  // #region defaultSecurityFilterChain
+  @Bean
+  @ConditionalOnMissingBean(SecurityFilterChain.class)
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+  public SecurityFilterChain defaultSecurityFilterChain(
+      HttpSecurity http, InternalHeaderAuthFilter authFilter) throws Exception {
 
-    @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(AuditorAware.class)
-    public static class JpaAuditingConfiguration {
-
-        // #region springSecurityAuditorAware
-        @Bean
-        @ConditionalOnMissingBean(AuditorAware.class)
-        public SpringSecurityAuditorAware springSecurityAuditorAware() {
-            return new SpringSecurityAuditorAware();
-        }
-        // #endregion
-    }
-
-    // #region defaultSecurityFilterChain
-    @Bean
-    @ConditionalOnMissingBean(SecurityFilterChain.class)
-    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-    public SecurityFilterChain defaultSecurityFilterChain(
-            HttpSecurity http,
-            InternalHeaderAuthFilter authFilter) throws Exception {
-
-        return http
-                .csrf(AbstractHttpConfigurer::disable)
-                .cors(Customizer.withDefaults())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/info",
-                                "/actuator/prometheus",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**"
-                        ).permitAll()
-                        .anyRequest().authenticated()
-                )
-                .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class)
-                .build();
-    }
-    // #endregion
+    return http.csrf(AbstractHttpConfigurer::disable)
+        .cors(Customizer.withDefaults())
+        .sessionManagement(
+            session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(
+            authorize ->
+                authorize
+                    .requestMatchers(
+                        "/actuator/health",
+                        "/actuator/info",
+                        "/actuator/prometheus",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/v3/api-docs/**")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated())
+        .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class)
+        .build();
+  }
+  // #endregion
 }

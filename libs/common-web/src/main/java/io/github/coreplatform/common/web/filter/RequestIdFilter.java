@@ -10,22 +10,21 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Propagates or creates X-Request-Id for every HTTP request. */
 public final class RequestIdFilter extends OncePerRequestFilter {
-    public static final String REQUEST_ID_ATTRIBUTE = "vishop.requestId";
-    public static final String HEADER = "X-Request-Id";
+  public static final String REQUEST_ID_ATTRIBUTE = "vishop.requestId";
+  public static final String HEADER = "X-Request-Id";
 
-    // #region doFilterInternal
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
-        String requestId = request.getHeader(HEADER);
-        if (requestId == null || requestId.isBlank()) {
-            requestId = UUID.randomUUID().toString();
-        }
-        request.setAttribute(REQUEST_ID_ATTRIBUTE, requestId);
-        response.setHeader(HEADER, requestId);
-        filterChain.doFilter(request, response);
+  // #region doFilterInternal
+  @Override
+  protected void doFilterInternal(
+      HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+    String requestId = request.getHeader(HEADER);
+    if (requestId == null || requestId.isBlank()) {
+      requestId = UUID.randomUUID().toString();
     }
-    // #endregion
+    request.setAttribute(REQUEST_ID_ATTRIBUTE, requestId);
+    response.setHeader(HEADER, requestId);
+    filterChain.doFilter(request, response);
+  }
+  // #endregion
 }

@@ -20,9 +20,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Handles Spring Security AccessDeniedException and AuthenticationException,
- * formatting them consistently into RFC 9457 Problem Details.
- * Active only when Spring Security is present on the classpath.
+ * Handles Spring Security AccessDeniedException and AuthenticationException, formatting them
+ * consistently into RFC 9457 Problem Details. Active only when Spring Security is present on the
+ * classpath.
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -37,10 +37,15 @@ public class SecurityExceptionHandler {
       AccessDeniedException ex, HttpServletRequest request) {
 
     String requestId = resolveRequestId(request);
-    log.warn("[{}] Access denied on {} {}: {}", requestId, request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Access denied on {} {}: {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        HttpStatus.FORBIDDEN, "Access is denied.");
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Access is denied.");
     problem.setType(URI.create("/errors/forbidden"));
     problem.setTitle("Forbidden");
     problem.setInstance(resolveInstance(request));
@@ -50,6 +55,7 @@ public class SecurityExceptionHandler {
 
     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(problem);
   }
+
   // #endregion
 
   // #region handleAuthentication
@@ -58,10 +64,16 @@ public class SecurityExceptionHandler {
       AuthenticationException ex, HttpServletRequest request) {
 
     String requestId = resolveRequestId(request);
-    log.warn("[{}] Authentication required on {} {}: {}", requestId, request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Authentication required on {} {}: {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        HttpStatus.UNAUTHORIZED, "Authentication is required to access this resource.");
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNAUTHORIZED, "Authentication is required to access this resource.");
     problem.setType(URI.create("/errors/unauthorized"));
     problem.setTitle("Unauthorized");
     problem.setInstance(resolveInstance(request));
@@ -71,6 +83,7 @@ public class SecurityExceptionHandler {
 
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(problem);
   }
+
   // #endregion
 
   // #region resolveInstance
@@ -80,6 +93,7 @@ public class SecurityExceptionHandler {
     }
     return URI.create(request.getRequestURI());
   }
+
   // #endregion
 
   // #region resolveRequestId

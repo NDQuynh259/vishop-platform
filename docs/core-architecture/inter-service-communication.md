@@ -78,7 +78,7 @@ Tất cả các thao tác làm **thay đổi trạng thái dữ liệu (State Mu
    - Mọi ứng dụng ngoài (Web Admin, POS App, Mobile App) và Webhook sàn đều đi qua [`api-gateway`](../../services/api-gateway) bằng HTTPS/REST.
    - Sử dụng chuẩn JSON, định dạng lỗi RFC 7807 Problem Details (`GlobalExceptionHandler`), và tài liệu OpenAPI 3 qua [`OpenApiAutoConfiguration`](../../libs/common-web/src/main/java/io/github/coreplatform/common/web/openapi/OpenApiAutoConfiguration.java).
 2. **Truy vấn Tra cứu Nội bộ (East-West Read-Only Queries - Giai đoạn hiện tại)**:
-   - Khi Service A cần lấy thông tin tra cứu đơn giản từ Service B mà dữ liệu đó không thể cache hoặc chưa có trong Read Model (ví dụ: Gateway gọi `tenant-service` để kiểm tra trạng thái hoạt động của Tenant).
+   - Khi Service A cần lấy thông tin tra cứu đơn giản từ Service B mà dữ liệu đó không thể cache hoặc chưa có trong Read Model (ví dụ: Gateway gọi `iam-service` để kiểm tra trạng thái hoạt động của Tenant).
    - Ưu điểm: Tận dụng trực tiếp cấu trúc Spring Boot hiện có, không phát sinh chi phí duy trì file protobuf.
 
 ---
@@ -87,7 +87,7 @@ Tất cả các thao tác làm **thay đổi trạng thái dữ liệu (State Mu
 
 gRPC được áp dụng khi giao tiếp nội bộ (East-West) đạt tới các tiêu chí:
 1. **Độ trễ yêu cầu dưới 5ms (Hot-path Latency Sensitive)**:
-   - Phân giải Token và kiểm tra quyền hạn: API Gateway xác thực tính hợp lệ của JWT token hoặc phân quyền RBAC bằng cách gọi gRPC sang `identity-service` cho hàng nghìn request/giây.
+   - Phân giải Token và kiểm tra quyền hạn: API Gateway xác thực tính hợp lệ của JWT token hoặc phân quyền RBAC bằng cách gọi HTTP introspection sang `iam-service` cho hàng nghìn request/giây.
 2. **Thu thập Dữ liệu Viễn thám & Giám sát (Telemetry Streaming)**:
    - Các service đẩy log, metrics, traces tới OpenTelemetry Collector qua giao thức OTLP gRPC (cổng `4317` đã cấu hình trong `docker-compose.infra.yml`).
 3. **Tiết kiệm tài nguyên mạng và CPU**:

@@ -22,57 +22,56 @@ import reactor.test.StepVerifier;
 
 class TenantResolutionGlobalFilterTest {
 
-    private TenantResolutionGlobalFilter filter;
-    private GatewayFilterChain chain;
+  private TenantResolutionGlobalFilter filter;
+  private GatewayFilterChain chain;
 
-    @BeforeEach
-    void setUp() {
-        filter = new TenantResolutionGlobalFilter();
-        chain = mock(GatewayFilterChain.class);
-        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
-    }
+  @BeforeEach
+  void setUp() {
+    filter = new TenantResolutionGlobalFilter();
+    chain = mock(GatewayFilterChain.class);
+    when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
+  }
 
-    @Test
-    @DisplayName("Should proceed when X-Tenant-Id is a valid UUID")
-    void shouldProceedWhenValidUuid() {
-        String validTenantId = UUID.randomUUID().toString();
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/tenants")
-                .header(TenantResolutionGlobalFilter.TENANT_ID_HEADER, validTenantId)
-                .build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+  @Test
+  @DisplayName("Should proceed when X-Tenant-Id is a valid UUID")
+  void shouldProceedWhenValidUuid() {
+    String validTenantId = UUID.randomUUID().toString();
+    MockServerHttpRequest request =
+        MockServerHttpRequest.get("/api/v1/tenants")
+            .header(TenantResolutionGlobalFilter.TENANT_ID_HEADER, validTenantId)
+            .build();
+    MockServerWebExchange exchange = MockServerWebExchange.from(request);
 
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
+    StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(exchange);
-    }
+    verify(chain).filter(exchange);
+  }
 
-    @Test
-    @DisplayName("Should proceed when X-Tenant-Id is absent")
-    void shouldProceedWhenAbsent() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/auth/login").build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+  @Test
+  @DisplayName("Should proceed when X-Tenant-Id is absent")
+  void shouldProceedWhenAbsent() {
+    MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/auth/login").build();
+    MockServerWebExchange exchange = MockServerWebExchange.from(request);
 
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
+    StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(exchange);
-    }
+    verify(chain).filter(exchange);
+  }
 
-    @Test
-    @DisplayName("Should return 400 Problem Details when X-Tenant-Id is malformed")
-    void shouldReturn400WhenMalformed() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/tenants")
-                .header(TenantResolutionGlobalFilter.TENANT_ID_HEADER, "invalid-not-a-uuid")
-                .build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+  @Test
+  @DisplayName("Should return 400 Problem Details when X-Tenant-Id is malformed")
+  void shouldReturn400WhenMalformed() {
+    MockServerHttpRequest request =
+        MockServerHttpRequest.get("/api/v1/tenants")
+            .header(TenantResolutionGlobalFilter.TENANT_ID_HEADER, "invalid-not-a-uuid")
+            .build();
+    MockServerWebExchange exchange = MockServerWebExchange.from(request);
 
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
+    StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain, never()).filter(any());
-        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(exchange.getResponse().getHeaders().getContentType())
-                .isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
-    }
+    verify(chain, never()).filter(any());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(exchange.getResponse().getHeaders().getContentType())
+        .isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+  }
 }

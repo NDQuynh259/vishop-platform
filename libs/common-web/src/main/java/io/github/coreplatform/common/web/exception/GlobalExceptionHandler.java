@@ -1,6 +1,5 @@
 package io.github.coreplatform.common.web.exception;
 
-import io.github.coreplatform.common.web.filter.RequestIdFilter;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.exception.BusinessRuleViolationException;
 import io.github.coreplatform.common.domain.exception.ConflictException;
@@ -8,6 +7,7 @@ import io.github.coreplatform.common.domain.exception.DomainException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
+import io.github.coreplatform.common.web.filter.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
@@ -35,10 +35,11 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
- * Global exception handler mapping domain, validation, and web exceptions
- * to RFC 9457 Problem Details for HTTP APIs.
+ * Global exception handler mapping domain, validation, and web exceptions to RFC 9457 Problem
+ * Details for HTTP APIs.
  *
- * <p>Extensions: {@code code}, {@code requestId}, {@code timestamp}, {@code errors}, {@code instance}.
+ * <p>Extensions: {@code code}, {@code requestId}, {@code timestamp}, {@code errors}, {@code
+ * instance}.
  */
 @RestControllerAdvice
 @Order(Ordered.LOWEST_PRECEDENCE)
@@ -55,30 +56,38 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleValidation(
       MethodArgumentNotValidException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        "/errors/validation-failed",
-        "Validation failed",
-        "validation_failed",
-        "One or more fields did not pass validation.",
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "/errors/validation-failed",
+            "Validation failed",
+            "validation_failed",
+            "One or more fields did not pass validation.",
+            request);
 
-    List<ValidationError> errors = ex.getBindingResult().getFieldErrors().stream()
-        .map(fe -> new ValidationError(fe.getField(), fe.getDefaultMessage()))
-        .toList();
+    List<ValidationError> errors =
+        ex.getBindingResult().getFieldErrors().stream()
+            .map(fe -> new ValidationError(fe.getField(), fe.getDefaultMessage()))
+            .toList();
 
     if (errors.isEmpty() && ex.getBindingResult().hasGlobalErrors()) {
-      errors = ex.getBindingResult().getGlobalErrors().stream()
-          .map(ge -> new ValidationError(ge.getObjectName(), ge.getDefaultMessage()))
-          .toList();
+      errors =
+          ex.getBindingResult().getGlobalErrors().stream()
+              .map(ge -> new ValidationError(ge.getObjectName(), ge.getDefaultMessage()))
+              .toList();
     }
 
     problem.setProperty("errors", errors);
-    log.warn("[{}] Validation failed on {} {}: {} field error(s)",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), errors.size());
+    log.warn(
+        "[{}] Validation failed on {} {}: {} field error(s)",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        errors.size());
 
     return ResponseEntity.unprocessableEntity().body(problem);
   }
+
   // #endregion
 
   // #region handleConstraintViolation
@@ -86,31 +95,40 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleConstraintViolation(
       ConstraintViolationException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        "/errors/validation-failed",
-        "Validation failed",
-        "validation_failed",
-        "One or more parameters did not pass validation.",
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "/errors/validation-failed",
+            "Validation failed",
+            "validation_failed",
+            "One or more parameters did not pass validation.",
+            request);
 
-    List<ValidationError> errors = ex.getConstraintViolations().stream()
-        .map(cv -> {
-          String field = cv.getPropertyPath() != null ? cv.getPropertyPath().toString() : "parameter";
-          int lastDot = field.lastIndexOf('.');
-          if (lastDot >= 0 && lastDot < field.length() - 1) {
-            field = field.substring(lastDot + 1);
-          }
-          return new ValidationError(field, cv.getMessage());
-        })
-        .toList();
+    List<ValidationError> errors =
+        ex.getConstraintViolations().stream()
+            .map(
+                cv -> {
+                  String field =
+                      cv.getPropertyPath() != null ? cv.getPropertyPath().toString() : "parameter";
+                  int lastDot = field.lastIndexOf('.');
+                  if (lastDot >= 0 && lastDot < field.length() - 1) {
+                    field = field.substring(lastDot + 1);
+                  }
+                  return new ValidationError(field, cv.getMessage());
+                })
+            .toList();
 
     problem.setProperty("errors", errors);
-    log.warn("[{}] Constraint violation on {} {}: {} violation(s)",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), errors.size());
+    log.warn(
+        "[{}] Constraint violation on {} {}: {} violation(s)",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        errors.size());
 
     return ResponseEntity.unprocessableEntity().body(problem);
   }
+
   // #endregion
 
   // #region handleHandlerMethodValidation
@@ -118,30 +136,42 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleHandlerMethodValidation(
       HandlerMethodValidationException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        "/errors/validation-failed",
-        "Validation failed",
-        "validation_failed",
-        "One or more parameters did not pass validation.",
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "/errors/validation-failed",
+            "Validation failed",
+            "validation_failed",
+            "One or more parameters did not pass validation.",
+            request);
 
-    List<ValidationError> errors = ex.getAllValidationResults().stream()
-        .flatMap(result -> result.getResolvableErrors().stream().map(error -> {
-          String field = result.getMethodParameter().getParameterName();
-          if (error instanceof org.springframework.validation.FieldError fe) {
-            field = fe.getField();
-          }
-          return new ValidationError(field != null ? field : "parameter", error.getDefaultMessage());
-        }))
-        .toList();
+    List<ValidationError> errors =
+        ex.getAllValidationResults().stream()
+            .flatMap(
+                result ->
+                    result.getResolvableErrors().stream()
+                        .map(
+                            error -> {
+                              String field = result.getMethodParameter().getParameterName();
+                              if (error instanceof org.springframework.validation.FieldError fe) {
+                                field = fe.getField();
+                              }
+                              return new ValidationError(
+                                  field != null ? field : "parameter", error.getDefaultMessage());
+                            }))
+            .toList();
 
     problem.setProperty("errors", errors);
-    log.warn("[{}] Method validation failed on {} {}: {} error(s)",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), errors.size());
+    log.warn(
+        "[{}] Method validation failed on {} {}: {} error(s)",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        errors.size());
 
     return ResponseEntity.unprocessableEntity().body(problem);
   }
+
   // #endregion
 
   // ==========================================
@@ -153,13 +183,14 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleNotFound(
       EntityNotFoundException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.NOT_FOUND,
-        "/errors/entity-not-found",
-        "Entity not found",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.NOT_FOUND,
+            "/errors/entity-not-found",
+            "Entity not found",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
     if (ex.getEntityType() != null) {
       problem.setProperty("entityType", ex.getEntityType());
@@ -168,11 +199,16 @@ public class GlobalExceptionHandler {
       problem.setProperty("entityId", ex.getEntityId().toString());
     }
 
-    log.warn("[{}] Entity not found on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Entity not found on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
   }
+
   // #endregion
 
   // #region handleConflict
@@ -180,19 +216,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleConflict(
       ConflictException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.CONFLICT,
-        "/errors/conflict",
-        "Conflict",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.CONFLICT,
+            "/errors/conflict",
+            "Conflict",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Conflict on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Conflict on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
   }
+
   // #endregion
 
   // #region handleBusinessRule
@@ -200,19 +242,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleBusinessRule(
       BusinessRuleViolationException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        "/errors/business-rule-violation",
-        "Business rule violation",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "/errors/business-rule-violation",
+            "Business rule violation",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Business rule violation on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Business rule violation on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(problem);
   }
+
   // #endregion
 
   // #region handleUnauthorized
@@ -220,19 +268,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleUnauthorized(
       UnauthorizedException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNAUTHORIZED,
-        "/errors/unauthorized",
-        "Unauthorized",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNAUTHORIZED,
+            "/errors/unauthorized",
+            "Unauthorized",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Unauthorized on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Unauthorized on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(problem);
   }
+
   // #endregion
 
   // #region handleForbidden
@@ -240,19 +294,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleForbidden(
       ForbiddenException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.FORBIDDEN,
-        "/errors/forbidden",
-        "Forbidden",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.FORBIDDEN,
+            "/errors/forbidden",
+            "Forbidden",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Forbidden on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Forbidden on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(problem);
   }
+
   // #endregion
 
   // #region handleBadRequestException
@@ -260,19 +320,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleBadRequestException(
       BadRequestException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.BAD_REQUEST,
-        "/errors/bad-request",
-        "Bad Request",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.BAD_REQUEST,
+            "/errors/bad-request",
+            "Bad Request",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Bad request on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Bad request on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.badRequest().body(problem);
   }
+
   // #endregion
 
   // #region handleDomain
@@ -280,19 +346,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleDomain(
       DomainException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        "/errors/domain-violation",
-        "Domain violation",
-        ex.getCode(),
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "/errors/domain-violation",
+            "Domain violation",
+            ex.getCode(),
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Domain exception on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Domain exception on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(problem);
   }
+
   // #endregion
 
   // ==========================================
@@ -304,19 +376,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleIllegalArgumentOrState(
       RuntimeException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.BAD_REQUEST,
-        "/errors/bad-request",
-        "Bad Request",
-        "bad_request",
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.BAD_REQUEST,
+            "/errors/bad-request",
+            "Bad Request",
+            "bad_request",
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Illegal argument/state on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Illegal argument/state on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.badRequest().body(problem);
   }
+
   // #endregion
 
   // #region handleMessageNotReadable
@@ -324,19 +402,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleMessageNotReadable(
       HttpMessageNotReadableException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.BAD_REQUEST,
-        "/errors/bad-request",
-        "Malformed Request",
-        "malformed_request",
-        "Request body is malformed or could not be parsed.",
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.BAD_REQUEST,
+            "/errors/bad-request",
+            "Malformed Request",
+            "malformed_request",
+            "Request body is malformed or could not be parsed.",
+            request);
 
-    log.warn("[{}] Malformed body on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Malformed body on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.badRequest().body(problem);
   }
+
   // #endregion
 
   // #region handleTypeMismatch
@@ -345,19 +429,25 @@ public class GlobalExceptionHandler {
       MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
 
     String detail = String.format("Parameter '%s' has an invalid value.", ex.getName());
-    ProblemDetail problem = buildProblem(
-        HttpStatus.BAD_REQUEST,
-        "/errors/bad-request",
-        "Type Mismatch",
-        "type_mismatch",
-        detail,
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.BAD_REQUEST,
+            "/errors/bad-request",
+            "Type Mismatch",
+            "type_mismatch",
+            detail,
+            request);
 
-    log.warn("[{}] Type mismatch on {} {}: param '{}'",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getName());
+    log.warn(
+        "[{}] Type mismatch on {} {}: param '{}'",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getName());
 
     return ResponseEntity.badRequest().body(problem);
   }
+
   // #endregion
 
   // #region handleMissingParam
@@ -365,19 +455,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleMissingParam(
       MissingServletRequestParameterException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.BAD_REQUEST,
-        "/errors/bad-request",
-        "Missing Parameter",
-        "missing_parameter",
-        String.format("Required query parameter '%s' is missing.", ex.getParameterName()),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.BAD_REQUEST,
+            "/errors/bad-request",
+            "Missing Parameter",
+            "missing_parameter",
+            String.format("Required query parameter '%s' is missing.", ex.getParameterName()),
+            request);
 
-    log.warn("[{}] Missing query parameter on {} {}: '{}'",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getParameterName());
+    log.warn(
+        "[{}] Missing query parameter on {} {}: '{}'",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getParameterName());
 
     return ResponseEntity.badRequest().body(problem);
   }
+
   // #endregion
 
   // #region handleMissingHeader
@@ -385,19 +481,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleMissingHeader(
       MissingRequestHeaderException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.BAD_REQUEST,
-        "/errors/bad-request",
-        "Missing Header",
-        "missing_header",
-        String.format("Required header '%s' is missing.", ex.getHeaderName()),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.BAD_REQUEST,
+            "/errors/bad-request",
+            "Missing Header",
+            "missing_header",
+            String.format("Required header '%s' is missing.", ex.getHeaderName()),
+            request);
 
-    log.warn("[{}] Missing header on {} {}: '{}'",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getHeaderName());
+    log.warn(
+        "[{}] Missing header on {} {}: '{}'",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getHeaderName());
 
     return ResponseEntity.badRequest().body(problem);
   }
+
   // #endregion
 
   // #region handleMethodNotSupported
@@ -405,19 +507,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleMethodNotSupported(
       HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.METHOD_NOT_ALLOWED,
-        "/errors/method-not-allowed",
-        "Method Not Allowed",
-        "method_not_allowed",
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.METHOD_NOT_ALLOWED,
+            "/errors/method-not-allowed",
+            "Method Not Allowed",
+            "method_not_allowed",
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Method not allowed on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Method not allowed on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(problem);
   }
+
   // #endregion
 
   // #region handleMediaTypeNotSupported
@@ -425,19 +533,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleMediaTypeNotSupported(
       HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-        "/errors/unsupported-media-type",
-        "Unsupported Media Type",
-        "unsupported_media_type",
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            "/errors/unsupported-media-type",
+            "Unsupported Media Type",
+            "unsupported_media_type",
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Unsupported media type on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Unsupported media type on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(problem);
   }
+
   // #endregion
 
   // #region handleNoResourceFound
@@ -445,19 +559,25 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ProblemDetail> handleNoResourceFound(
       NoResourceFoundException ex, HttpServletRequest request) {
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.NOT_FOUND,
-        "/errors/not-found",
-        "Resource Not Found",
-        "resource_not_found",
-        ex.getMessage(),
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.NOT_FOUND,
+            "/errors/not-found",
+            "Resource Not Found",
+            "resource_not_found",
+            ex.getMessage(),
+            request);
 
-    log.warn("[{}] Resource not found on {} {}: {}",
-        problem.getProperties().get("requestId"), request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Resource not found on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
   }
+
   // #endregion
 
   // ==========================================
@@ -470,19 +590,26 @@ public class GlobalExceptionHandler {
     String requestId = resolveRequestId(request);
 
     // Never leak SQL queries, stack trace, or internal exception types to clients
-    log.error("[{}] Unhandled server exception on {} {}: {}",
-        requestId, request.getMethod(), request.getRequestURI(), ex.getMessage(), ex);
+    log.error(
+        "[{}] Unhandled server exception on {} {}: {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage(),
+        ex);
 
-    ProblemDetail problem = buildProblem(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        "/errors/internal-server-error",
-        "Internal Server Error",
-        "internal_server_error",
-        "An unexpected error occurred. Please contact support with the request ID.",
-        request);
+    ProblemDetail problem =
+        buildProblem(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "/errors/internal-server-error",
+            "Internal Server Error",
+            "internal_server_error",
+            "An unexpected error occurred. Please contact support with the request ID.",
+            request);
 
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
   }
+
   // #endregion
 
   // ==========================================
@@ -498,8 +625,9 @@ public class GlobalExceptionHandler {
       String detail,
       HttpServletRequest request) {
 
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        status, detail != null ? detail : status.getReasonPhrase());
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            status, detail != null ? detail : status.getReasonPhrase());
     problem.setType(URI.create(type));
     problem.setTitle(title);
     problem.setInstance(resolveInstance(request));
@@ -508,6 +636,7 @@ public class GlobalExceptionHandler {
     problem.setProperty("requestId", resolveRequestId(request));
     return problem;
   }
+
   // #endregion
 
   // #region resolveInstance
@@ -517,6 +646,7 @@ public class GlobalExceptionHandler {
     }
     return URI.create(request.getRequestURI());
   }
+
   // #endregion
 
   // #region resolveRequestId

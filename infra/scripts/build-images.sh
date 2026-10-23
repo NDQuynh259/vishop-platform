@@ -14,8 +14,7 @@ echo "=========================================================="
 
 services=(
   "api-gateway:infra/docker/Dockerfile.api-gateway"
-  "identity-service:infra/docker/Dockerfile.identity-service"
-  "tenant-service:infra/docker/Dockerfile.tenant-service"
+  "iam-service:infra/docker/Dockerfile.iam-service"
   "audit-service:infra/docker/Dockerfile.audit-service"
 )
 

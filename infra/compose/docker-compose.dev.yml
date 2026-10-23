@@ -162,26 +162,30 @@ services:
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
-  # 8. Identity Service (HTTP 8080, Debug 5001)
+  # 8. IAM Service (HTTP 8080, Debug 5001)
   # ---------------------------------------------------------------------------
-  identity-service:
+  iam-service:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.dev
       args:
-        SERVICE_NAME: identity-service
+        SERVICE_NAME: iam-service
         SERVICE_PORT: 8080
         DEBUG_PORT: 5001
-    image: vishop/identity-service:dev
-    container_name: vishop-dev-identity-service
+    image: vishop/iam-service:dev
+    container_name: vishop-dev-iam-service
     restart: on-failure
     ports:
-      - "${IDENTITY_PORT:-8080}:8080"
-      - "${IDENTITY_DEBUG_PORT:-5001}:5001"
+      - "${IAM_PORT:-8080}:8080"
+      - "${IAM_DEBUG_PORT:-5001}:5001"
     environment:
       SERVER_PORT: 8080
+      IAM_INTERNAL_SECRET: ${IAM_INTERNAL_SECRET:?Set IAM_INTERNAL_SECRET to a random value of at least 32 bytes}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
+      VISHOP_SECURITY_COOKIE_SECURE: "false"
       SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_identity
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_iam
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -195,38 +199,6 @@ services:
 
   # ---------------------------------------------------------------------------
   # 9. Tenant Service (HTTP 8081, Debug 5002)
-  # ---------------------------------------------------------------------------
-  tenant-service:
-    build:
-      context: ../..
-      dockerfile: infra/docker/Dockerfile.dev
-      args:
-        SERVICE_NAME: tenant-service
-        SERVICE_PORT: 8081
-        DEBUG_PORT: 5002
-    image: vishop/tenant-service:dev
-    container_name: vishop-dev-tenant-service
-    restart: on-failure
-    ports:
-      - "${TENANT_PORT:-8081}:8081"
-      - "${TENANT_DEBUG_PORT:-5002}:5002"
-    environment:
-      SERVER_PORT: 8081
-      SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_tenant
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-      TRACING_SAMPLING_PROBABILITY: 1.0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-
-  # ---------------------------------------------------------------------------
-  # 10. Audit Service (HTTP 8082, Debug 5003)
   # ---------------------------------------------------------------------------
   audit-service:
     build:
@@ -244,6 +216,7 @@ services:
       - "${AUDIT_DEBUG_PORT:-5003}:5003"
     environment:
       SERVER_PORT: 8082
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_audit
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
@@ -276,15 +249,16 @@ services:
       - "${GATEWAY_DEBUG_PORT:-5000}:5000"
     environment:
       SERVER_PORT: 8000
+      IAM_INTERNAL_SECRET: ${IAM_INTERNAL_SECRET:?Set IAM_INTERNAL_SECRET to a random value of at least 32 bytes}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       SPRING_PROFILES_ACTIVE: dev
-      TENANT_SERVICE_URL: http://tenant-service:8081
-      IDENTITY_SERVICE_URL: http://identity-service:8080
+      IAM_SERVICE_URL: http://iam-service:8080
       AUDIT_SERVICE_URL: http://audit-service:8082
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       TRACING_SAMPLING_PROBABILITY: 1.0
     depends_on:
-      - identity-service
-      - tenant-service
+      - iam-service
       - audit-service
 
 volumes:

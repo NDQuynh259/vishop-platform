@@ -1,27 +1,25 @@
 package io.github.coreplatform.common.security.authorization;
 
 import io.github.coreplatform.common.security.context.SecurityContextHelper;
-import org.springframework.stereotype.Component;
 import java.util.UUID;
+import org.springframework.stereotype.Component;
 
 /**
- * SpEL bean helper for method security expressions.
- * Example usage: @PreAuthorize("hasAuthority('product.update') and @shopSecurity.hasAccess(#shopId)")
+ * SpEL bean helper for method security expressions. Example
+ * usage: @PreAuthorize("hasAuthority('product.update') and @shopSecurity.hasAccess(#shopId)")
  */
 @Component("shopSecurity")
 public class ShopSecurity {
 
-    // #region hasAccess
-    /**
-     * Checks if the currently authenticated user has access to the specified shop.
-     */
-    public boolean hasAccess(UUID shopId) {
-        if (shopId == null) {
-            return false;
-        }
-        return SecurityContextHelper.getCurrentUser()
-                .map(user -> user.hasShopAccess(shopId))
-                .orElse(false);
+  // #region hasAccess
+  /** Checks if the currently authenticated user has access to the specified shop. */
+  public boolean hasAccess(UUID shopId) {
+    if (shopId == null) {
+      return false;
     }
-    // #endregion
+    return SecurityContextHelper.getCurrentUser()
+        .map(user -> user.hasShopAccess(shopId))
+        .orElse(false);
+  }
+  // #endregion
 }

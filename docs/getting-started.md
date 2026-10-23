@@ -1,104 +1,67 @@
-# Hướng dẫn khởi động (Getting Started)
+# Khởi chạy ViShop Platform
 
-Tài liệu hướng dẫn thiết lập môi trường phát triển cục bộ và khởi chạy các Microservices của **ViShop Platform**.
+Các runtime hiện tại là `iam-service` (:8080), `api-gateway` (:8000) và
+`audit-service` (:8082). Identity và tenant đã được gộp vào IAM.
 
----
+## Môi trường
 
-## 1. Yêu cầu môi trường (Prerequisites)
+Cần JDK 21 và Docker Desktop/Compose để chạy PostgreSQL 16, Kafka và Redis:
 
-* **Java JDK 21 LTS** (Khuyến nghị Eclipse Temurin hoặc OpenJDK 21).
-  Kiểm tra bằng lệnh: `java -version`
-* **Docker Desktop & Docker Compose** (để chạy Kafka KRaft, Kafka UI, PostgreSQL 16 và Redis 7).
-* **Git**.
-
----
-
-## 2. Thiết lập môi trường cục bộ (Setup)
-
-### Bước 1: Khởi động các hạ tầng phụ trợ (Docker Compose)
-Chạy cụm Kafka (KRaft), Kafka UI, Postgres và Redis:
 ```powershell
 docker compose -f infra/compose/docker-compose.infra.yml up -d
 ```
 
-Sau khi khởi động thành công, các dịch vụ sẽ hoạt động tại:
+Trên volume mới, PostgreSQL tự tạo `vishop_iam` và `vishop_audit` tại localhost:5432
+(user `vishop`, mật khẩu local `vishop_secret`). Volume cũ cần tạo database IAM
+riêng; không xóa volume để áp dụng lại init script.
 
-| Thành phần | Địa chỉ / URL | Mô tả |
-| :--- | :--- | :--- |
-| **Kafka Broker** | `localhost:29092` | Event stream broker (KRaft mode) |
-| **Kafka UI** | [http://localhost:8088](http://localhost:8088) | Giao diện web quản lý Topics, Messages, Consumer Groups |
-| **PostgreSQL 16** | `localhost:5432` | User: `vishop`, Pass: `vishop_secret`, tự động tạo `vishop_tenant`, `vishop_identity`, `vishop_audit` |
-| **Redis 7** | `localhost:6379` | Cache & Distributed lock |
+Thiết lập `JWT_SECRET`, `IAM_INTERNAL_SECRET`, database credentials và
+`ALLOWED_ORIGINS` theo [hướng dẫn IAM](../services/iam-service/README.md).
+Các tiến trình phải có cấu hình secrets tương ứng. Chỉ với HTTP local, đặt
+`VISHOP_SECURITY_COOKIE_SECURE=false` cho IAM.
 
----
+## Build và kiểm thử
 
-## 3. Biên dịch và kiểm thử toàn dự án
-
-Dự án sử dụng Gradle Wrapper (`gradlew.bat` trên Windows / `./gradlew` trên Linux/macOS):
-
-### Biên dịch toàn bộ modules:
-```powershell
-.\gradlew.bat compileJava
-```
-
-### Chạy toàn bộ Unit & Integration Tests:
 ```powershell
 .\gradlew.bat test
+.\gradlew.bat :services:iam-service:bootJar :services:api-gateway:bootJar :services:audit-service:bootJar
 ```
 
----
+Kiểm thử IAM dùng PostgreSQL tạm riêng, không cần Docker và không truy cập database vận hành.
 
-## 4. Khởi chạy các Microservices
+## Khởi chạy
 
-Mỗi Microservice là một ứng dụng Spring Boot độc lập có thể chạy riêng lẻ:
+Mỗi lệnh chạy trong một terminal đã thiết lập biến môi trường:
 
-### Khởi chạy `tenant-service`:
 ```powershell
-.\gradlew.bat :services:tenant-service:bootRun
+.\gradlew.bat :services:iam-service:bootRun
 ```
-* Service chạy tại port: `http://localhost:8081`
-* Kiểm tra trạng thái hoạt động:
-  ```powershell
-  curl http://localhost:8081/actuator/health
-  # Trả về: {"status":"UP"}
-  ```
 
-### Khởi chạy `audit-service` (Event Consumer):
+```powershell
+.\gradlew.bat :services:api-gateway:bootRun
+```
+
 ```powershell
 .\gradlew.bat :services:audit-service:bootRun
 ```
-* Service chạy tại port: `http://localhost:8082`
 
-### Khởi chạy `identity-service`:
+Hoặc cấu hình secrets trong môi trường và chạy toàn bộ stack development:
+
 ```powershell
-.\gradlew.bat :services:identity-service:bootRun
+docker compose -f infra/compose/docker-compose.dev.yml up -d --build
 ```
-* Service chạy tại port: `http://localhost:8080`
 
----
+## Luồng thử nghiệm
 
-## 5. Thử nghiệm luồng nghiệp vụ mẫu (Tenant & Audit)
+Gửi request qua gateway tại `http://localhost:8000`:
 
-1. **Tạo mới một Tenant qua API**:
-   ```bash
-   curl -X POST http://localhost:8081/api/v1/tenants \
-     -H "Content-Type: application/json" \
-     -d '{"code": "viet-shop-hn", "name": "ViShop Hà Nội"}'
-   ```
-   * Request được tiếp nhận bởi `TenantController`.
-   * `CreateTenantCommandHandler` lưu tenant vào PostgreSQL và ghi `TenantCreatedEvent` vào bảng `outbox_events` trong cùng một transaction.
-   * `OutboxPublisher` quét bảng `outbox_events` và bắn sự kiện lên topic `vishop.tenant.events` trên Kafka.
-   * `audit-service` lắng nghe topic `vishop.tenant.events`, kiểm tra tính idempotent qua `consumed_messages` và lưu log vào bảng `audit_logs`.
+1. `POST /api/v1/auth/register` với email, password và fullName để tạo tài khoản toàn cục.
+2. Dùng accessToken trả về trong `Authorization: Bearer ...`.
+3. `POST /api/v1/tenants` với code/name: IAM tạo tenant, bốn role và OWNER membership
+   trong cùng transaction, đồng thời ghi event vào outbox.
+4. `POST /api/v1/auth/switch-tenant` với tenantId để lấy JWT của tenant đã chọn.
+5. Kiểm tra event trên topic `vishop.tenant.events` trong Kafka UI (:8088).
+   Audit service nhận cả event user và tenant, xử lý chống trùng rồi lưu audit log.
 
-2. **Xem message trên Kafka UI**:
-   Mở trình duyệt truy cập [http://localhost:8088](http://localhost:8088), chọn topic `vishop.tenant.events` để thấy message dạng `EventEnvelope`.
-
----
-
-## 6. Đọc tiếp các tài liệu quan trọng
-
-1. [Kiến trúc hệ thống (Architecture)](./architecture/architecture.md) — Tổng quan kiến trúc đa module, quy tắc phân tầng DDD, CQRS và Outbox relay.
-2. [Cấu trúc giải phẫu Microservice (Domain Module Anatomy)](./architecture/domain-module-anatomy.md) — Hướng dẫn chi tiết từng file trong 4 tầng: Domain, Application, Infrastructure, Presentation.
-3. [Chống trùng lặp & Truy vết Phân tán (Idempotency & Tracing)](./architecture/idempotency-and-tracing.md) — Cơ chế chống lặp message/order và xâu chuỗi log qua correlationId.
-4. [Tạo mới Microservice](./creating-a-module.md) — Hướng dẫn scaffold một service mới.
-5. [Chuẩn mực lập trình (Code Standards)](./code-standards.md) — Quy ước viết code Java 21, Logging, Exception handling.
+API, response mới, session cookie và hướng dẫn chuyển dữ liệu được mô tả trong
+[IAM README](../services/iam-service/README.md) và [kiến trúc tenancy](core-architecture/tenancy.md).

@@ -1,3 +1,7 @@
+> Historical design proposal: service boundaries and security flows below predate the IAM merge.
+> Current runtime/configuration is documented in [IAM README](../../services/iam-service/README.md).
+> The separate identity/tenant service source directories have been removed.
+
 # Kiến trúc Bảo mật Hệ thống (Security Architecture)
 
 Tài liệu này đặc tả toàn bộ kiến trúc an ninh, bảo mật thông tin và phân quyền kiểm soát truy cập trong hệ thống microservices của **ViShop Platform** dựa trên các công nghệ: **Spring Security 6**, **Spring Cloud Gateway**, **PostgreSQL Row-Level Security**, **Docker Hardening** và bộ công cụ **DevSecOps**.

@@ -9,32 +9,34 @@ import org.junit.jupiter.api.Test;
 
 class UuidV7Test {
 
-    // #region shouldGenerateValidUuidV7
-    @Test
-    void shouldGenerateValidUuidV7() {
-        UUID id = UuidV7.nextId();
-        assertNotNull(id);
-        assertEquals(7, id.version(), "Must be UUID version 7");
-        assertEquals(2, id.variant(), "Must be RFC 9562 IETF variant (2)");
-    }
-    // #endregion
+  // #region shouldGenerateValidUuidV7
+  @Test
+  void shouldGenerateValidUuidV7() {
+    UUID id = UuidV7.nextId();
+    assertNotNull(id);
+    assertEquals(7, id.version(), "Must be UUID version 7");
+    assertEquals(2, id.variant(), "Must be RFC 9562 IETF variant (2)");
+  }
 
-    // #region shouldExtractAccurateTimestamp
-    @Test
-    void shouldExtractAccurateTimestamp() {
-        long now = System.currentTimeMillis();
-        UUID id = UuidV7.fromTimestamp(now);
-        long extracted = UuidV7.timestampOf(id);
-        assertEquals(now, extracted);
-    }
-    // #endregion
+  // #endregion
 
-    // #region shouldMaintainMonotonicTimeOrder
-    @Test
-    void shouldMaintainMonotonicTimeOrder() {
-        UUID id1 = UuidV7.nextId();
-        UUID id2 = UuidV7.nextId();
-        assertTrue(id1.compareTo(id2) <= 0 || UuidV7.timestampOf(id1) <= UuidV7.timestampOf(id2));
-    }
-    // #endregion
+  // #region shouldExtractAccurateTimestamp
+  @Test
+  void shouldExtractAccurateTimestamp() {
+    long now = System.currentTimeMillis();
+    UUID id = UuidV7.fromTimestamp(now);
+    long extracted = UuidV7.timestampOf(id);
+    assertEquals(now, extracted);
+  }
+
+  // #endregion
+
+  // #region shouldMaintainMonotonicTimeOrder
+  @Test
+  void shouldMaintainMonotonicTimeOrder() {
+    UUID id1 = UuidV7.nextId();
+    UUID id2 = UuidV7.nextId();
+    assertTrue(id1.compareTo(id2) <= 0 || UuidV7.timestampOf(id1) <= UuidV7.timestampOf(id2));
+  }
+  // #endregion
 }

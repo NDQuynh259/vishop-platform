@@ -6,21 +6,23 @@ package io.github.coreplatform.common.domain.exception;
  */
 public class ForbiddenException extends DomainException {
 
-    // #region ForbiddenException
-    public ForbiddenException() {
-        super("forbidden", "Access to this resource is denied");
-    }
-    // #endregion
+  // #region ForbiddenException
+  public ForbiddenException() {
+    super("forbidden", "Access to this resource is denied");
+  }
 
-    // #region ForbiddenException
-    public ForbiddenException(String message) {
-        super("forbidden", message);
-    }
-    // #endregion
+  // #endregion
 
-    // #region ForbiddenException
-    public ForbiddenException(String code, String message) {
-        super(code, message);
-    }
-    // #endregion
+  // #region ForbiddenException
+  public ForbiddenException(String message) {
+    super("forbidden", message);
+  }
+
+  // #endregion
+
+  // #region ForbiddenException
+  public ForbiddenException(String code, String message) {
+    super(code, message);
+  }
+  // #endregion
 }

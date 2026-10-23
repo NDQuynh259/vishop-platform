@@ -17,119 +17,153 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Utility component for generating, signing, parsing, and validating JWT access tokens.
- * Shared across identity-service (token issuance) and api-gateway (token mediation).
+ * Utility component for generating, signing, parsing, and validating JWT access tokens. Used by
+ * iam-service for token issuance and downstream services for verification.
  */
 @Component
 public class JwtTokenProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
+  private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
 
-    public static final String CLAIM_TENANT_ID = "tenantId";
-    public static final String CLAIM_EMAIL = "email";
-    public static final String CLAIM_FULL_NAME = "fullName";
-    public static final String CLAIM_ROLES = "roles";
-    public static final String CLAIM_PERMISSIONS = "permissions";
+  public static final String CLAIM_TENANT_ID = "tenantId";
+  public static final String CLAIM_EMAIL = "email";
+  public static final String CLAIM_FULL_NAME = "fullName";
+  public static final String CLAIM_ROLES = "roles";
+  public static final String CLAIM_PERMISSIONS = "permissions";
 
-    private final SecretKey key;
-    private final long expirationMs;
+  private final SecretKey key;
+  private final long expirationMs;
 
-    public JwtTokenProvider(
-            @Value("${vishop.security.jwt.secret:vishop-platform-super-secret-key-that-is-at-least-256-bits-long}")
-            String secret,
-            @Value("${vishop.security.jwt.expiration-ms:86400000}")
-            long expirationMs) {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        this.key = Keys.hmacShaKeyFor(keyBytes);
-        this.expirationMs = expirationMs;
+  public JwtTokenProvider(
+      @Value("${vishop.security.jwt.secret:${JWT_SECRET:}}") String secret,
+      @Value("${vishop.security.jwt.expiration-ms:86400000}") long expirationMs) {
+    byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+    if (keyBytes.length < 32) {
+      throw new IllegalArgumentException("JWT_SECRET must contain at least 32 bytes");
     }
+    this.key = Keys.hmacShaKeyFor(keyBytes);
+    this.expirationMs = expirationMs;
+  }
 
-    // #region generateAccessToken
-    public String generateAccessToken(
-            UUID userId,
-            UUID tenantId,
-            String email,
-            String fullName,
-            List<String> roles,
-            List<String> permissions) {
+  // #region generateAccessToken
+  public String generateAccessToken(
+      UUID userId,
+      UUID tenantId,
+      String email,
+      String fullName,
+      List<String> roles,
+      List<String> permissions) {
 
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + expirationMs);
+    Date now = new Date();
+    Date expiryDate = new Date(now.getTime() + expirationMs);
 
-        return Jwts.builder()
-                .subject(userId.toString())
-                .claim(CLAIM_TENANT_ID, tenantId.toString())
-                .claim(CLAIM_EMAIL, email)
-                .claim(CLAIM_FULL_NAME, fullName)
-                .claim(CLAIM_ROLES, roles != null ? roles : Collections.emptyList())
-                .claim(CLAIM_PERMISSIONS, permissions != null ? permissions : Collections.emptyList())
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(key)
-                .compact();
+    return Jwts.builder()
+        .subject(userId.toString())
+        .claim(CLAIM_TENANT_ID, tenantId.toString())
+        .claim(CLAIM_EMAIL, email)
+        .claim(CLAIM_FULL_NAME, fullName)
+        .claim(CLAIM_ROLES, roles != null ? roles : Collections.emptyList())
+        .claim(CLAIM_PERMISSIONS, permissions != null ? permissions : Collections.emptyList())
+        .issuedAt(now)
+        .expiration(expiryDate)
+        .signWith(key)
+        .compact();
+  }
+
+  // #endregion
+
+  // #region validateToken
+  public boolean validateToken(String token) {
+    if (token == null || token.isBlank()) {
+      return false;
     }
-    // #endregion
-
-    // #region validateToken
-    public boolean validateToken(String token) {
-        if (token == null || token.isBlank()) {
-            return false;
+    try {
+      Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+      UUID.fromString(claims.getSubject());
+      UUID.fromString(claims.get(CLAIM_TENANT_ID, String.class));
+      if (claims.getExpiration() == null) return false;
+      for (String claim : List.of(CLAIM_ROLES, CLAIM_PERMISSIONS)) {
+        Object value = claims.get(claim);
+        if (value != null
+            && (!(value instanceof List<?> list)
+                || list.stream().anyMatch(item -> !(item instanceof String s) || s.isBlank()))) {
+          return false;
         }
-        try {
-            Jwts.parser()
-                    .verifyWith(key)
-                    .build()
-                    .parseSignedClaims(token);
-            return true;
-        } catch (ExpiredJwtException e) {
-            log.warn("JWT token has expired: {}", e.getMessage());
-        } catch (JwtException | IllegalArgumentException e) {
-            log.warn("Invalid JWT token: {}", e.getMessage());
-        }
-        return false;
+      }
+      return true;
+    } catch (ExpiredJwtException e) {
+      log.warn("JWT token has expired: {}", e.getMessage());
+    } catch (JwtException | IllegalArgumentException | NullPointerException e) {
+      log.warn("Invalid JWT token: {}", e.getMessage());
     }
-    // #endregion
+    return false;
+  }
 
-    // #region parseClaims
-    public Claims parseClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-    }
-    // #endregion
+  // #endregion
 
-    public UUID extractUserId(String token) {
-        return UUID.fromString(parseClaims(token).getSubject());
-    }
+  // #region parseClaims
+  public Claims parseClaims(String token) {
+    return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+  }
 
-    public UUID extractTenantId(String token) {
-        Object tid = parseClaims(token).get(CLAIM_TENANT_ID);
-        return tid != null ? UUID.fromString(tid.toString()) : null;
-    }
+  // #endregion
 
-    public String extractEmail(String token) {
-        return parseClaims(token).get(CLAIM_EMAIL, String.class);
-    }
+  public UUID extractUserId(String token) {
+    return UUID.fromString(parseClaims(token).getSubject());
+  }
 
-    public String extractFullName(String token) {
-        return parseClaims(token).get(CLAIM_FULL_NAME, String.class);
-    }
+  public UUID extractTenantId(String token) {
+    Object tid = parseClaims(token).get(CLAIM_TENANT_ID);
+    return tid != null ? UUID.fromString(tid.toString()) : null;
+  }
 
-    @SuppressWarnings("unchecked")
-    public List<String> extractRoles(String token) {
-        Object roles = parseClaims(token).get(CLAIM_ROLES);
-        return roles instanceof List<?> ? (List<String>) roles : Collections.emptyList();
-    }
+  public String extractEmail(String token) {
+    return parseClaims(token).get(CLAIM_EMAIL, String.class);
+  }
 
-    @SuppressWarnings("unchecked")
-    public List<String> extractPermissions(String token) {
-        Object permissions = parseClaims(token).get(CLAIM_PERMISSIONS);
-        return permissions instanceof List<?> ? (List<String>) permissions : Collections.emptyList();
-    }
+  public String extractFullName(String token) {
+    return parseClaims(token).get(CLAIM_FULL_NAME, String.class);
+  }
 
-    public long getExpirationMs() {
-        return expirationMs;
-    }
+  @SuppressWarnings("unchecked")
+  public List<String> extractRoles(String token) {
+    Object roles = parseClaims(token).get(CLAIM_ROLES);
+    return roles instanceof List<?> ? (List<String>) roles : Collections.emptyList();
+  }
+
+  @SuppressWarnings("unchecked")
+  public List<String> extractPermissions(String token) {
+    Object permissions = parseClaims(token).get(CLAIM_PERMISSIONS);
+    return permissions instanceof List<?> ? (List<String>) permissions : Collections.emptyList();
+  }
+
+  public long getExpirationMs() {
+    return expirationMs;
+  }
+
+  /** Session-backed IAM access token. A null tenant is valid only for identity/IAM APIs. */
+  public String generateSessionAccessToken(
+      UUID userId,
+      UUID tenantId,
+      String systemRole,
+      UUID sessionId,
+      List<String> roles,
+      java.util.Set<String> permissions,
+      java.time.Instant sessionExpiry) {
+    long now = System.currentTimeMillis();
+    return Jwts.builder()
+        .subject(userId.toString())
+        .issuer("iam-service")
+        .claim("aud", "vishop-api")
+        .claim("token_use", "access")
+        .claim("sid", sessionId.toString())
+        .claim("tenantId", tenantId == null ? null : tenantId.toString())
+        .claim("systemRole", systemRole)
+        .claim("roles", roles)
+        .claim("permissions", permissions)
+        .issuedAt(new Date(now))
+        .expiration(new Date(Math.min(now + expirationMs, sessionExpiry.toEpochMilli())))
+        .signWith(key)
+        .compact();
+  }
 }

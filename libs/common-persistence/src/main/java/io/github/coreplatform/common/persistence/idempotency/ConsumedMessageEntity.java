@@ -7,52 +7,63 @@ import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
-/**
- * Tracks consumed Kafka messages to guarantee idempotent processing in consumers.
- */
+/** Tracks consumed Kafka messages to guarantee idempotent processing in consumers. */
 @Entity
 @Table(name = "consumed_messages")
 @IdClass(ConsumedMessageId.class)
 public class ConsumedMessageEntity {
 
-    @Id
-    @Column(name = "message_id", nullable = false, length = 100)
-    private String messageId;
+  @Id
+  @Column(name = "message_id", nullable = false, length = 100)
+  private String messageId;
 
-    @Id
-    @Column(name = "consumer_group", nullable = false, length = 100)
-    private String consumerGroup;
+  @Id
+  @Column(name = "consumer_group", nullable = false, length = 100)
+  private String consumerGroup;
 
-    @Column(name = "event_type", nullable = false, length = 200)
-    private String eventType;
+  @Column(name = "event_type", nullable = false, length = 200)
+  private String eventType;
 
-    @Column(name = "processed_at", nullable = false)
-    private Instant processedAt;
+  @Column(name = "processed_at", nullable = false)
+  private Instant processedAt;
 
-    // #region ConsumedMessageEntity
-    protected ConsumedMessageEntity() {
-    }
-    // #endregion
+  // #region ConsumedMessageEntity
+  protected ConsumedMessageEntity() {}
 
-    // #region ConsumedMessageEntity
-    public ConsumedMessageEntity(String messageId, String consumerGroup, String eventType, Instant processedAt) {
-        this.messageId = messageId;
-        this.consumerGroup = consumerGroup;
-        this.eventType = eventType;
-        this.processedAt = processedAt;
-    }
-    // #endregion
+  // #endregion
 
-    // #region getMessageId
-    public String getMessageId() { return messageId; }
-    // #endregion
-    // #region getConsumerGroup
-    public String getConsumerGroup() { return consumerGroup; }
-    // #endregion
-    // #region getEventType
-    public String getEventType() { return eventType; }
-    // #endregion
-    // #region getProcessedAt
-    public Instant getProcessedAt() { return processedAt; }
-    // #endregion
+  // #region ConsumedMessageEntity
+  public ConsumedMessageEntity(
+      String messageId, String consumerGroup, String eventType, Instant processedAt) {
+    this.messageId = messageId;
+    this.consumerGroup = consumerGroup;
+    this.eventType = eventType;
+    this.processedAt = processedAt;
+  }
+
+  // #endregion
+
+  // #region getMessageId
+  public String getMessageId() {
+    return messageId;
+  }
+
+  // #endregion
+  // #region getConsumerGroup
+  public String getConsumerGroup() {
+    return consumerGroup;
+  }
+
+  // #endregion
+  // #region getEventType
+  public String getEventType() {
+    return eventType;
+  }
+
+  // #endregion
+  // #region getProcessedAt
+  public Instant getProcessedAt() {
+    return processedAt;
+  }
+  // #endregion
 }

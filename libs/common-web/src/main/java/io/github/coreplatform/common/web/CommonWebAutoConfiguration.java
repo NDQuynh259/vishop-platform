@@ -11,19 +11,19 @@ import org.springframework.context.annotation.Import;
  * Umbrella AutoConfiguration for ViShop Common Web module.
  *
  * <p>Aggregates feature-based auto-configurations:
+ *
  * <ul>
- *   <li>{@link ExceptionHandlingAutoConfiguration}</li>
- *   <li>{@link RequestIdFilterAutoConfiguration}</li>
- *   <li>{@link CqrsAutoConfiguration}</li>
- *   <li>{@link OpenApiAutoConfiguration}</li>
+ *   <li>{@link ExceptionHandlingAutoConfiguration}
+ *   <li>{@link RequestIdFilterAutoConfiguration}
+ *   <li>{@link CqrsAutoConfiguration}
+ *   <li>{@link OpenApiAutoConfiguration}
  * </ul>
  */
 @AutoConfiguration
 @Import({
-        ExceptionHandlingAutoConfiguration.class,
-        RequestIdFilterAutoConfiguration.class,
-        CqrsAutoConfiguration.class,
-        OpenApiAutoConfiguration.class
+  ExceptionHandlingAutoConfiguration.class,
+  RequestIdFilterAutoConfiguration.class,
+  CqrsAutoConfiguration.class,
+  OpenApiAutoConfiguration.class
 })
-public class CommonWebAutoConfiguration {
-}
+public class CommonWebAutoConfiguration {}

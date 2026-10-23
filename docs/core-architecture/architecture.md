@@ -18,8 +18,7 @@ vishop-platform/
 │
 ├── services/                            # Các Microservices độc lập (Bounded Contexts)
 │   ├── api-gateway/                     # Spring Cloud Gateway (:8000) - Unified Routing, CorrelationId, CORS
-│   ├── tenant-service/                  # Quản lý Tenant, tổ chức, cấu hình gian hàng (DDD + CQRS + Outbox)
-│   ├── identity-service/                # Quản lý User, Account, Authentication & Token
+│   ├── iam-service/                     # Identity, system role, tenant, membership, RBAC và session
 │   └── audit-service/                   # Event-driven consumer ghi nhận lịch sử audit log từ Kafka
 │
 ├── infra/
@@ -153,7 +152,7 @@ CreateTenantCommandHandler (@Transactional)
    ├── 2. Khởi tạo Aggregate Root: Tenant.create(TenantCode.of(code), name)
    │      └── Aggregate nội bộ sinh TenantCreatedEvent và lưu vào memory list
    ├── 3. Lưu Aggregate: tenantRepository.save(tenant)
-   ├── 4. Ghi Domain Events vào Transactional Outbox: outboxService.saveEventsFor(tenant, "tenant-service")
+   ├── 4. Ghi Domain Events vào Transactional Outbox trong transaction của service
    └── 5. Trả về TenantResponseDto
 ```
 
@@ -243,7 +242,7 @@ sequenceDiagram
 ## 7. API Gateway (Spring Cloud Gateway)
 
 `services/api-gateway` hoạt động trên cổng `8000` đóng vai trò là Reverse Proxy và Gateway trung tâm:
-* **Dynamic Routing**: Chuyển tiếp request tới các microservices phía sau (`identity-service:8080`, `tenant-service:8081`, `audit-service:8082`).
+* **Dynamic Routing**: Chuyển tiếp request tới `iam-service:8080` và `audit-service:8082`.
 * **Distributed Tracing**: Tự động sinh hoặc kế thừa `X-Correlation-Id` qua `CorrelationIdGlobalFilter`.
 * **Multi-Tenancy**: Kiểm tra và chuyển tiếp `X-Tenant-Id` qua `TenantResolutionGlobalFilter`.
 * **Error Normalization**: Bắt các lỗi hạ tầng (503 Service Unavailable, timeout) và chuẩn hóa về **RFC 9457 Problem Details**.
@@ -322,7 +321,7 @@ $$\mathbf{V}\langle\text{Version}\rangle\mathbf{\_\_}\langle\text{Mô\_tả}\ran
 3. Chỉ những file mới (version cao hơn) mới được thực thi tuần tự. Nếu phát hiện file cũ đã chạy bị sửa đổi nội dung, Flyway sẽ ngắt khởi động ngay lập tức để bảo vệ tính toàn vẹn dữ liệu.
 
 #### Cấu trúc 3 nhóm bảng nền tảng trong mỗi Microservice:
-Trong file khởi tạo ban đầu (ví dụ [V1__init_tenant_schema.sql](../../services/tenant-service/src/main/resources/db/migration/V1__init_tenant_schema.sql)), luôn phân tách 3 nhóm bảng chuẩn mực:
+Trong file khởi tạo ban đầu (ví dụ [V1__create_iam_schema.sql](../../services/iam-service/src/main/resources/db/migration/V1__create_iam_schema.sql)), phân tách các nhóm bảng nghiệp vụ và hạ tầng:
 * **Core Business Tables** (ví dụ `tenants`): Chứa dữ liệu nghiệp vụ chính, tối ưu hóa index cursor (`created_at DESC, id DESC`) và status.
 * **Transactional Outbox Table** (`outbox_events`): Lưu trữ các domain event cùng transaction DB với entity nghiệp vụ nhằm giải quyết triệt để bài toán **Dual-Write**.
   ```sql
@@ -368,7 +367,7 @@ spring:
 | Trách nhiệm | Thành phần phụ trách | Phương thức thực hiện |
 | :--- | :--- | :--- |
 | **Quản trị cấu trúc Schema (DDL)**<br>*(Tạo bảng, đổi kiểu cột, index, constraint)* | **Flyway** | Viết file SQL version tuần tự (`V1__...sql`, `V2__...sql`) |
-| **Thao tác dữ liệu nghiệp vụ (DML)**<br>*(CRUD, Phân trang Cursor, Dynamic Filtering)* | **Spring Data JPA** | Interface [SpringDataTenantRepository](../../services/tenant-service/src/main/java/com/vishop/tenant/infrastructure/persistence/repositories/SpringDataTenantRepository.java), [TenantSpecifications](../../services/tenant-service/src/main/java/com/vishop/tenant/infrastructure/persistence/repositories/TenantSpecifications.java) |
+| **Thao tác dữ liệu nghiệp vụ (DML)** | **JDBC hoặc JPA theo service** | IAM chia adapter theo phân hệ: [TenantRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/tenant/infrastructure/persistence/adapters/TenantRepositoryAdapter.java) dùng JPA; [MembershipRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/access/infrastructure/persistence/adapters/MembershipRepositoryAdapter.java) dùng JDBC với tenant predicate tường minh |
 | **Thực thi truy vấn ORM & Quản lý Session**<br>*(Dirty checking, First-level cache, L2 cache)* | **Hibernate** | Chạy ngầm bên dưới, được kiểm soát chặt chẽ bởi `ddl-auto: validate` |
 | **Thao tác bảng hạ tầng tốc độ cao**<br>*(Idempotency deduplication check)* | **Spring JDBC / Template** | Thao tác trực tiếp trên bảng `consumed_messages` với độ trễ thấp nhất |
 

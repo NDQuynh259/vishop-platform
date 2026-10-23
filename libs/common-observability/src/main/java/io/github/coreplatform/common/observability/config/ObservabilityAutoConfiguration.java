@@ -12,16 +12,16 @@ import org.springframework.context.annotation.Configuration;
 @AutoConfiguration
 public class ObservabilityAutoConfiguration {
 
-    @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "jakarta.servlet.Filter")
-    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-    static class ServletFilterConfiguration {
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(name = "jakarta.servlet.Filter")
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+  static class ServletFilterConfiguration {
 
-        // #region correlationMdcFilter
-        @Bean
-        public CorrelationMdcFilter correlationMdcFilter(ObjectProvider<Tracer> tracerProvider) {
-            return new CorrelationMdcFilter(tracerProvider);
-        }
-        // #endregion
+    // #region correlationMdcFilter
+    @Bean
+    public CorrelationMdcFilter correlationMdcFilter(ObjectProvider<Tracer> tracerProvider) {
+      return new CorrelationMdcFilter(tracerProvider);
     }
+    // #endregion
+  }
 }

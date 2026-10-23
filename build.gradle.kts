@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "3.3.5" apply false
     id("io.spring.dependency-management") version "1.1.6" apply false
+    id("com.diffplug.spotless") version "6.25.0"
     eclipse
 }
 
@@ -17,7 +18,18 @@ allprojects {
 subprojects {
     apply(plugin = "java-library")
     apply(plugin = "io.spring.dependency-management")
+    apply(plugin = "com.diffplug.spotless")
     apply(plugin = "eclipse")
+
+    configure<com.diffplug.gradle.spotless.SpotlessExtension> {
+        java {
+            target("src/**/*.java")
+            googleJavaFormat("1.22.0")
+            removeUnusedImports()
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+    }
 
     configure<org.gradle.plugins.ide.eclipse.model.EclipseModel> {
         classpath {

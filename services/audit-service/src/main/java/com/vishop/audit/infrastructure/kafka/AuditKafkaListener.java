@@ -20,59 +20,65 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuditKafkaListener {
 
-    private static final Logger log = LoggerFactory.getLogger(AuditKafkaListener.class);
-    private static final String CONSUMER_GROUP = "audit-service";
+  private static final Logger log = LoggerFactory.getLogger(AuditKafkaListener.class);
+  private static final String CONSUMER_GROUP = "audit-service";
 
-    private final AuditLogRepository auditLogRepository;
-    private final IdempotentConsumer idempotentConsumer;
-    private final ObjectMapper objectMapper;
+  private final AuditLogRepository auditLogRepository;
+  private final IdempotentConsumer idempotentConsumer;
+  private final ObjectMapper objectMapper;
 
-    // #region AuditKafkaListener
-    public AuditKafkaListener(AuditLogRepository auditLogRepository,
-                              IdempotentConsumer idempotentConsumer,
-                              ObjectMapper objectMapper) {
-        this.auditLogRepository = auditLogRepository;
-        this.idempotentConsumer = idempotentConsumer;
-        this.objectMapper = objectMapper;
-    }
-    // #endregion
+  // #region AuditKafkaListener
+  public AuditKafkaListener(
+      AuditLogRepository auditLogRepository,
+      IdempotentConsumer idempotentConsumer,
+      ObjectMapper objectMapper) {
+    this.auditLogRepository = auditLogRepository;
+    this.idempotentConsumer = idempotentConsumer;
+    this.objectMapper = objectMapper;
+  }
 
-    // #region onEvent
-    @KafkaListener(
-            topics = {"vishop.tenant.events"},
-            groupId = CONSUMER_GROUP,
-            containerFactory = "kafkaListenerContainerFactory"
-    )
-    public void onEvent(ConsumerRecord<String, String> record) {
-        try {
-            EventEnvelope envelope = objectMapper.readValue(record.value(), EventEnvelope.class);
+  // #endregion
 
-            idempotentConsumer.executeIfNotProcessed(
+  // #region onEvent
+  @KafkaListener(
+      topics = {"vishop.tenant.events", "vishop.user.events"},
+      groupId = CONSUMER_GROUP,
+      containerFactory = "kafkaListenerContainerFactory")
+  public void onEvent(ConsumerRecord<String, String> record) {
+    try {
+      EventEnvelope envelope = objectMapper.readValue(record.value(), EventEnvelope.class);
+
+      idempotentConsumer.executeIfNotProcessed(
+          envelope.eventId(),
+          CONSUMER_GROUP,
+          envelope.eventType(),
+          () -> {
+            AuditLogEntity auditLog =
+                new AuditLogEntity(
+                    UuidV7.nextId(),
                     envelope.eventId(),
-                    CONSUMER_GROUP,
                     envelope.eventType(),
-                    () -> {
-                        AuditLogEntity auditLog = new AuditLogEntity(
-                                UuidV7.nextId(),
-                                envelope.eventId(),
-                                envelope.eventType(),
-                                envelope.tenantId(),
-                                envelope.aggregateType(),
-                                envelope.aggregateId(),
-                                envelope.producer(),
-                                envelope.payload() != null ? envelope.payload().toString() : "{}",
-                                envelope.occurredAt() != null ? envelope.occurredAt() : Instant.now(),
-                                Instant.now()
-                        );
-                        auditLogRepository.save(auditLog);
-                        log.info("Recorded audit log for event [{}] type [{}]", envelope.eventId(), envelope.eventType());
-                    }
-            );
-        } catch (Exception e) {
-            log.error("Failed to process audit event from topic [{}] offset [{}]",
-                    record.topic(), record.offset(), e);
-            throw new RuntimeException("Error processing audit event", e);
-        }
+                    envelope.tenantId(),
+                    envelope.aggregateType(),
+                    envelope.aggregateId(),
+                    envelope.producer(),
+                    envelope.payload() != null ? envelope.payload().toString() : "{}",
+                    envelope.occurredAt() != null ? envelope.occurredAt() : Instant.now(),
+                    Instant.now());
+            auditLogRepository.save(auditLog);
+            log.info(
+                "Recorded audit log for event [{}] type [{}]",
+                envelope.eventId(),
+                envelope.eventType());
+          });
+    } catch (Exception e) {
+      log.error(
+          "Failed to process audit event from topic [{}] offset [{}]",
+          record.topic(),
+          record.offset(),
+          e);
+      throw new RuntimeException("Error processing audit event", e);
     }
-    // #endregion
+  }
+  // #endregion
 }

@@ -9,14 +9,13 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 public class MetricsAutoConfiguration {
 
-    // #region commonMetricsTags
-    @Bean
-    public MeterRegistryCustomizer<MeterRegistry> commonMetricsTags(
-            @Value("${spring.application.name:unknown-service}") String applicationName,
-            @Value("${spring.profiles.active:default}") String environment) {
-        return registry -> registry.config()
-                .commonTags("application", applicationName)
-                .commonTags("env", environment);
-    }
-    // #endregion
+  // #region commonMetricsTags
+  @Bean
+  public MeterRegistryCustomizer<MeterRegistry> commonMetricsTags(
+      @Value("${spring.application.name:unknown-service}") String applicationName,
+      @Value("${spring.profiles.active:default}") String environment) {
+    return registry ->
+        registry.config().commonTags("application", applicationName).commonTags("env", environment);
+  }
+  // #endregion
 }

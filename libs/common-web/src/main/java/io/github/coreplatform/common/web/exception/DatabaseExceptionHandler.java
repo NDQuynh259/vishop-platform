@@ -20,13 +20,16 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Handles database constraint violations and optimistic locking conflicts,
- * formatting them consistently into RFC 9457 Problem Details without leaking SQL internals.
- * Active only when Spring DAO / Data access classes are on the classpath.
+ * Handles database constraint violations and optimistic locking conflicts, formatting them
+ * consistently into RFC 9457 Problem Details without leaking SQL internals. Active only when Spring
+ * DAO / Data access classes are on the classpath.
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@ConditionalOnClass({DataIntegrityViolationException.class, OptimisticLockingFailureException.class})
+@ConditionalOnClass({
+  DataIntegrityViolationException.class,
+  OptimisticLockingFailureException.class
+})
 public class DatabaseExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(DatabaseExceptionHandler.class);
@@ -37,11 +40,16 @@ public class DatabaseExceptionHandler {
       DataIntegrityViolationException ex, HttpServletRequest request) {
 
     String requestId = resolveRequestId(request);
-    log.error("[{}] Database integrity constraint violation on {} {}: {}",
-        requestId, request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.error(
+        "[{}] Database integrity constraint violation on {} {}: {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        HttpStatus.CONFLICT, "A database conflict or unique constraint violation occurred.");
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT, "A database conflict or unique constraint violation occurred.");
     problem.setType(URI.create("/errors/conflict"));
     problem.setTitle("Conflict");
     problem.setInstance(resolveInstance(request));
@@ -51,6 +59,7 @@ public class DatabaseExceptionHandler {
 
     return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
   }
+
   // #endregion
 
   // #region handleOptimisticLockingFailure
@@ -59,11 +68,16 @@ public class DatabaseExceptionHandler {
       OptimisticLockingFailureException ex, HttpServletRequest request) {
 
     String requestId = resolveRequestId(request);
-    log.warn("[{}] Optimistic lock collision on {} {}: {}",
-        requestId, request.getMethod(), request.getRequestURI(), ex.getMessage());
+    log.warn(
+        "[{}] Optimistic lock collision on {} {}: {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
 
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        HttpStatus.CONFLICT, "The requested resource was modified concurrently. Please retry.");
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT, "The requested resource was modified concurrently. Please retry.");
     problem.setType(URI.create("/errors/conflict"));
     problem.setTitle("Conflict");
     problem.setInstance(resolveInstance(request));
@@ -73,6 +87,7 @@ public class DatabaseExceptionHandler {
 
     return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
   }
+
   // #endregion
 
   // #region resolveInstance
@@ -82,6 +97,7 @@ public class DatabaseExceptionHandler {
     }
     return URI.create(request.getRequestURI());
   }
+
   // #endregion
 
   // #region resolveRequestId

@@ -1,94 +1,49 @@
-# API Gateway — ViShop Platform
+# API Gateway
 
-## 1. Tổng quan
+Gateway dùng Spring Cloud Gateway/WebFlux, chạy ở cổng 8000. Các route được định nghĩa
+trong [application.yml](../../services/api-gateway/src/main/resources/application.yml).
 
-`services/api-gateway` là điểm chạm duy nhất (Single Point of Entry) cho toàn bộ traffic từ client (Web SPA, Mobile App, Third-party Webhook) đi vào hệ sinh thái microservices của **ViShop Platform**.
+| Route | Đích |
+| --- | --- |
+| `/api/v1/auth/**`, `/api/v1/tenants/**` | `iam-service` (:8080) |
+| `/api/v1/invitations/**`, `/api/v1/cms/**` | `iam-service` (:8080) |
+| `/api/v1/audit/**` | `audit-service` (:8082), khi có HTTP endpoint tương ứng |
+| `/v3/api-docs/iam-service` | IAM `/v3/api-docs` |
+| `/v3/api-docs/audit-service` | Audit `/v3/api-docs` |
 
-API Gateway được xây dựng trên **Spring Cloud Gateway (Spring WebFlux / Project Reactor - Netty phi đồng bộ)** chạy trên cổng mặc định **`8000`**.
+## Xác thực và tenant context
 
-```text
-               Client (Web, Mobile, 3rd Party)
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │   API Gateway   │ (:8000)
-                    │  (Spring Cloud) │
-                    └────────┬────────┘
-                             │
-       ┌─────────────────────┼─────────────────────┐
-       ▼                     ▼                     ▼
-┌──────────────┐      ┌──────────────┐      ┌──────────────┐
-│  identity-   │      │   tenant-    │      │    audit-    │
-│   service    │      │   service    │      │   service    │
-│   (:8080)    │      │   (:8081)    │      │   (:8082)    │
-└──────────────┘      └──────────────┘      └──────────────┘
+Gateway xóa `X-User-*`, `X-Tenant-Id` và khóa nội bộ do client gửi. Các request được
+bảo vệ phải có JWT Bearer hoặc opaque cookie `vishop_session`.
+
+[IamAuthenticationClient](../../services/api-gateway/src/main/java/com/vishop/gateway/security/IamAuthenticationClient.java)
+gọi endpoint riêng `/internal/auth/introspect` bằng `IAM_INTERNAL_SECRET`. IAM kiểm tra
+session, trạng thái tài khoản, tenant, membership và quyền hiện tại. Gateway nhận JWT
+mới từ IAM để chuyển downstream, loại bỏ cookie gốc và gắn metadata user/tenant đã xác minh.
+Roles và permissions nằm trong JWT, không lấy từ các header client.
+
+Identity/onboarding/CMS API có thể dùng context chưa chọn tenant; API nghiệp vụ cần tenant
+context. IAM không hoạt động thì gateway trả 503, không dùng quyền cũ. Credential bị thu hồi
+trả 401; thiếu tenant/quyền trả 403. Downstream vẫn xác minh JWT của IAM.
+
+Chỉ login/register, tài liệu API, health và OPTIONS được đi qua mà không cần xác thực.
+Cookie-authenticated writes cần Origin được phép. CORS dùng danh sách origin chính xác
+trong `ALLOWED_ORIGINS`. Authorization sai không được fallback sang cookie.
+
+## Các filter khác
+
+* Correlation filter gắn request/correlation ID để truy vết.
+* Tenant resolution filter kiểm tra cú pháp header UUID; header này không chứng minh membership.
+* Logging filter ghi thông tin request theo cấu hình quan sát hệ thống.
+* Gateway exception handler trả Problem Details cho lỗi định tuyến/kết nối.
+
+## Khởi chạy
+
+Đặt `IAM_SERVICE_URL`, `IAM_INTERNAL_SECRET`, `ALLOWED_ORIGINS` phù hợp rồi chạy:
+
+```powershell
+.\gradlew.bat :services:api-gateway:bootRun
 ```
 
----
-
-## 2. Các chức năng chính
-
-### 2.1. Routing Rules (Định tuyến dịch vụ)
-Được cấu hình trong [`application.yml`](../../services/api-gateway/src/main/resources/application.yml):
-
-| Path Pattern | Target Service | Mục đích |
-| :--- | :--- | :--- |
-| `/api/v1/auth/**`, `/api/v1/users/**` | `http://localhost:8080` | Định tuyến sang `identity-service` |
-| `/api/v1/tenants/**` | `http://localhost:8081` | Định tuyến sang `tenant-service` |
-| `/api/v1/audit-logs/**` | `http://localhost:8082` | Định tuyến sang `audit-service` |
-
-### 2.2. Global Filters (Bộ lọc toàn cục)
-
-1. **[`CorrelationIdGlobalFilter`](../../services/api-gateway/src/main/java/com/vishop/gateway/filter/CorrelationIdGlobalFilter.java)**:
-   * Kiểm tra header `X-Correlation-Id` hoặc `X-Request-Id`.
-   * Nếu client chưa gửi, gateway tự động sinh UUID v7 mới và đính kèm vào cả downstream request lẫn upstream response.
-   * Đảm bảo tính khả kiến và truy vết phân tán xuyên suốt các dịch vụ.
-
-2. **[`TenantResolutionGlobalFilter`](../../services/api-gateway/src/main/java/com/vishop/gateway/filter/TenantResolutionGlobalFilter.java)**:
-   * Kiểm tra header `X-Tenant-Id` trên các protected routes.
-   * Hỗ trợ resolve tenant qua custom domain/subdomain nếu sau này tích hợp tenant routing theo host header.
-
-3. **[`LoggingGlobalFilter`](../../services/api-gateway/src/main/java/com/vishop/gateway/filter/LoggingGlobalFilter.java)**:
-   * Ghi log access phi đồng bộ (Method, URI, Query Params, Status code, Client IP, Latency ms).
-
-### 2.3. CORS Configuration
-Được định cấu hình tại [`CorsConfig.java`](../../services/api-gateway/src/main/java/com/vishop/gateway/config/CorsConfig.java), hỗ trợ đầy đủ preflight request (`OPTIONS`), cho phép các headers phổ biến (`X-Tenant-Id`, `X-Correlation-Id`, `Authorization`, `Content-Type`) và hỗ trợ credentials.
-
-### 2.4. Global Exception & Problem Details (RFC 9457)
-Tại [`GatewayExceptionHandler.java`](../../services/api-gateway/src/main/java/com/vishop/gateway/handler/GatewayExceptionHandler.java):
-* Khi downstream service bị sập (`503 Service Unavailable` hoặc `ConnectException` / `TimeoutException`), Gateway trả về chuẩn **RFC 9457 Problem Details** (JSON) thay vì HTML mặc định của trình duyệt/container.
-
-Ví dụ phản hồi lỗi khi downstream service không hoạt động:
-```json
-{
-  "type": "https://api.vishop.vn/errors/service-unavailable",
-  "title": "Service Unavailable",
-  "status": 503,
-  "detail": "The target microservice is currently unreachable. Please try again shortly.",
-  "code": "service-unavailable",
-  "requestId": "0192a6df-10a4-7f12-a1b2-c3d4e5f60789"
-}
-```
-
-### 2.5. OpenAPI / Swagger UI Aggregation
-API Gateway đóng vai trò làm cổng gom tài liệu Swagger UI tập trung (`http://localhost:8000/swagger-ui.html`):
-- Sử dụng thư viện `org.springdoc:springdoc-openapi-starter-webflux-ui:2.6.0`.
-- Tự động gom tài liệu từ các microservices qua các route:
-  - `/v3/api-docs/tenant-service` $\rightarrow$ `tenant-service` (`:8081/v3/api-docs`)
-  - `/v3/api-docs/identity-service` $\rightarrow$ `identity-service` (`:8080/v3/api-docs`)
-  - `/v3/api-docs/audit-service` $\rightarrow$ `audit-service` (`:8082/v3/api-docs`)
-- Lập trình viên và đối tác chỉ cần truy cập đúng một URL duy nhất tại Gateway để xem toàn bộ API specs của hệ thống.
-
----
-
-## 3. Khởi chạy API Gateway
-
-```bash
-# Chạy trực tiếp từ root qua Gradle
-./gradlew :services:api-gateway:bootRun
-```
-
-Kiểm tra sức khỏe dịch vụ:
-```bash
-curl http://localhost:8000/actuator/health
-```
+Gateway không cần khóa ký JWT để introspect. IAM và các downstream xác minh JWT cần
+`JWT_SECRET`. Xem [IAM README](../../services/iam-service/README.md) để biết API và cấu hình.

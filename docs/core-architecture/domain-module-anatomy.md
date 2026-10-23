@@ -1,69 +1,73 @@
 # Cấu trúc giải phẫu Microservice (Domain Module Anatomy)
 
-Tài liệu này giải thích chi tiết mục đích và trách nhiệm của từng file bên trong một Microservice theo chuẩn **Domain-Driven Design (DDD) + Hexagonal Architecture + CQRS**, lấy ví dụ thực tế từ [`services/tenant-service`](../../services/tenant-service).
+Tài liệu này giải thích chi tiết mục đích và trách nhiệm của từng file bên trong một Microservice theo chuẩn **Domain-Driven Design (DDD) + Hexagonal Architecture + CQRS**, lấy ví dụ thực tế từ [`services/iam-service`](../../services/iam-service).
+
+IAM chia theo phân hệ trước, chia tầng bên trong mỗi phân hệ. Use case dùng port của chính phân hệ và application API công khai của phân hệ khác; không dùng repository/entity của nhau. Tenant dùng JPA, identity/access dùng JDBC, cùng datasource và transaction. Chi tiết runtime xem [IAM README](../../services/iam-service/README.md).
 
 ---
 
 ## 1. Cấu trúc thư mục của một Microservice
 
 ```text
-services/tenant-service/src/main/
-├── java/com/vishop/tenant/
-│   ├── TenantApplication.java                # Spring Boot Main Entry Point
-│   │
-│   ├── domain/                               # [Layer 1: Domain - Thuần túy nghiệp vụ]
-│   │   ├── entities/                         # Aggregate Roots & Entities
-│   │   │   └── Tenant.java                   # Aggregate Root chính của Bounded Context
-│   │   ├── valueobjects/                     # Value Objects & Domain Enums
-│   │   │   ├── TenantCode.java               # Value Object (tự validate cú pháp code)
-│   │   │   └── TenantStatus.java             # Domain Enum (ACTIVE, SUSPENDED, ARCHIVED)
-│   │   ├── ports/                            # Outbound Repository Ports (Interfaces)
-│   │   │   └── TenantRepositoryPort.java     # Domain Repository Port (Interface thuần túy)
-│   │   ├── event/                            # Domain Events phát sinh từ Aggregate
-│   │   │   ├── TenantCreatedEvent.java       # Sự kiện tạo mới Tenant
-│   │   │   └── TenantStatusChangedEvent.java # Sự kiện đổi trạng thái Tenant
-│   │   └── services/                         # Domain Services (Nghiệp vụ đa aggregate)
-│   │       └── package-info.java
-│   │
-│   ├── application/                          # [Layer 2: Application - Use Cases & CQRS]
-│   │   ├── command/                          # CQRS Write Operations
-│   │   │   ├── CreateTenantCommand.java
-│   │   │   ├── CreateTenantCommandHandler.java
-│   │   │   ├── ChangeTenantStatusCommand.java
-│   │   │   └── ChangeTenantStatusCommandHandler.java
-│   │   ├── query/                            # CQRS Read Operations
-│   │   │   ├── GetTenantByIdQuery.java
-│   │   │   ├── GetTenantByIdQueryHandler.java
-│   │   │   ├── ListTenantsQuery.java
-│   │   │   └── ListTenantsQueryHandler.java
-│   │   └── dto/                              # DTOs giao tiếp
-│   │       ├── CreateTenantRequest.java
-│   │       ├── ChangeTenantStatusRequest.java
-│   │       └── TenantResponseDto.java
-│   │
-│   ├── infrastructure/                       # [Layer 3: Infrastructure - Adapters]
-│   │   └── persistence/
-│   │       ├── entities/
-│   │       │   └── TenantJpaEntity.java      # JPA Table Mapping
-│   │       ├── repositories/
-│   │       │   ├── SpringDataTenantRepository.java # Spring Data JPA
-│   │       │   └── TenantSpecifications.java       # JPA Criteria API Specifications
-│   │       └── adapters/
-│   │           └── TenantRepositoryAdapter.java    # Hiện thực Domain Port
-│   │
-│   └── presentation/                         # [Layer 4: Presentation - Controllers]
-│       └── rest/
-│           └── TenantController.java         # HTTP REST API
-│
-└── resources/
-    ├── application.yml                       # Cấu hình runtime (port, DB, Kafka)
-    └── db/migration/                         # Flyway DB Migrations
-        └── V1__init_tenant_schema.sql
+services/iam-service/src/main/java/com/vishop/iam/
+├── IamApplication.java
+├── tenant/
+│   ├── domain/
+│   │   ├── entities/Tenant.java
+│   │   ├── valueobjects/                   # TenantCode, TenantStatus
+│   │   ├── ports/TenantRepositoryPort.java
+│   │   └── event/                          # TenantCreated/Renamed/StatusChangedEvent
+│   ├── application/
+│   │   ├── api/TenantApi.java
+│   │   ├── command/                        # CreateTenant, RenameTenant, ChangeTenantStatus
+│   │   ├── query/                          # GetTenantById, ListCmsTenants
+│   │   └── dto/
+│   ├── infrastructure/persistence/         # JPA entity, repository và adapter
+│   └── presentation/rest/                  # TenantController, TenantCmsController
+├── identity/
+│   ├── domain/                             # User, Session, SystemRole, PasswordPolicy, ports
+│   ├── application/
+│   │   ├── api/IdentityApi.java
+│   │   ├── command/                        # RegisterUser, Login, Logout, SwitchTenant, CMS user
+│   │   ├── query/                          # Authenticate, Introspect, RefreshAccessToken, profile
+│   │   ├── service/                        # SessionService, IdentityAuthorizationService
+│   │   ├── port/                           # Password/token/UserRead ports
+│   │   └── dto/
+│   ├── infrastructure/                     # JDBC adapters, JWT/password/authentication adapters
+│   └── presentation/rest/                  # AuthController, InternalAuthController, UserCmsController
+├── access/
+│   ├── domain/                             # Membership, Role, Invitation, RoleAssignmentPolicy, ports
+│   ├── application/
+│   │   ├── api/AccessApi.java
+│   │   ├── command/                        # Role, member và invitation use cases
+│   │   ├── query/                          # ListMyTenants, ListTenantMembers/Roles
+│   │   ├── service/AccessAuthorizationService.java
+│   │   ├── port/AccessReadPort.java
+│   │   └── dto/
+│   ├── infrastructure/
+│   │   ├── persistence/                    # JDBC adapters và AccessJdbcMappings
+│   │   ├── integration/IdentityUserActivityAdapter.java
+│   │   └── config/IamDomainConfiguration.java
+│   └── presentation/rest/                  # TenantAccessController, InvitationController
+└── shared/
+    ├── domain/event/IamDomainEvent.java
+    ├── application/
+    │   ├── dto/IamActor.java
+    │   └── port/                           # IamEventPublisherPort, OpaqueTokenPort
+    └── infrastructure/
+        ├── messaging/                      # IamOutbox, IamOutboxRelay
+        ├── security/                       # IamPrincipal, opaque token utilities/adapter
+        ├── persistence/JdbcValues.java
+        └── database/IamDatabaseMigration.java
 ```
+
+`resources/application.yml` và `resources/db/migration` vẫn ở cấp service. Đây là các package trong cùng một deployment và database, không phải ba service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.
 
 ---
 
 ## 2. Chi tiết từng tầng và vai trò của từng file
+
+Các đường dẫn ở phần này được hiểu tương đối bên trong phân hệ tương ứng. Ví dụ `entities/Tenant.java` thuộc `tenant/domain`, còn `services/RoleAssignmentPolicy.java` thuộc `access/domain`.
 
 ### 2.1. Tầng Domain (`domain/`)
 
@@ -72,18 +76,18 @@ Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không
 #### `entities/Tenant.java` — Aggregate Root
 * Kế thừa từ `AggregateRoot<UUID>`.
 * Constructor đặt ở chế độ `private` để bắt buộc khởi tạo qua 2 static factory methods:
-  * `create(TenantCode code, String name)`: Dùng khi tạo mới nghiệp vụ, nội bộ sinh ra `TenantCreatedEvent` lưu vào danh sách domain events.
+  * `create(TenantCode code, String name, UUID ownerId)`: Dùng khi tạo mới nghiệp vụ, nội bộ sinh ra `TenantCreatedEvent` lưu vào danh sách domain events.
   * `reconstitute(...)`: Dùng bởi Repository Adapter để tái dựng Aggregate từ database mà **không** kích hoạt domain events.
-* Không có setter công khai. Trạng thái chỉ được thay đổi qua các phương thức nghiệp vụ: `activate()`, `suspend()`, `archive()`, `updateName()`.
+* Không có setter công khai. Trạng thái thay đổi qua `changeStatus(...)` và `rename(...)`; aggregate chặn tái kích hoạt tenant đã archive và ghi domain event cho thay đổi hợp lệ.
 
 #### `valueobjects/TenantCode.java` & `TenantStatus.java` — Value Objects & Enums
-* `TenantCode`: Cài đặt dưới dạng Java `record` kế thừa interface `ValueObject`. Đảm bảo tính bất biến (immutable) và tự kiểm tra tính hợp lệ (invariants) trong constructor:
+* `TenantCode`: Cài đặt dưới dạng Java `record` không cần marker interface. Đảm bảo tính bất biến (immutable) và tự kiểm tra tính hợp lệ (invariants) trong constructor:
   ```java
-  public record TenantCode(String value) implements ValueObject {
+  public record TenantCode(String value) {
       private static final Pattern PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$");
       public TenantCode {
-          if (!PATTERN.matcher(value).matches()) {
-              throw new DomainException("invalid_tenant_code", "Mã tenant không hợp lệ: " + value);
+          if (value == null || !PATTERN.matcher(value).matches()) {
+              throw new BadRequestException("Invalid tenant code");
           }
       }
   }
@@ -93,10 +97,11 @@ Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không
 #### `ports/TenantRepositoryPort.java` — Repository Port
 * Là một interface Java thuần túy định nghĩa các phương thức lưu trữ Aggregate Root mà nghiệp vụ cần, ví dụ:
   ```java
-  public interface TenantRepositoryPort extends DomainRepository<Tenant, UUID> {
-      Optional<Tenant> findByCode(String code);
-      boolean existsByCode(String code);
-      List<Tenant> findTenants(Instant cursorCreatedAt, UUID cursorId, int limit);
+  public interface TenantRepositoryPort {
+      Tenant tenant(UUID id);
+      void save(Tenant tenant);
+      void lockTenant(UUID id);
+      List<Tenant> tenants(int limit, int offset);
   }
   ```
 
@@ -116,15 +121,16 @@ Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
 #### `command/CreateTenantCommand.java` & `CreateTenantCommandHandler.java`
 * `Command` là một record mang dữ liệu đầu vào thực hiện hành động ghi.
 * `CommandHandler` bọc trong transaction (`@Transactional`):
-  1. Kiểm tra ràng buộc nghiệp vụ qua `tenantRepository.existsByCode(...)`.
+  1. Xác thực actor và kiểm tra tài khoản đang hoạt động. Unique constraint bảo vệ tenant code, kể cả khi có request đồng thời.
   2. Tạo mới Aggregate: `Tenant.create(...)`.
   3. Lưu Aggregate: `tenantRepository.save(tenant)`.
-  4. Đưa Domain Events vào Outbox: `outboxService.saveEventsFor(tenant, "tenant-service")` để OutboxPublisher gửi Kafka bất đồng bộ.
-  5. Trả về `TenantResponseDto`.
+  4. Gọi `AccessApi.initializeOwner(...)` để tạo membership OWNER. API này yêu cầu transaction đang tồn tại; trigger đã tạo bốn role mặc định khi insert tenant.
+  5. Đưa Domain Events vào Outbox: `tenant.pullDomainEvents().forEach(outbox::publish)` để relay gửi Kafka bất đồng bộ sau khi commit. Tenant, role mặc định, membership và outbox cùng rollback khi có lỗi.
+  6. Trả về `TenantResponseDto`.
 
-#### `query/ListTenantsQuery.java` & `ListTenantsQueryHandler.java`
-* `Query` đại diện cho yêu cầu đọc dữ liệu (`@Transactional(readOnly = true)`), kết hợp giữa `TenantFilter` (nghiệp vụ lọc `search`, `status`) và phân trang (`CursorParams` hoặc `OffsetPagination`).
-* `ListTenantsQueryHandler` xử lý theo quy tắc: **Ưu tiên cursor**, nếu có `cursor` thì giải mã keyset cursor và query trực tiếp trả về `PagedResult.ofCursor(...)`; nếu không truyền cursor thì chuyển sang phân trang **Offset** (`Pageable` + count query) trả về `PagedResult.ofOffset(...)`. Tại tầng Presentation, Controller bọc `PagedResult` thành `ListEnvelope` để tự động trả về metadata tương ứng cho client.
+#### `query/ListCmsTenantsQuery.java` & `ListCmsTenantsQueryHandler.java`
+* `Query` đại diện cho yêu cầu đọc dữ liệu (`@Transactional(readOnly = true)`). Handler kiểm tra quyền CMS, đọc qua repository port và map sang response DTO.
+* API CMS hiện giữ contract `limit`/`offset`, sắp xếp ổn định theo `created_at DESC, id DESC`. Khi bổ sung filter/cursor, cần định nghĩa contract và metadata phân trang tương ứng; việc tách CQRS không tự thay đổi API hiện tại.
 
 ---
 
@@ -138,9 +144,10 @@ Hiện thực hóa các Ports của Domain bằng các công nghệ cụ thể.
   * `fromDomain(Tenant)`: Ánh xạ từ Domain Model sang JPA Entity.
   * `toDomain()`: Gọi `Tenant.reconstitute(...)` để chuyển sang Domain Model.
 
-#### `persistence/repositories/SpringDataTenantRepository.java` & `TenantSpecifications.java`
+#### `persistence/repositories/SpringDataTenantRepository.java`
 * Interface Spring Data JPA kế thừa `JpaRepository` và `JpaSpecificationExecutor`.
-* `TenantSpecifications` đóng gói các điều kiện lọc động (Search, Filter status, Cursor pagination) bằng JPA Criteria API.
+* Repository cung cấp truy vấn khóa tenant và danh sách phân trang. `TenantJpaEntity` dùng `@Version`.
+* Identity và access có `IdentityJdbcMappings`/`AccessJdbcMappings` riêng. Chỉ các hàm JDBC thuần kỹ thuật như đọc UUID nằm trong `shared/infrastructure/persistence/JdbcValues`.
 
 #### `persistence/adapters/TenantRepositoryAdapter.java`
 * Lớp cài đặt interface `TenantRepositoryPort`.
@@ -158,9 +165,27 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 * Chỉ giao tiếp với Application Layer qua `CommandBus` và `QueryBus`:
   ```java
   @PostMapping
-  public ResponseEntity<TenantResponseDto> create(@Valid @RequestBody CreateTenantRequest req) {
-      TenantResponseDto dto = commandBus.dispatch(new CreateTenantCommand(req.code(), req.name()));
+  public ResponseEntity<TenantResponseDto> create(
+          @AuthenticationPrincipal IamPrincipal actor,
+          @Valid @RequestBody CreateTenantRequest req) {
+      TenantResponseDto dto = commandBus.dispatch(
+          new CreateTenantCommand(actor.actor(), req.code(), req.name()));
       return ResponseEntity.created(URI.create("/api/v1/tenants/" + dto.id())).body(dto);
   }
   ```
-* Bất kỳ ngoại lệ nghiệp vụ nào (`EntityNotFoundException`, `ConflictException`, `BusinessRuleViolationException`) đều được `GlobalExceptionHandler` bắt và chuyển thành RFC 9457 Problem Details tự động.
+* Ngoại lệ nghiệp vụ, validation, database và security được ánh xạ ở HTTP boundary bằng exception handler/filter tương ứng. Kiểm thử cả HTTP status và dữ liệu lỗi; không trả stack trace hoặc secret ra response.
+
+## 3. Giao tiếp giữa các phân hệ
+
+- `IdentityApi`: kiểm tra tài khoản, quyền CMS và cung cấp user view hiện tại.
+- `TenantApi`: kiểm tra trạng thái tenant, trả tenant view và lấy khóa trong transaction của use case.
+- `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để phân giải session; tenant dùng để hoàn tất onboarding.
+- `UserActivityPort` thuộc access domain; `IdentityUserActivityAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
+
+Đây là application API nội bộ trong cùng process. Phân hệ khác chỉ dùng `application/api` và DTO công khai, không gọi repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` chỉ chứa thành phần dùng chung và không phụ thuộc ngược vào ba phân hệ.
+
+`IamActor` chỉ chứa user ID, session ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong shared.
+
+## 4. Kiểm tra ranh giới kiến trúc
+
+`IamArchitectureTest` bảo vệ chiều phụ thuộc: domain độc lập framework và outer layers, application dùng port, controller không gọi repository/domain entity; phân hệ chỉ dùng hợp đồng công khai của nhau và shared không phụ thuộc nghiệp vụ. `TenantTest` kiểm tra invariant và domain event. `IamApplicationTest` kiểm tra API/phân quyền, transaction bắt buộc của API thay đổi dữ liệu, cập nhật version, các request đồng thời và rollback chung giữa JPA, JDBC, role mặc định và outbox.

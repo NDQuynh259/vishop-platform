@@ -6,16 +6,18 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration;
 
-@SpringBootApplication(exclude = {
-        ReactiveSecurityAutoConfiguration.class,
-        ReactiveUserDetailsServiceAutoConfiguration.class,
-        ReactiveManagementWebSecurityAutoConfiguration.class
-})
+@SpringBootApplication(
+    exclude = {
+      ReactiveSecurityAutoConfiguration.class,
+      io.github.coreplatform.common.security.jwt.JwtAutoConfiguration.class,
+      ReactiveUserDetailsServiceAutoConfiguration.class,
+      ReactiveManagementWebSecurityAutoConfiguration.class
+    })
 public class GatewayApplication {
 
-    // #region main
-    public static void main(String[] args) {
-        SpringApplication.run(GatewayApplication.class, args);
-    }
-    // #endregion
+  // #region main
+  public static void main(String[] args) {
+    SpringApplication.run(GatewayApplication.class, args);
+  }
+  // #endregion
 }

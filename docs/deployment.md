@@ -25,10 +25,10 @@ FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /app
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
-COPY platform-common ./platform-common
-COPY services/tenant-service ./services/tenant-service
+COPY libs ./libs
+COPY services/iam-service ./services/iam-service
 
-RUN ./gradlew :services:tenant-service:bootJar --no-daemon
+RUN ./gradlew :services:iam-service:bootJar --no-daemon
 
 # Stage 2: Runtime image
 FROM eclipse-temurin:21-jre-alpine
@@ -38,12 +38,12 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
-COPY --from=builder /app/services/tenant-service/build/libs/tenant-service-*.jar app.jar
+COPY --from=builder /app/services/iam-service/build/libs/iam-service-*.jar app.jar
 
 ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
 ENV SPRING_PROFILES_ACTIVE="prod"
 
-EXPOSE 8081
+EXPOSE 8080
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 ```
@@ -54,11 +54,11 @@ ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 
 | Biến môi trường | Ý nghĩa | Ví dụ |
 | :--- | :--- | :--- |
-| `SPRING_DATASOURCE_URL` | JDBC URL kết nối tới Database của Service | `jdbc:postgresql://db-host:5432/vishop_tenant` |
+| `SPRING_DATASOURCE_URL` | JDBC URL kết nối tới Database của Service | `jdbc:postgresql://db-host:5432/vishop_iam` |
 | `SPRING_DATASOURCE_USERNAME` | Username DB | `vishop_prod` |
 | `SPRING_DATASOURCE_PASSWORD` | Password DB | `[SECURE_PASSWORD]` |
 | `SPRING_KAFKA_BOOTSTRAP_SERVERS`| Danh sách Kafka Brokers | `kafka-1:9092,kafka-2:9092` |
-| `SERVER_PORT` | Cổng HTTP của service | `8081` |
+| `SERVER_PORT` | Cổng HTTP của service | `8080` |
 | `JAVA_OPTS` | Tinh chỉnh JVM memory và GC | `-XX:+UseG1GC -XX:MaxRAMPercentage=75.0` |
 
 ---

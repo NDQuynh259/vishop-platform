@@ -1,176 +1,146 @@
 package com.vishop.gateway.filter;
 
+import com.vishop.gateway.security.IamAuthenticationClient;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
-import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.cloud.gateway.filter.GatewayFilterChain;
-import org.springframework.cloud.gateway.filter.GlobalFilter;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.gateway.filter.*;
 import org.springframework.core.Ordered;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-/**
- * Global authentication and token mediation filter at the API Gateway.
- * Validates incoming JWT Bearer tokens or session cookies, enforces anti-spoofing
- * by stripping client-supplied X-User-* headers, and enriches downstream requests
- * with trusted internal security headers (X-User-Id, X-Tenant-Id, X-User-Roles, X-User-Permissions).
- */
+/** IAM is the authority for live sessions and grants; untrusted headers never confer access. */
 @Component
 public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
+  private final IamAuthenticationClient iam;
+  private final Set<String> origins;
 
-    private static final Logger log = LoggerFactory.getLogger(AuthenticationGlobalFilter.class);
+  public AuthenticationGlobalFilter(
+      IamAuthenticationClient iam,
+      @Value("${vishop.security.allowed-origins:http://localhost:3000}") String origins) {
+    this.iam = iam;
+    this.origins = Arrays.stream(origins.split(",")).map(String::trim).collect(Collectors.toSet());
+  }
 
-    private static final List<String> PUBLIC_PATH_PREFIXES = List.of(
-            "/api/v1/auth/",
-            "/actuator/",
-            "/swagger-ui",
-            "/v3/api-docs"
-    );
-
-    private static final List<String> SESSION_COOKIE_NAMES = List.of(
-            "better-auth.session_token",
-            "vishop_session",
-            "vishop_token"
-    );
-
-    private final JwtTokenProvider jwtTokenProvider;
-
-    public AuthenticationGlobalFilter(JwtTokenProvider jwtTokenProvider) {
-        this.jwtTokenProvider = jwtTokenProvider;
-    }
-
-    // #region filter
-    @Override
-    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        ServerHttpRequest request = exchange.getRequest();
-        String path = request.getURI().getRawPath();
-
-        // 1. Allow OPTIONS preflight and public endpoints
-        if (request.getMethod() == HttpMethod.OPTIONS || isPublicPath(path)) {
-            return chain.filter(exchange);
-        }
-
-        // 2. Extract Token from Authorization Header or Cookie
-        String token = extractToken(request);
-
-        if (token == null || token.isBlank()) {
-            log.warn("[Gateway Auth] Missing authorization token for protected route: {}", path);
-            return unauthorizedResponse(exchange, "Full authentication is required to access this resource.");
-        }
-
-        // 3. Validate Token
-        if (!jwtTokenProvider.validateToken(token)) {
-            log.warn("[Gateway Auth] Invalid or expired token for route: {}", path);
-            return unauthorizedResponse(exchange, "The provided authentication token is invalid or has expired.");
-        }
-
-        // 4. Extract Claims & Context Enrichment (Anti-Spoofing)
-        UUID userId = jwtTokenProvider.extractUserId(token);
-        UUID tenantId = jwtTokenProvider.extractTenantId(token);
-        List<String> roles = jwtTokenProvider.extractRoles(token);
-        List<String> permissions = jwtTokenProvider.extractPermissions(token);
-
-        ServerHttpRequest.Builder requestBuilder = request.mutate()
-                // Strip client-supplied security headers to prevent spoofing
-                .headers(headers -> {
-                    headers.remove(SecurityHeaders.X_USER_ID);
-                    headers.remove(SecurityHeaders.X_USER_ROLES);
-                    headers.remove(SecurityHeaders.X_USER_PERMISSIONS);
-                    headers.remove(SecurityHeaders.X_USER_SHOPS);
+  @Override
+  public Mono<Void> filter(ServerWebExchange original, GatewayFilterChain chain) {
+    ServerHttpRequest request =
+        original
+            .getRequest()
+            .mutate()
+            .headers(
+                h -> {
+                  h.keySet().stream()
+                      .filter(
+                          key ->
+                              key.toLowerCase(java.util.Locale.ROOT).startsWith("x-user-")
+                                  || key.equalsIgnoreCase(SecurityHeaders.X_TENANT_ID)
+                                  || key.equalsIgnoreCase("X-Iam-Internal-Key"))
+                      .toList()
+                      .forEach(h::remove);
                 })
-                .header(SecurityHeaders.X_USER_ID, userId.toString())
-                .header(SecurityHeaders.X_USER_ROLES, String.join(",", roles))
-                .header(SecurityHeaders.X_USER_PERMISSIONS, String.join(",", permissions));
+            .build();
+    ServerWebExchange exchange = original.mutate().request(request).build();
+    String path = request.getURI().getRawPath();
+    String origin = request.getHeaders().getOrigin();
+    if (origin != null && !origins.contains(origin)) return error(exchange, 403);
+    if (request.getMethod() == HttpMethod.OPTIONS || publicPath(path))
+      return chain.filter(exchange);
 
-        if (tenantId != null) {
-            requestBuilder.header(SecurityHeaders.X_TENANT_ID, tenantId.toString());
-        }
+    String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+    boolean bearer = authorization != null;
+    String credential =
+        bearer
+            ? (authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "")
+            : request.getCookies().containsKey("vishop_session")
+                ? request.getCookies().getFirst("vishop_session").getValue()
+                : null;
+    if (credential == null || credential.isBlank()) return error(exchange, 401);
+    // Mediation turns a cookie into a Bearer token downstream, so enforce CSRF here too.
+    if (!bearer
+        && !Set.of(HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS)
+            .contains(request.getMethod())
+        && origin == null) return error(exchange, 403);
 
-        return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
-    }
-    // #endregion
+    return iam.authenticate(credential, bearer)
+        .materialize()
+        .flatMap(
+            signal -> {
+              if (signal.isOnError()) {
+                var failure = signal.getThrowable();
+                return error(
+                    exchange,
+                    failure instanceof WebClientResponseException.Unauthorized
+                        ? 401
+                        : failure instanceof WebClientResponseException.Forbidden ? 403 : 503);
+              }
+              var identity = signal.get();
+              if (identity == null) return error(exchange, 503);
+              if (identity.tenantId() == null && !identityRoute(path)) return error(exchange, 403);
+              var builder =
+                  request
+                      .mutate()
+                      .headers(h -> h.remove(HttpHeaders.COOKIE))
+                      .headers(
+                          h -> {
+                            h.setBearerAuth(identity.accessToken());
+                            h.set(SecurityHeaders.X_USER_ID, identity.userId().toString());
+                            if (identity.tenantId() != null)
+                              h.set(SecurityHeaders.X_TENANT_ID, identity.tenantId().toString());
+                          });
+              return chain.filter(exchange.mutate().request(builder.build()).build());
+            });
+  }
 
-    // #region extractToken
-    private String extractToken(ServerHttpRequest request) {
-        // A. Check Authorization: Bearer <token>
-        String authHeader = request.getHeaders().getFirst("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7).trim();
-        }
+  private boolean identityRoute(String path) {
+    return path.startsWith("/api/v1/auth/")
+        || path.equals("/api/v1/tenants")
+        || path.startsWith("/api/v1/tenants/")
+        || path.startsWith("/api/v1/cms/")
+        || path.startsWith("/api/v1/invitations/");
+  }
 
-        // B. Check Session Cookies (Hybrid Mode)
-        for (String cookieName : SESSION_COOKIE_NAMES) {
-            HttpCookie cookie = request.getCookies().getFirst(cookieName);
-            if (cookie != null && !cookie.getValue().isBlank()) {
-                return cookie.getValue().trim();
-            }
-        }
+  private boolean publicPath(String path) {
+    return Set.of(
+                "/api/v1/auth/login",
+                "/api/v1/auth/register",
+                "/actuator/health",
+                "/actuator/health/liveness",
+                "/actuator/health/readiness")
+            .contains(path)
+        || path.startsWith("/swagger-ui")
+        || path.startsWith("/v3/api-docs");
+  }
 
-        return null;
-    }
-    // #endregion
+  private Mono<Void> error(ServerWebExchange exchange, int status) {
+    var response = exchange.getResponse();
+    response.setStatusCode(HttpStatusCode.valueOf(status));
+    response.getHeaders().setContentType(MediaType.APPLICATION_PROBLEM_JSON);
+    String code =
+        status == 401 ? "unauthorized" : status == 403 ? "forbidden" : "authentication-unavailable";
+    String title =
+        status == 401 ? "Unauthorized" : status == 403 ? "Forbidden" : "Authentication unavailable";
+    byte[] json =
+        ("{\"type\":\"/errors/"
+                + code
+                + "\",\"title\":\""
+                + title
+                + "\",\"status\":"
+                + status
+                + "}")
+            .getBytes(StandardCharsets.UTF_8);
+    return response.writeWith(Mono.just(response.bufferFactory().wrap(json)));
+  }
 
-    // #region isPublicPath
-    private boolean isPublicPath(String path) {
-        if (path == null) return false;
-        for (String prefix : PUBLIC_PATH_PREFIXES) {
-            if (path.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    // #endregion
-
-    // #region unauthorizedResponse
-    private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String detail) {
-        ServerHttpResponse response = exchange.getResponse();
-        response.setStatusCode(HttpStatus.UNAUTHORIZED);
-        response.getHeaders().setContentType(MediaType.APPLICATION_PROBLEM_JSON);
-
-        String requestId = exchange.getRequest().getHeaders().getFirst(CorrelationIdGlobalFilter.REQUEST_ID_HEADER);
-        if (requestId == null) {
-            requestId = "none";
-        }
-
-        String json = String.format("""
-                {
-                  "type": "/errors/unauthorized",
-                  "title": "Unauthorized",
-                  "status": 401,
-                  "detail": "%s",
-                  "code": "unauthorized",
-                  "timestamp": "%s",
-                  "requestId": "%s"
-                }
-                """,
-                detail,
-                Instant.now().toString(),
-                requestId
-        );
-
-        DataBuffer buffer = response.bufferFactory().wrap(json.getBytes(StandardCharsets.UTF_8));
-        return response.writeWith(Mono.just(buffer));
-    }
-    // #endregion
-
-    // #region getOrder
-    @Override
-    public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE + 2;
-    }
-    // #endregion
+  @Override
+  public int getOrder() {
+    return Ordered.HIGHEST_PRECEDENCE + 2;
+  }
 }

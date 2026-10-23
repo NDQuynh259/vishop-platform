@@ -7,105 +7,96 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * Unified web request parameter object supporting both Cursor-based and Offset-based pagination.
  *
- * <p>Spring MVC binds {@code ?cursor=...&page=...&limit=...} query parameters directly into this record.
+ * <p>Spring MVC binds {@code ?cursor=...&page=...&limit=...} query parameters directly into this
+ * record.
  *
- * <p><strong>Resolution Rule:</strong>
- * Prioritizes Cursor pagination if {@code cursor} is provided (non-null and non-blank).
- * If {@code cursor} is absent, falls back to Offset pagination (defaulting {@code page} to 1).
+ * <p><strong>Resolution Rule:</strong> Prioritizes Cursor pagination if {@code cursor} is provided
+ * (non-null and non-blank). If {@code cursor} is absent, falls back to Offset pagination
+ * (defaulting {@code page} to 1).
  *
  * @param cursor opaque cursor token from client (optional)
  * @param page 1-indexed page number (optional, defaults to 1 when cursor is absent)
  * @param limit maximum items per page (defaults to 20, clamped between 1 and 100)
  */
-@Schema(description = "Unified pagination request parameters (prioritizes cursor; falls back to offset when cursor is absent)")
+@Schema(
+    description =
+        "Unified pagination request parameters (prioritizes cursor; falls back to offset when cursor is absent)")
 public record PaginationRequest(
-        @Schema(
-                description = "Opaque cursor token for keyset pagination. Takes precedence when provided.",
-                example = "MTcyOTU3NDAwMDAwMDpmYjM0MzE1LTQ3MTgtNGYwYy1iOTlhLWQ2YTQwZDlkNmZhZA"
-        )
+    @Schema(
+            description =
+                "Opaque cursor token for keyset pagination. Takes precedence when provided.",
+            example = "MTcyOTU3NDAwMDAwMDpmYjM0MzE1LTQ3MTgtNGYwYy1iOTlhLWQ2YTQwZDlkNmZhZA")
         String cursor,
-
-        @Schema(
-                description = "1-indexed page number for offset pagination. Used when cursor is omitted.",
-                defaultValue = "1",
-                example = "1"
-        )
+    @Schema(
+            description =
+                "1-indexed page number for offset pagination. Used when cursor is omitted.",
+            defaultValue = "1",
+            example = "1")
         Integer page,
+    @Schema(
+            description = "Maximum number of items to return (clamped between 1 and 100).",
+            defaultValue = "20",
+            example = "20")
+        Integer limit) {
 
-        @Schema(
-                description = "Maximum number of items to return (clamped between 1 and 100).",
-                defaultValue = "20",
-                example = "20"
-        )
-        Integer limit
-) {
+  public static final int DEFAULT_PAGE = 1;
+  public static final int DEFAULT_LIMIT = 20;
+  public static final int MAX_LIMIT = 100;
 
-    public static final int DEFAULT_PAGE = 1;
-    public static final int DEFAULT_LIMIT = 20;
-    public static final int MAX_LIMIT = 100;
-
-    // #region PaginationRequest
-    public PaginationRequest {
-        limit = (limit == null || limit <= 0) ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
-        if (cursor != null && cursor.isBlank()) {
-            cursor = null;
-        }
-        if (cursor == null) {
-            page = (page == null || page <= 0) ? Integer.valueOf(DEFAULT_PAGE) : page;
-        } else if (page != null && page <= 0) {
-            page = Integer.valueOf(DEFAULT_PAGE);
-        }
+  // #region PaginationRequest
+  public PaginationRequest {
+    limit = (limit == null || limit <= 0) ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
+    if (cursor != null && cursor.isBlank()) {
+      cursor = null;
     }
-
-    public PaginationRequest(String cursor, Integer limit) {
-        this(cursor, null, limit);
+    if (cursor == null) {
+      page = (page == null || page <= 0) ? Integer.valueOf(DEFAULT_PAGE) : page;
+    } else if (page != null && page <= 0) {
+      page = Integer.valueOf(DEFAULT_PAGE);
     }
+  }
 
-    public PaginationRequest(Integer page, Integer limit) {
-        this(null, page, limit);
-    }
+  public PaginationRequest(String cursor, Integer limit) {
+    this(cursor, null, limit);
+  }
 
-    public PaginationRequest(Integer limit) {
-        this(null, null, limit);
-    }
-    // #endregion
+  public PaginationRequest(Integer page, Integer limit) {
+    this(null, page, limit);
+  }
 
-    // #region resolution
-    /**
-     * Checks if cursor token is provided (non-null and non-blank).
-     */
-    public boolean hasCursor() {
-        return cursor != null && !cursor.isBlank();
-    }
+  public PaginationRequest(Integer limit) {
+    this(null, null, limit);
+  }
 
-    /**
-     * Prioritizes cursor: returns true if cursor token is present.
-     */
-    public boolean isCursor() {
-        return hasCursor();
-    }
+  // #endregion
 
-    /**
-     * Falls back to offset: returns true if cursor is absent.
-     */
-    public boolean isOffset() {
-        return !isCursor();
-    }
-    // #endregion
+  // #region resolution
+  /** Checks if cursor token is provided (non-null and non-blank). */
+  public boolean hasCursor() {
+    return cursor != null && !cursor.isBlank();
+  }
 
-    // #region conversion
-    /**
-     * Converts to domain {@link CursorParams}.
-     */
-    public CursorParams toCursorParams() {
-        return CursorParams.of(cursor, limit);
-    }
+  /** Prioritizes cursor: returns true if cursor token is present. */
+  public boolean isCursor() {
+    return hasCursor();
+  }
 
-    /**
-     * Converts to domain {@link OffsetPagination}.
-     */
-    public OffsetPagination toOffsetPagination() {
-        return OffsetPagination.of(page != null ? page : DEFAULT_PAGE, limit);
-    }
-    // #endregion
+  /** Falls back to offset: returns true if cursor is absent. */
+  public boolean isOffset() {
+    return !isCursor();
+  }
+
+  // #endregion
+
+  // #region conversion
+  /** Converts to domain {@link CursorParams}. */
+  public CursorParams toCursorParams() {
+    return CursorParams.of(cursor, limit);
+  }
+
+  /** Converts to domain {@link OffsetPagination}. */
+  public OffsetPagination toOffsetPagination() {
+    return OffsetPagination.of(page != null ? page : DEFAULT_PAGE, limit);
+  }
+  // #endregion
 }

@@ -17,69 +17,84 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Publishes committed outbox records to Kafka asynchronously and reliably.
- * Runs on a configurable fixed delay.
+ * Publishes committed outbox records to Kafka asynchronously and reliably. Runs on a configurable
+ * fixed delay.
  */
 @Component
 public class OutboxPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
+  private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
-    private final OutboxEventRepository repository;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+  private final OutboxEventRepository repository;
+  private final KafkaTemplate<String, String> kafkaTemplate;
 
-    @Value("${vishop.outbox.batch-size:50}")
-    private int batchSize;
+  @Value("${vishop.outbox.batch-size:50}")
+  private int batchSize;
 
-    @Value("${vishop.outbox.max-retries:5}")
-    private int maxRetries;
+  @Value("${vishop.outbox.max-retries:5}")
+  private int maxRetries;
 
-    // #region OutboxPublisher
-    public OutboxPublisher(OutboxEventRepository repository,
-                           KafkaTemplate<String, String> kafkaTemplate) {
-        this.repository = repository;
-        this.kafkaTemplate = kafkaTemplate;
+  // #region OutboxPublisher
+  public OutboxPublisher(
+      OutboxEventRepository repository, KafkaTemplate<String, String> kafkaTemplate) {
+    this.repository = repository;
+    this.kafkaTemplate = kafkaTemplate;
+  }
+
+  // #endregion
+
+  // #region publishPending
+  @Scheduled(fixedDelayString = "${vishop.outbox.publish-delay-ms:1000}")
+  @Transactional
+  public void publishPending() {
+    List<OutboxEventEntity> pending = repository.findPendingEvents(PageRequest.of(0, batchSize));
+    if (pending.isEmpty()) {
+      return;
     }
-    // #endregion
 
-    // #region publishPending
-    @Scheduled(fixedDelayString = "${vishop.outbox.publish-delay-ms:1000}")
-    @Transactional
-    public void publishPending() {
-        List<OutboxEventEntity> pending = repository.findPendingEvents(PageRequest.of(0, batchSize));
-        if (pending.isEmpty()) {
-            return;
+    for (OutboxEventEntity event : pending) {
+      String topic = KafkaTopicNaming.topicFor(event.getAggregateType());
+      String partitionKey =
+          event.getAggregateId() != null
+              ? event.getAggregateId().toString()
+              : event.getId().toString();
+
+      try {
+        ProducerRecord<String, String> record =
+            new ProducerRecord<>(topic, partitionKey, event.getPayload());
+
+        if (event.getTenantId() != null) {
+          record
+              .headers()
+              .add(
+                  new RecordHeader(
+                      KafkaHeaders.TENANT_ID,
+                      event.getTenantId().toString().getBytes(StandardCharsets.UTF_8)));
+        }
+        if (event.getEventType() != null) {
+          record
+              .headers()
+              .add(
+                  new RecordHeader(
+                      KafkaHeaders.EVENT_TYPE,
+                      event.getEventType().getBytes(StandardCharsets.UTF_8)));
         }
 
-        for (OutboxEventEntity event : pending) {
-            String topic = KafkaTopicNaming.topicFor(event.getAggregateType());
-            String partitionKey = event.getAggregateId() != null
-                    ? event.getAggregateId().toString()
-                    : event.getId().toString();
-
-            try {
-                ProducerRecord<String, String> record = new ProducerRecord<>(topic, partitionKey, event.getPayload());
-
-                if (event.getTenantId() != null) {
-                    record.headers().add(new RecordHeader(KafkaHeaders.TENANT_ID,
-                            event.getTenantId().toString().getBytes(StandardCharsets.UTF_8)));
-                }
-                if (event.getEventType() != null) {
-                    record.headers().add(new RecordHeader(KafkaHeaders.EVENT_TYPE,
-                            event.getEventType().getBytes(StandardCharsets.UTF_8)));
-                }
-
-                kafkaTemplate.send(record).get();
-                event.markPublished(Instant.now());
-                repository.save(event);
-                log.debug("Successfully published outbox event [{}] to topic [{}]", event.getId(), topic);
-            } catch (Exception ex) {
-                log.error("Failed to publish outbox event [{}] to topic [{}]: {}",
-                        event.getId(), topic, ex.getMessage(), ex);
-                event.recordFailure(ex.getMessage(), maxRetries);
-                repository.save(event);
-            }
-        }
+        kafkaTemplate.send(record).get();
+        event.markPublished(Instant.now());
+        repository.save(event);
+        log.debug("Successfully published outbox event [{}] to topic [{}]", event.getId(), topic);
+      } catch (Exception ex) {
+        log.error(
+            "Failed to publish outbox event [{}] to topic [{}]: {}",
+            event.getId(),
+            topic,
+            ex.getMessage(),
+            ex);
+        event.recordFailure(ex.getMessage(), maxRetries);
+        repository.save(event);
+      }
     }
-    // #endregion
+  }
+  // #endregion
 }

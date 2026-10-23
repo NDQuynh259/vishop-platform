@@ -1,154 +1,200 @@
 package com.vishop.gateway.filter;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
+import com.vishop.gateway.security.IamAuthenticationClient;
+import com.vishop.gateway.security.IamAuthenticationClient.Identity;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
-import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
-import java.util.List;
-import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import org.junit.jupiter.api.*;
 import org.mockito.ArgumentCaptor;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
-import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 class AuthenticationGlobalFilterTest {
+  private final UUID user = UUID.randomUUID(), tenant = UUID.randomUUID();
+  private IamAuthenticationClient iam;
+  private GatewayFilterChain chain;
+  private AuthenticationGlobalFilter filter;
+  private Identity identity;
 
-    private JwtTokenProvider jwtTokenProvider;
-    private AuthenticationGlobalFilter filter;
-    private GatewayFilterChain chain;
+  @BeforeEach
+  void setup() {
+    iam = mock(IamAuthenticationClient.class);
+    chain = mock(GatewayFilterChain.class);
+    filter = new AuthenticationGlobalFilter(iam, "http://localhost:3000");
+    identity =
+        new Identity(
+            user,
+            tenant,
+            "USER",
+            List.of("OWNER"),
+            Set.of("tenant.view", "order.create"),
+            "trusted-jwt");
+    when(chain.filter(any())).thenReturn(Mono.empty());
+    when(iam.authenticate(anyString(), anyBoolean()))
+        .thenReturn(
+            Mono.error(
+                WebClientResponseException.create(
+                    401, "Unauthorized", HttpHeaders.EMPTY, new byte[0], StandardCharsets.UTF_8)));
+    when(iam.authenticate("valid-token", true)).thenReturn(Mono.just(identity));
+    when(iam.authenticate("opaque-cookie", false)).thenReturn(Mono.just(identity));
+  }
 
-    private final UUID userId = UUID.randomUUID();
-    private final UUID tenantId = UUID.randomUUID();
-    private String validToken;
+  private MockServerWebExchange run(MockServerHttpRequest request) {
+    var exchange = MockServerWebExchange.from(request);
+    StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+    return exchange;
+  }
 
-    @BeforeEach
-    void setUp() {
-        jwtTokenProvider = new JwtTokenProvider(
-                "vishop-platform-super-secret-key-that-is-at-least-256-bits-long",
-                3600000L);
-        filter = new AuthenticationGlobalFilter(jwtTokenProvider);
-        chain = mock(GatewayFilterChain.class);
-        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
+  private ServerWebExchange forwarded() {
+    var captor = ArgumentCaptor.forClass(ServerWebExchange.class);
+    verify(chain).filter(captor.capture());
+    return captor.getValue();
+  }
 
-        validToken = jwtTokenProvider.generateAccessToken(
-                userId, tenantId, "user@vishop.vn", "Nguyen Van A",
-                List.of("OWNER"), List.of("tenant.view", "order.create"));
-    }
+  @Test
+  void publicRoutesStripSpoofedIdentityAndInternalSecret() {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/login")
+            .header("X-User-Id", user.toString())
+            .header("X-Tenant-Id", tenant.toString())
+            .header("X-Iam-Internal-Key", "spoofed")
+            .build());
+    assertThat(forwarded().getRequest().getHeaders())
+        .doesNotContainKeys("X-User-Id", "X-Tenant-Id", "X-Iam-Internal-Key");
+    verifyNoInteractions(iam);
+  }
 
-    @Test
-    @DisplayName("Should allow public authentication paths without token")
-    void shouldAllowPublicPath() {
-        MockServerHttpRequest request = MockServerHttpRequest.post("/api/v1/auth/login").build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+  @Test
+  void optionsDoesNotRequireCredentials() {
+    run(MockServerHttpRequest.method(HttpMethod.OPTIONS, "/api/v1/tenants").build());
+    verify(chain).filter(any());
+    verifyNoInteractions(iam);
+  }
 
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
+  @Test
+  void identityEndpointsStillRequireAuthentication() {
+    var exchange = run(MockServerHttpRequest.get("/api/v1/auth/me").build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    verifyNoInteractions(iam);
+    verify(chain, never()).filter(any());
+  }
 
-        verify(chain).filter(exchange);
-    }
+  @Test
+  void rejectedAndRevokedCredentialsNeverReachDownstream() {
+    var exchange =
+        run(
+            MockServerHttpRequest.get("/api/v1/tenants")
+                .header("Authorization", "Bearer revoked")
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    verify(chain, never()).filter(any());
+  }
 
-    @Test
-    @DisplayName("Should allow OPTIONS preflight requests without token")
-    void shouldAllowOptionsMethod() {
-        MockServerHttpRequest request = MockServerHttpRequest.method(HttpMethod.OPTIONS, "/api/v1/tenants").build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+  @Test
+  void validBearerUsesLiveIamGrantsAndReplacesUntrustedContext() {
+    run(
+        MockServerHttpRequest.get("/api/v1/tenants")
+            .header("Authorization", "Bearer valid-token")
+            .header(SecurityHeaders.X_USER_ID, "spoofed")
+            .header(SecurityHeaders.X_TENANT_ID, UUID.randomUUID().toString())
+            .header(SecurityHeaders.X_USER_ROLES, "PLATFORM_ADMIN")
+            .header(SecurityHeaders.X_USER_PERMISSIONS, "system.admin")
+            .build());
+    var headers = forwarded().getRequest().getHeaders();
+    assertThat(headers.getFirst("Authorization")).isEqualTo("Bearer trusted-jwt");
+    assertThat(headers.getFirst(SecurityHeaders.X_USER_ID)).isEqualTo(user.toString());
+    assertThat(headers.getFirst(SecurityHeaders.X_TENANT_ID)).isEqualTo(tenant.toString());
+    // Roles/grants stay inside the signed JWT; arbitrary role names never become HTTP headers.
+    assertThat(headers)
+        .doesNotContainKeys(SecurityHeaders.X_USER_ROLES, SecurityHeaders.X_USER_PERMISSIONS);
+  }
 
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
+  @Test
+  void opaqueCookieIsMediatedIntoJwtWithoutForwardingCookie() {
+    run(
+        MockServerHttpRequest.get("/api/v1/tenants")
+            .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
+            .build());
+    assertThat(forwarded().getRequest().getHeaders().getFirst("Authorization"))
+        .isEqualTo("Bearer trusted-jwt");
+    verify(iam).authenticate("opaque-cookie", false);
+  }
 
-        verify(chain).filter(exchange);
-    }
+  @Test
+  void cookieWritesRequireAnAllowedOriginBeforeMediation() {
+    var exchange =
+        run(
+            MockServerHttpRequest.post("/api/v1/auth/logout")
+                .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    verifyNoInteractions(iam);
+    verify(chain, never()).filter(any());
+  }
 
-    @Test
-    @DisplayName("Should reject protected route with 401 when token is missing")
-    void shouldRejectWhenTokenMissing() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/tenants").build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+  @Test
+  void cookieWritesWithAllowedOriginProceed() {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/logout")
+            .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
+            .header("Origin", "http://localhost:3000")
+            .build());
+    verify(chain).filter(any());
+    verify(iam).authenticate("opaque-cookie", false);
+  }
 
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
+  @Test
+  void tenantlessIdentityCanUseIamButCannotUseBusinessApis() {
+    var global = new Identity(user, null, "USER", List.of(), Set.of(), "identity-jwt");
+    when(iam.authenticate("identity", true)).thenReturn(Mono.just(global));
+    run(
+        MockServerHttpRequest.get("/api/v1/auth/me")
+            .header("Authorization", "Bearer identity")
+            .build());
+    verify(chain).filter(any());
+    clearInvocations(chain);
+    var exchange =
+        run(
+            MockServerHttpRequest.get("/api/v1/orders")
+                .header("Authorization", "Bearer identity")
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    verify(chain, never()).filter(any());
+  }
 
-        verify(chain, never()).filter(any());
-        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(exchange.getResponse().getHeaders().getContentType())
-                .isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
-    }
+  @Test
+  void iamFailureFailsClosed() {
+    when(iam.authenticate("valid-token", true))
+        .thenReturn(Mono.error(new IllegalStateException("IAM unavailable")));
+    var exchange =
+        run(
+            MockServerHttpRequest.get("/api/v1/tenants")
+                .header("Authorization", "Bearer valid-token")
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    verify(chain, never()).filter(any());
+  }
 
-    @Test
-    @DisplayName("Should reject protected route with 401 when token is invalid")
-    void shouldRejectWhenTokenInvalid() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/tenants")
-                .header("Authorization", "Bearer invalid-garbage-token")
-                .build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
-
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
-
-        verify(chain, never()).filter(any());
-        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    }
-
-    @Test
-    @DisplayName("Should authenticate valid Bearer token, strip spoofed headers, and enrich context")
-    void shouldAuthenticateValidBearerToken() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/tenants")
-                .header("Authorization", "Bearer " + validToken)
-                // Spoofed header from malicious client
-                .header(SecurityHeaders.X_USER_ID, "malicious-user-id")
-                .header(SecurityHeaders.X_USER_ROLES, "SUPER_ADMIN")
-                .build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
-
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
-
-        ArgumentCaptor<ServerWebExchange> captor = ArgumentCaptor.forClass(ServerWebExchange.class);
-        verify(chain).filter(captor.capture());
-
-        ServerWebExchange captured = captor.getValue();
-        // Verify genuine claims injected
-        assertThat(captured.getRequest().getHeaders().getFirst(SecurityHeaders.X_USER_ID))
-                .isEqualTo(userId.toString());
-        assertThat(captured.getRequest().getHeaders().getFirst(SecurityHeaders.X_TENANT_ID))
-                .isEqualTo(tenantId.toString());
-        assertThat(captured.getRequest().getHeaders().getFirst(SecurityHeaders.X_USER_ROLES))
-                .isEqualTo("OWNER");
-        assertThat(captured.getRequest().getHeaders().getFirst(SecurityHeaders.X_USER_PERMISSIONS))
-                .contains("tenant.view", "order.create");
-    }
-
-    @Test
-    @DisplayName("Should authenticate valid session cookie in hybrid mode")
-    void shouldAuthenticateValidCookie() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/tenants")
-                .cookie(new HttpCookie("better-auth.session_token", validToken))
-                .build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
-
-        StepVerifier.create(filter.filter(exchange, chain))
-                .verifyComplete();
-
-        ArgumentCaptor<ServerWebExchange> captor = ArgumentCaptor.forClass(ServerWebExchange.class);
-        verify(chain).filter(captor.capture());
-
-        ServerWebExchange captured = captor.getValue();
-        assertThat(captured.getRequest().getHeaders().getFirst(SecurityHeaders.X_USER_ID))
-                .isEqualTo(userId.toString());
-    }
+  @Test
+  void malformedAuthorizationDoesNotFallBackToCookie() {
+    var exchange =
+        run(
+            MockServerHttpRequest.get("/api/v1/tenants")
+                .header("Authorization", "Basic bad")
+                .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    verifyNoInteractions(iam);
+  }
 }

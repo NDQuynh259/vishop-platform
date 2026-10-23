@@ -8,15 +8,13 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 public class JwtAutoConfiguration {
 
-    // #region jwtTokenProvider
-    @Bean
-    @ConditionalOnMissingBean
-    public JwtTokenProvider jwtTokenProvider(
-            @Value("${vishop.security.jwt.secret:vishop-platform-super-secret-key-that-is-at-least-256-bits-long}")
-            String secret,
-            @Value("${vishop.security.jwt.expiration-ms:86400000}")
-            long expirationMs) {
-        return new JwtTokenProvider(secret, expirationMs);
-    }
-    // #endregion
+  // #region jwtTokenProvider
+  @Bean
+  @ConditionalOnMissingBean
+  public JwtTokenProvider jwtTokenProvider(
+      @Value("${vishop.security.jwt.secret:${JWT_SECRET:}}") String secret,
+      @Value("${vishop.security.jwt.expiration-ms:86400000}") long expirationMs) {
+    return new JwtTokenProvider(secret, expirationMs);
+  }
+  // #endregion
 }

@@ -16,51 +16,55 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
 
 /**
- * Standard Kafka Consumer configuration for ViShop microservices.
- * Configures:
- * 1. Automatic TenantContext propagation via {@link TenantRecordInterceptor}.
- * 2. Exponential backoff retry (1s, 2s, 4s).
- * 3. Dead-letter queue (DLQ) recovery to {topic}.DLT upon final failure.
+ * Standard Kafka Consumer configuration for ViShop microservices. Configures: 1. Automatic
+ * TenantContext propagation via {@link TenantRecordInterceptor}. 2. Exponential backoff retry (1s,
+ * 2s, 4s). 3. Dead-letter queue (DLQ) recovery to {topic}.DLT upon final failure.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(KafkaTemplate.class)
 public class KafkaConsumerConfig {
 
-    private static final Logger log = LoggerFactory.getLogger(KafkaConsumerConfig.class);
+  private static final Logger log = LoggerFactory.getLogger(KafkaConsumerConfig.class);
 
-    // #region kafkaErrorHandler
-    @Bean
-    @ConditionalOnBean(KafkaTemplate.class)
-    public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<Object, Object> kafkaTemplate) {
-        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
-                kafkaTemplate,
-                (record, ex) -> {
-                    String dltTopic = record.topic() + ".DLT";
-                    log.error("Exhausted retries for record from topic [{}], partition [{}], offset [{}]. Forwarding to DLQ [{}]",
-                            record.topic(), record.partition(), record.offset(), dltTopic, ex);
-                    return new TopicPartition(dltTopic, record.partition());
-                });
+  // #region kafkaErrorHandler
+  @Bean
+  @ConditionalOnBean(KafkaTemplate.class)
+  public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<Object, Object> kafkaTemplate) {
+    DeadLetterPublishingRecoverer recoverer =
+        new DeadLetterPublishingRecoverer(
+            kafkaTemplate,
+            (record, ex) -> {
+              String dltTopic = record.topic() + ".DLT";
+              log.error(
+                  "Exhausted retries for record from topic [{}], partition [{}], offset [{}]. Forwarding to DLQ [{}]",
+                  record.topic(),
+                  record.partition(),
+                  record.offset(),
+                  dltTopic,
+                  ex);
+              return new TopicPartition(dltTopic, record.partition());
+            });
 
-        ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
-        backOff.setMaxAttempts(3);
+    ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
+    backOff.setMaxAttempts(3);
 
-        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
-        return errorHandler;
-    }
-    // #endregion
+    DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
+    return errorHandler;
+  }
 
-    // #region kafkaListenerContainerFactory
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
-            ConsumerFactory<String, String> consumerFactory,
-            CommonErrorHandler kafkaErrorHandler) {
+  // #endregion
 
-        ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory);
-        factory.setCommonErrorHandler(kafkaErrorHandler);
-        factory.setRecordInterceptor(new TenantRecordInterceptor<>());
-        return factory;
-    }
-    // #endregion
+  // #region kafkaListenerContainerFactory
+  @Bean
+  public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
+      ConsumerFactory<String, String> consumerFactory, CommonErrorHandler kafkaErrorHandler) {
+
+    ConcurrentKafkaListenerContainerFactory<String, String> factory =
+        new ConcurrentKafkaListenerContainerFactory<>();
+    factory.setConsumerFactory(consumerFactory);
+    factory.setCommonErrorHandler(kafkaErrorHandler);
+    factory.setRecordInterceptor(new TenantRecordInterceptor<>());
+    return factory;
+  }
+  // #endregion
 }

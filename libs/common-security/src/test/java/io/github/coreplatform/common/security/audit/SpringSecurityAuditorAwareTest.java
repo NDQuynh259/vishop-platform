@@ -1,49 +1,50 @@
 package io.github.coreplatform.common.security.audit;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.github.coreplatform.common.security.context.CommonUserDetails;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SpringSecurityAuditorAwareTest {
 
-    private final SpringSecurityAuditorAware auditorAware = new SpringSecurityAuditorAware();
+  private final SpringSecurityAuditorAware auditorAware = new SpringSecurityAuditorAware();
 
-    // #region tearDown
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
-    // #endregion
+  // #region tearDown
+  @AfterEach
+  void tearDown() {
+    SecurityContextHolder.clearContext();
+  }
 
-    // #region shouldReturnUserIdWhenAuthenticated
-    @Test
-    @DisplayName("Should return userId as current auditor when authenticated")
-    void shouldReturnUserIdWhenAuthenticated() {
-        UUID userId = UUID.randomUUID();
-        CommonUserDetails user = new CommonUserDetails(userId, UUID.randomUUID(), Set.of(), List.of());
+  // #endregion
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities())
-        );
+  // #region shouldReturnUserIdWhenAuthenticated
+  @Test
+  @DisplayName("Should return userId as current auditor when authenticated")
+  void shouldReturnUserIdWhenAuthenticated() {
+    UUID userId = UUID.randomUUID();
+    CommonUserDetails user = new CommonUserDetails(userId, UUID.randomUUID(), Set.of(), List.of());
 
-        assertThat(auditorAware.getCurrentAuditor()).contains(userId);
-    }
-    // #endregion
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
 
-    // #region shouldReturnEmptyWhenUnauthenticated
-    @Test
-    @DisplayName("Should return empty optional when not authenticated")
-    void shouldReturnEmptyWhenUnauthenticated() {
-        assertThat(auditorAware.getCurrentAuditor()).isEmpty();
-    }
-    // #endregion
+    assertThat(auditorAware.getCurrentAuditor()).contains(userId);
+  }
+
+  // #endregion
+
+  // #region shouldReturnEmptyWhenUnauthenticated
+  @Test
+  @DisplayName("Should return empty optional when not authenticated")
+  void shouldReturnEmptyWhenUnauthenticated() {
+    assertThat(auditorAware.getCurrentAuditor()).isEmpty();
+  }
+  // #endregion
 }

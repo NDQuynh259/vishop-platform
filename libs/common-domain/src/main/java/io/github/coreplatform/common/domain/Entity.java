@@ -9,34 +9,37 @@ import java.util.Objects;
  */
 public abstract class Entity<ID> {
 
-    protected final ID id;
+  protected final ID id;
 
-    // #region Entity
-    protected Entity(ID id) {
-        this.id = Objects.requireNonNull(id, "Entity identifier cannot be null");
-    }
-    // #endregion
+  // #region Entity
+  protected Entity(ID id) {
+    this.id = Objects.requireNonNull(id, "Entity identifier cannot be null");
+  }
 
-    // #region getId
-    public ID getId() {
-        return id;
-    }
-    // #endregion
+  // #endregion
 
-    // #region equals
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Entity<?> entity = (Entity<?>) o;
-        return Objects.equals(id, entity.id);
-    }
-    // #endregion
+  // #region getId
+  public ID getId() {
+    return id;
+  }
 
-    // #region hashCode
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
-    }
-    // #endregion
+  // #endregion
+
+  // #region equals
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    Entity<?> entity = (Entity<?>) o;
+    return Objects.equals(id, entity.id);
+  }
+
+  // #endregion
+
+  // #region hashCode
+  @Override
+  public int hashCode() {
+    return Objects.hash(id);
+  }
+  // #endregion
 }

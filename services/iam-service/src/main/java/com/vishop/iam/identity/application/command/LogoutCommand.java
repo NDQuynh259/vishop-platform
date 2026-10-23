@@ -1,0 +1,6 @@
+package com.vishop.iam.identity.application.command;
+
+import com.vishop.iam.shared.application.dto.IamActor;
+import io.github.coreplatform.common.domain.cqrs.Command;
+
+public record LogoutCommand(IamActor actor) implements Command<Void> {}
