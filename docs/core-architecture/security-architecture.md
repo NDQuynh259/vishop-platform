@@ -103,12 +103,118 @@ Triển khai Redis Rate Limiter theo thuật toán **Token Bucket** ngay tại G
 * **Authenticated Endpoints**: Tối đa `100 requests/giây` theo từng `tenant_id`.
 * **Login & Auth Endpoints**: Tối đa `5 requests/phút` theo Client IP nhằm triệt tiêu các cuộc tấn công dò mật khẩu (Brute-force / Credential Stuffing).
 
+### 3.4. Cơ chế Xác thực Biên tại Gateway (Tại sao Exclude Spring Security mặc định)
+Trong [GatewayApplication.java](../../services/api-gateway/src/main/java/com/vishop/gateway/GatewayApplication.java), hệ thống chủ động loại trừ các cấu hình tự động:
+```java
+@SpringBootApplication(exclude = {
+        ReactiveSecurityAutoConfiguration.class,
+        ReactiveUserDetailsServiceAutoConfiguration.class,
+        ReactiveManagementWebSecurityAutoConfiguration.class
+})
+```
+* **Lý do kiến trúc**: Cấu hình mặc định của Spring Security WebFlux mang tính nguyên khối (monolithic-oriented), tự động sinh form login, HTTP basic, CSRF và session filters gây suy giảm thông lượng của API Gateway (vốn hoạt động như một High-Throughput Reverse Proxy trên Netty phi đồng bộ).
+* **Giải pháp thay thế**: Thay vào đó, Gateway sử dụng một Custom Global Filter chuyên trách: [AuthenticationGlobalFilter.java](../../services/api-gateway/src/main/java/com/vishop/gateway/filter/AuthenticationGlobalFilter.java) với chi phí xử lý tối thiểu (Zero unnecessary allocations, non-blocking pipeline).
+
+---
+
+### 3.5. Bài toán Lệch Quyền hạn & Vô hiệu hóa Token Thời gian thực (The Stale Token & Revocation Problem)
+
+#### A. Đặt vấn đề (The Problem Statement)
+Trong mô hình **Stateless JWT**:
+1. Một khi Token đã được cấp phát, nó mang theo chữ ký điện tử mật và chứa sẵn thông tin phân quyền tĩnh:
+   `{ "sub": "<userId>", "tenantId": "<tenantId>", "roles": ["OWNER"], "permissions": ["order.refund", "tenant.manage"], "exp": ... }`
+2. **Kịch bản rủi ro nghiêm trọng phát sinh trong thực tế:**
+   * **Kịch bản 1 — Đình chỉ Gian hàng / Khóa Tài khoản:** Ngay sau khi User đăng nhập, Admin vào hệ thống chuyển trạng thái Tenant sang `SUSPENDED` (do vi phạm chính sách / nợ cước) hoặc khóa tài khoản User.
+   * **Kịch bản 2 — Thay đổi Vai trò / Hạ quyền:** User vẫn đang hoạt động bình thường, nhưng bị Admin thu hồi quyền (ví dụ: giáng chức từ `OWNER` xuống `STAFF`, hoặc tước quyền `order.refund`).
+3. **Lỗ hổng của việc chỉ kiểm tra chữ ký (`jwt.verify`):**
+   * Về mặt toán học mật mã, chiếc Token trên máy Client **vẫn hoàn toàn hợp lệ cho đến khi hết hạn (TTL)**.
+   * Nếu API Gateway chỉ kiểm tra chữ ký, Gateway vẫn bóc tách header `X-User-Roles: OWNER` và chuyển tiếp sang downstream services.
+   * Hậu quả: Kẻ gian hoặc nhân viên bị giáng chức vẫn tiếp tục thực thi các thao tác nhạy cảm của `OWNER` trong suốt khoảng thời gian Token còn sống (Stale Permissions Window)!
+
+#### B. Phân tích Phản kiến trúc: Tại sao KHÔNG ĐƯỢC để Gateway gọi `identity-service` trên mỗi request?
+Một phản xạ tự nhiên của lập trình viên là: *"Tại sao Gateway không gọi HTTP sang `identity-service` trên mỗi request để kiểm tra DB xem user/tenant còn active hay quyền đã đổi chưa?"*
+
+Trong kiến trúc Microservices phân tán, đây là một **Thảm họa kiến trúc (Catastrophic Anti-Pattern)** vì 4 lý do:
+1. **Bùng nổ Độ trễ (Latency Explosion):** Mỗi request (dù là xem danh mục hàng, tạo giỏ hàng, thanh toán) đều phải chịu thêm **20ms – 100ms** thời gian chờ mạng (Network Hop: Gateway $\rightarrow$ Identity $\rightarrow$ Gateway).
+2. **Điểm nghẽn Hạ tầng (Database & CPU Bottleneck):** Nếu toàn hệ sinh thái nhận $10.000\text{ req/s}$, thì `identity-service` và cơ sở dữ liệu của nó cũng phải gánh đúng $10.000\text{ req/s}$ chỉ để chạy các câu lệnh `SELECT status, roles FROM users`. Database sẽ sập ngay lập tức.
+3. **Phá vỡ Tính cô lập lỗi (Single Point of Failure - SPoF):** Nếu `identity-service` gặp sự cố mạng hoặc khởi động lại, **100% các microservices khác trong công ty sẽ chết theo**, không một client nào gọi được bất kỳ API nào.
+4. **Phá hủy bản chất Stateless của JWT:** Biến kiến trúc token phân tán thành Stateful Session chậm chạp.
+
+#### C. Tổng hợp Tất cả các Giải pháp Khả thi (All Possible Solutions)
+
+| STT | Giải pháp | Cơ chế hoạt động | Ưu điểm | Nhược điểm / Đánh đổi |
+| :---: | :--- | :--- | :--- | :--- |
+| **1** | **Short-lived Token (Thời hạn sống ngắn)** | Cấu hình Access Token chỉ sống 5–15 phút. Khi hết hạn, Client gọi `/refresh` để cấp token mới mang quyền mới từ DB. | Cực kỳ đơn giản, không cần thêm hạ tầng cache phụ. | Tồn tại độ trễ (Stale Window) 5–15 phút kẻ gian vẫn dùng được quyền cũ. |
+| **2** | **Thu hồi Phiên cưỡng bức (Forced Session Revocation)** | Đổi quyền được coi là Security Event $\rightarrow$ Hủy Refresh Token trong DB + Đẩy `userId` vào Redis Blacklist trong thời gian bằng TTL Access Token. | Chặn đứng tức thì trong 1ms, độ an toàn tuyệt đối. | Trải nghiệm người dùng (UX) bị gián đoạn: User bị văng ra màn hình đăng nhập. |
+| **3** | **Mô hình Lai (Hybrid Token - Tách Role khỏi JWT)** | JWT chỉ lưu `userId` & `tenantId`. Toàn bộ `roles` & `permissions` lưu tại Redis Cache. Gateway/Service đọc Redis in-memory ($< 0.5\text{ms}$). Đổi role chỉ cần `SET` lại Redis key. | Áp dụng quyền mới tức thì, UX êm mượt không cần cấp lại token. | Tăng phụ thuộc vào Redis. Nếu Redis chết, Gateway không lấy được permissions. |
+| **4** | **Phiên bản hóa Token (Token / Role Versioning)** | Mỗi user có `token_version` (khởi đầu = 1) nhúng vào JWT claim `v`. Khi đổi quyền/khóa user: DB tăng `token_version` lên 2 và cập nhật Redis `user:version:{id} = 2`. Gateway so sánh `claim.v != redis.v` $\rightarrow$ Trả về `401 Token Outdated`. Client dùng Refresh Token âm thầm xin JWT mới. | **Hoàn hảo nhất:** Vừa tức thì (Real-time), vừa không nghẽn DB, vừa mượt mà (Client tự refresh ngầm, không văng user). | Cần quản lý trường version trong JWT và 1 key nhỏ trong Redis. |
+
+#### D. Lựa chọn Kiến trúc cho ViShop Platform (The Chosen Strategy)
+
+ViShop Platform lựa chọn **Chiến lược Phối hợp Đa tầng Phòng thủ (Multi-Layered Defense Strategy)** kết hợp giữa **Token Versioning & Blacklist qua Redis (Giải pháp 4 & 2)** cùng với **Kafka Event-Driven Invalidation**:
+
+```mermaid
+flowchart TD
+    subgraph Trigger["1. BIẾN ĐỘNG QUYỀN HẠN / TRẠNG THÁI"]
+        AdminAction["Admin thao tác tại Backoffice:\n- Đổi Role (OWNER -> STAFF)\n- Đình chỉ Shop (Tenant: SUSPENDED)\n- Khóa tài khoản (User: SUSPENDED)"]
+    end
+
+    subgraph Sync["2. ĐỒNG BỘ TRẠNG THÁI BẤT ĐỒNG BỘ"]
+        DBUpdate["Ghi DB nghiệp vụ (tăng token_version / đổi status)"]
+        Outbox["Transactional Outbox Relay\n(Bắn Event lên Kafka)"]
+        RedisSet["Ghi tức thì vào Redis Cache:\n- tenant:status:{tenantId} = SUSPENDED\n- user:version:{userId} = version_moi\n- user:blacklist:{userId} = true"]
+    end
+
+    subgraph Gateway["3. CHỐT CHẶN BIÊN TẠI API GATEWAY (:8000)"]
+        direction TB
+        RecvReq["Nhận Request từ Client kèm JWT cũ"]
+        VerifySig["1. Kiểm tra chữ ký JWT (in-memory 0ms)"]
+        CheckRedis["2. Tra cứu Redis O(1) in-memory (< 1ms):\n- Check tenant:status == SUSPENDED?\n- Check token_version == redis_version?"]
+        
+        Block403["Trả về 403 Forbidden\n(Gian hàng đã bị đình chỉ)"]
+        Block401["Trả về 401 Token Outdated\n(Quyền đã thay đổi)"]
+        Forward["3. Hợp lệ: Context Enrichment\n(Gắn X-User-Id, X-Tenant-Id, X-Roles) -> Chuyển tiếp downstream"]
+    end
+
+    AdminAction --> DBUpdate
+    DBUpdate --> Outbox
+    DBUpdate --> RedisSet
+
+    RecvReq --> VerifySig --> CheckRedis
+    CheckRedis -- "Tenant SUSPENDED" --> Block403
+    CheckRedis -- "Lệch Version" --> Block401
+    CheckRedis -- "Khớp & Active" --> Forward
+
+    classDef act fill:#FADBD8,stroke:#E74C3C,stroke-width:2px,color:#78281F;
+    classDef sync fill:#FCF3CF,stroke:#F1C40F,stroke-width:2px,color:#7D6608;
+    classDef gw fill:#E8F8F5,stroke:#16A085,stroke-width:2px,color:#0E6251;
+    classDef block fill:#F2D7D5,stroke:#C0392B,stroke-width:2px,color:#922B21;
+
+    class AdminAction act;
+    class DBUpdate,Outbox,RedisSet sync;
+    class RecvReq,VerifySig,CheckRedis,Forward gw;
+    class Block403,Block401 block;
+```
+
+##### 3 Nguyên tắc thực thi cốt lõi:
+1. **Kiểm tra Siêu tốc tại Gateway ($< 1\text{ms}$):**
+   * API Gateway **tuyệt đối không gọi HTTP sang `identity-service`**.
+   * Gateway chỉ đọc 2 key O(1) từ Redis Cache:
+     * `tenant:status:{tenantId}`: Nếu khác `ACTIVE` $\rightarrow$ Ngắt ngay bằng `403 Forbidden` (`The organization/tenant has been suspended`).
+     * `user:version:{userId}`: Nếu giá trị version trong Redis khác với claim `v` trong token $\rightarrow$ Trả về `401 Unauthorized` (`Security context outdated, refresh required`).
+2. **Kênh Đồng bộ Sự kiện (Kafka Event Backbone):**
+   * Khi `tenant-service` phát sinh `TenantStatusChangedEvent`, sự kiện được Outbox đẩy sang topic `vishop.tenant.events`.
+   * Consumer cập nhật trạng thái mới vào Redis trong vòng vài chục mili-giây, bảo đảm toàn bộ Gateway clusters đều đồng bộ.
+3. **Cơ chế Tự làm mới Mượt mà (Silent Refresh on Client):**
+   * Khi nhận mã `401 Token Outdated`, ứng dụng Frontend/Mobile không văng user ra màn hình đăng nhập, mà kích hoạt Axios Interceptor gửi ngầm Refresh Token lên `identity-service/api/v1/auth/refresh`.
+   * `identity-service` kiểm tra DB, đọc quyền hạn mới nhất (`STAFF`) và cấp JWT mới (có version mới). User tiếp tục sử dụng ứng dụng mà không hề cảm thấy bị gián đoạn.
+
 ---
 
 ## 4. Tầng Dịch vụ & Phân quyền (Authorization - RBAC)
 
-### 4.1. Mô hình Phân quyền 2 cấp (Scope-Based RBAC)
-ViShop Platform áp dụng phân quyền theo quan hệ `tenant_member_roles`:
+### 4.1. Mô hình Phân quyền Cấp Tổ chức (Tenant-Scoped RBAC)
+Theo nguyên tắc thiết kế cốt lõi của ViShop: **Một Tenant sở hữu nhiều Shops (Shopee, TikTok Shop, Lazada...), và tất cả nhân viên của Tenant đều có quyền quản lý toàn bộ các Shop trực thuộc** (tương ứng theo chức vụ/role của họ). 
 
 ```text
                ┌────────────────────────────────────────────────────────┐
@@ -118,17 +224,20 @@ ViShop Platform áp dụng phân quyền theo quan hệ `tenant_member_roles`:
                     ┌──────────────────────┴──────────────────────┐
                     ▼                                             ▼
        ┌────────────────────────┐                    ┌────────────────────────┐
-       │   Scope: Cấp Tổ chức   │                    │   Scope: Gian hàng     │
-       │   (shop_id IS NULL)    │                    │   (shop_id = UUID)     │
+       │     TENANT MEMBERS     │                    │         SHOPS          │
+       │ (Nhân sự của tổ chức)  │                    │  (Các kênh bán lẻ)     │
        ├────────────────────────┤                    ├────────────────────────┤
-       │ Vai trò hệ thống:      │                    │ Vai trò từng shop:     │
-       │ - CHỦ TỔ CHỨC (Owner)  │                    │ - Quản lý shop A       │
-       │ - KẾ TOÁN (Accountant) │                    │ - Nhân viên kho shop B │
+       │ Vai trò theo chức vụ:  │                    │ - Shop TikTok A        │
+       │ - CHỦ SHOP (Owner)     │ ── Toàn quyền ───► │ - Shop Shopee B        │
+       │ - KẾ TOÁN (Accountant) │    quản lý         │ - Shop Lazada C        │
+       │ - NHÂN VIÊN (Staff)    │    tất cả shop     │                        │
        └────────────────────────┘                    └────────────────────────┘
 ```
 
-* **Cấp Tổ chức (`shop_id IS NULL`)**: Người dùng nắm vai trò trên toàn bộ tổ chức (ví dụ: *Chủ tổ chức* có toàn quyền; *Kế toán* xem báo cáo tài chính của mọi gian hàng).
-* **Cấp Gian hàng (`shop_id = <UUID>`)**: Người dùng chỉ được gán vai trò giới hạn trong một gian hàng cụ thể (ví dụ: nhân viên kho ở gian hàng Shopee A nhưng không có quyền ở gian hàng TikTok B).
+* **Phân quyền tập trung theo vai trò (Tenant Roles)**:
+  * Người dùng được gán vai trò tại bảng `tenant_members` (ví dụ: `OWNER`, `STAFF`, `ACCOUNTANT`).
+  * Vai trò này có hiệu lực trên **toàn bộ các gian hàng con** mà Tenant sở hữu mà không cần phân quyền vi mô theo từng `shop_id`.
+  * *Ví dụ*: `STAFF` được tạo/sửa sản phẩm và xử lý đơn trên cả TikTok Shop và Shopee; `ACCOUNTANT` xem được báo cáo tài chính hợp nhất của toàn bộ các shop.
 * **Danh mục 75 quyền tĩnh**: Toàn bộ quyền hạn được khai báo dưới dạng enum tĩnh (`Permission`) trong `platform-common:common-security`. Hệ thống từ chối ABAC tự do (JSON conditions) để giữ truy vấn kiểm tra quyền đơn giản, có index và dễ dàng kiểm toán.
 
 ### 4.2. Tận dụng `UserDetails` trong Microservices (`CommonUserDetails`)
