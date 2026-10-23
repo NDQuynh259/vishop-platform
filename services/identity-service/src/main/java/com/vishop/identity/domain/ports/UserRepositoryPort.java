@@ -1,12 +1,12 @@
-package com.vishop.identity.domain.repository;
+package com.vishop.identity.domain.ports;
 
-import com.vishop.identity.domain.aggregate.User;
-import com.vishop.identity.domain.valueobject.Email;
+import com.vishop.identity.domain.entities.User;
+import com.vishop.identity.domain.valueobjects.Email;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Domain Repository Port for User Aggregate Root.
+ * Domain Repository Port for User Entity.
  */
 public interface UserRepositoryPort {
 

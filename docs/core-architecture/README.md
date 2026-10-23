@@ -11,7 +11,7 @@ This directory is the central index for reusable Core Platform architecture and 
 
 | Document | Subject |
 | --- | --- |
-| [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, and Kafka |
+| [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, Kafka, and Database Persistence/Migration (Flyway/JPA) |
 | [API gateway](./api-gateway.md) | Gateway routing, filters, CORS, and error handling |
 | [Saga pattern](./saga-pattern.md) | Saga orchestration and compensation |
 | [Service decomposition](./scaling-to-services.md) | Service boundaries, decomposition criteria, and extraction playbook |

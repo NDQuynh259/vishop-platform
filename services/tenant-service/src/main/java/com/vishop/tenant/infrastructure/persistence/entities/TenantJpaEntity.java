@@ -1,8 +1,8 @@
-package com.vishop.tenant.infrastructure.persistence;
+package com.vishop.tenant.infrastructure.persistence.entities;
 
-import com.vishop.tenant.domain.Tenant;
-import com.vishop.tenant.domain.TenantCode;
-import com.vishop.tenant.domain.TenantStatus;
+import com.vishop.tenant.domain.entities.Tenant;
+import com.vishop.tenant.domain.valueobjects.TenantCode;
+import com.vishop.tenant.domain.valueobjects.TenantStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -48,7 +48,7 @@ public class TenantJpaEntity {
 
     // #region TenantJpaEntity
     public TenantJpaEntity(UUID id, String code, String name, TenantStatus status,
-                           Instant createdAt, Instant updatedAt, Long version) {
+            Instant createdAt, Instant updatedAt, Long version) {
         this.id = id;
         this.code = code;
         this.name = name;
@@ -68,8 +68,7 @@ public class TenantJpaEntity {
                 tenant.getStatus(),
                 tenant.getCreatedAt(),
                 tenant.getUpdatedAt(),
-                tenant.getVersion()
-        );
+                tenant.getVersion());
     }
     // #endregion
 
@@ -82,30 +81,49 @@ public class TenantJpaEntity {
                 status,
                 createdAt,
                 updatedAt,
-                version
-        );
+                version);
     }
     // #endregion
 
     // #region getId
-    public UUID getId() { return id; }
+    public UUID getId() {
+        return id;
+    }
+
     // #endregion
     // #region getCode
-    public String getCode() { return code; }
+    public String getCode() {
+        return code;
+    }
+
     // #endregion
     // #region getName
-    public String getName() { return name; }
+    public String getName() {
+        return name;
+    }
+
     // #endregion
     // #region getStatus
-    public TenantStatus getStatus() { return status; }
+    public TenantStatus getStatus() {
+        return status;
+    }
+
     // #endregion
     // #region getCreatedAt
-    public Instant getCreatedAt() { return createdAt; }
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     // #endregion
     // #region getUpdatedAt
-    public Instant getUpdatedAt() { return updatedAt; }
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
     // #endregion
     // #region getVersion
-    public Long getVersion() { return version; }
+    public Long getVersion() {
+        return version;
+    }
     // #endregion
 }

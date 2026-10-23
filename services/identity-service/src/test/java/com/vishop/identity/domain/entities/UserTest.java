@@ -1,19 +1,20 @@
-package com.vishop.identity.domain.aggregate;
+package com.vishop.identity.domain.entities;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.coreplatform.common.domain.DomainEvent;
+import com.vishop.identity.domain.entities.User;
 import com.vishop.identity.domain.event.UserLoggedInEvent;
 import com.vishop.identity.domain.event.UserRegisteredEvent;
 import com.vishop.identity.domain.event.UserStatusChangedEvent;
-import com.vishop.identity.domain.valueobject.PasswordHash;
-import com.vishop.identity.domain.valueobject.UserStatus;
+import com.vishop.identity.domain.valueobjects.PasswordHash;
+import com.vishop.identity.domain.valueobjects.UserStatus;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class UserAggregateTest {
+class UserTest {
 
     @Test
     @DisplayName("Should create User aggregate and emit UserRegisteredEvent")

@@ -43,6 +43,7 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 vishop:
+  api-prefix: ${VISHOP_API_PREFIX:/api/v1}
   outbox:
     publish-delay-ms: 1000
     batch-size: 50

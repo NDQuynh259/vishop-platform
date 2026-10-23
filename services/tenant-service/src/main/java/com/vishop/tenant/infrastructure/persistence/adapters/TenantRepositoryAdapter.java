@@ -1,8 +1,11 @@
-package com.vishop.tenant.infrastructure.persistence;
+package com.vishop.tenant.infrastructure.persistence.adapters;
 
-import com.vishop.tenant.domain.Tenant;
-import com.vishop.tenant.domain.TenantRepositoryPort;
-import com.vishop.tenant.domain.TenantStatus;
+import com.vishop.tenant.domain.entities.Tenant;
+import com.vishop.tenant.domain.ports.TenantRepositoryPort;
+import com.vishop.tenant.domain.valueobjects.TenantStatus;
+import com.vishop.tenant.infrastructure.persistence.entities.TenantJpaEntity;
+import com.vishop.tenant.infrastructure.persistence.repositories.SpringDataTenantRepository;
+import com.vishop.tenant.infrastructure.persistence.repositories.TenantSpecifications;
 import io.github.coreplatform.common.domain.pagination.OffsetPagination;
 import io.github.coreplatform.common.domain.pagination.PagedResult;
 import java.time.Instant;
@@ -11,6 +14,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
 /**
@@ -74,8 +79,14 @@ public class TenantRepositoryAdapter implements TenantRepositoryPort {
 
     // #region findTenants
     @Override
-    public List<Tenant> findTenants(TenantStatus status, String search, Instant cursorCreatedAt, UUID cursorId, int limit) {
-        return repository.findTenantsCursor(status, search, cursorCreatedAt, cursorId, PageRequest.of(0, limit))
+    public List<Tenant> findTenants(TenantStatus status, String search, Instant cursorCreatedAt, UUID cursorId,
+            int limit) {
+        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        PageRequest pageRequest = PageRequest.of(0, limit, sort);
+        Specification<TenantJpaEntity> spec = TenantSpecifications.withFilter(status, search, cursorCreatedAt,
+                cursorId);
+
+        return repository.findAll(spec, pageRequest)
                 .stream()
                 .map(TenantJpaEntity::toDomain)
                 .toList();
@@ -90,8 +101,11 @@ public class TenantRepositoryAdapter implements TenantRepositoryPort {
     // #region findTenantsOffset
     @Override
     public PagedResult<Tenant> findTenantsOffset(TenantStatus status, String search, OffsetPagination pagination) {
-        PageRequest pageRequest = PageRequest.of(pagination.pageIndex(), pagination.limit());
-        Page<TenantJpaEntity> page = repository.findTenantsOffset(status, search, pageRequest);
+        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        PageRequest pageRequest = PageRequest.of(pagination.pageIndex(), pagination.limit(), sort);
+        Specification<TenantJpaEntity> spec = TenantSpecifications.withFilter(status, search, null, null);
+
+        Page<TenantJpaEntity> page = repository.findAll(spec, pageRequest);
         List<Tenant> tenants = page.getContent().stream()
                 .map(TenantJpaEntity::toDomain)
                 .toList();

@@ -14,10 +14,10 @@ import static org.mockito.Mockito.when;
 
 import com.vishop.tenant.application.dto.TenantFilter;
 import com.vishop.tenant.application.dto.TenantResponseDto;
-import com.vishop.tenant.domain.Tenant;
-import com.vishop.tenant.domain.TenantCode;
-import com.vishop.tenant.domain.TenantRepositoryPort;
-import com.vishop.tenant.domain.TenantStatus;
+import com.vishop.tenant.domain.entities.Tenant;
+import com.vishop.tenant.domain.valueobjects.TenantCode;
+import com.vishop.tenant.domain.ports.TenantRepositoryPort;
+import com.vishop.tenant.domain.valueobjects.TenantStatus;
 import io.github.coreplatform.common.domain.pagination.CursorPagination;
 import io.github.coreplatform.common.domain.pagination.CursorParams;
 import io.github.coreplatform.common.domain.pagination.OffsetPagination;

@@ -1,9 +1,9 @@
 package com.vishop.identity.domain.policy;
 
-import com.vishop.identity.domain.aggregate.User;
+import com.vishop.identity.domain.entities.User;
 import com.vishop.identity.domain.exception.InvalidUserStateException;
 import com.vishop.identity.domain.exception.UserSuspendedException;
-import com.vishop.identity.domain.valueobject.UserStatus;
+import com.vishop.identity.domain.valueobjects.UserStatus;
 
 /**
  * Domain Policy defining authorization and access eligibility rules for User accounts.

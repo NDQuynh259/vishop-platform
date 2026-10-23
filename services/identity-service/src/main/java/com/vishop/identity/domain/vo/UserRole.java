@@ -1,4 +1,4 @@
-package com.vishop.identity.domain.valueobject;
+package com.vishop.identity.domain.valueobjects;
 
 /**
  * Value Object representing the authorization role of a User within a tenant.

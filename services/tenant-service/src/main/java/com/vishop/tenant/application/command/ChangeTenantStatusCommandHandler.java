@@ -4,8 +4,8 @@ import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import io.github.coreplatform.common.persistence.OutboxService;
 import com.vishop.tenant.application.dto.TenantResponseDto;
-import com.vishop.tenant.domain.Tenant;
-import com.vishop.tenant.domain.TenantRepositoryPort;
+import com.vishop.tenant.domain.entities.Tenant;
+import com.vishop.tenant.domain.ports.TenantRepositoryPort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

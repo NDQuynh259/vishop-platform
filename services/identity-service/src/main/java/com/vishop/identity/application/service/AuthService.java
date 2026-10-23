@@ -14,7 +14,7 @@ import com.vishop.identity.application.port.PasswordHasherPort;
 import com.vishop.identity.application.port.TokenIssuerPort;
 import com.vishop.identity.application.port.UserEventPublisherPort;
 import com.vishop.identity.application.query.GetUserProfileQuery;
-import com.vishop.identity.domain.repository.UserRepositoryPort;
+import com.vishop.identity.domain.ports.UserRepositoryPort;
 import com.vishop.identity.infrastructure.security.BCryptPasswordHasherAdapter;
 import com.vishop.identity.infrastructure.security.JwtTokenIssuerAdapter;
 import java.util.UUID;

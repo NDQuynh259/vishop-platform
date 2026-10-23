@@ -1,6 +1,6 @@
 package com.vishop.tenant.application.dto;
 
-import com.vishop.tenant.domain.Tenant;
+import com.vishop.tenant.domain.entities.Tenant;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.UUID;

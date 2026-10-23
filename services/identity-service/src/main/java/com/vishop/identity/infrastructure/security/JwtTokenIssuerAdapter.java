@@ -2,7 +2,7 @@ package com.vishop.identity.infrastructure.security;
 
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import com.vishop.identity.application.port.TokenIssuerPort;
-import com.vishop.identity.domain.aggregate.User;
+import com.vishop.identity.domain.entities.User;
 import java.util.List;
 import org.springframework.stereotype.Component;
 

@@ -1,4 +1,4 @@
-package com.vishop.identity.domain.valueobject;
+package com.vishop.identity.domain.valueobjects;
 
 import io.github.coreplatform.common.domain.UuidV7;
 import io.github.coreplatform.common.domain.ValueObject;

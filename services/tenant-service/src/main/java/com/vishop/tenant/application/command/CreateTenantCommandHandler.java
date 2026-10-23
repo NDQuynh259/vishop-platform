@@ -4,9 +4,9 @@ import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.persistence.OutboxService;
 import com.vishop.tenant.application.dto.TenantResponseDto;
-import com.vishop.tenant.domain.Tenant;
-import com.vishop.tenant.domain.TenantCode;
-import com.vishop.tenant.domain.TenantRepositoryPort;
+import com.vishop.tenant.domain.entities.Tenant;
+import com.vishop.tenant.domain.ports.TenantRepositoryPort;
+import com.vishop.tenant.domain.valueobjects.TenantCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +36,8 @@ public class CreateTenantCommandHandler implements CommandHandler<CreateTenantCo
         Tenant tenant = Tenant.create(code, command.name());
         tenant = tenantRepository.save(tenant);
 
-        // Store pending domain events into the transactional outbox table in the SAME transaction!
+        // Store pending domain events into the transactional outbox table in the SAME
+        // transaction!
         outboxService.saveEventsFor(tenant, "tenant-service");
 
         return TenantResponseDto.from(tenant);

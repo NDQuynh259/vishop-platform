@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Authentication", description = "User authentication, registration, session cookies, and profile APIs")
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/auth")
 public class AuthController {
 
     public static final String SESSION_COOKIE_NAME = "better-auth.session_token";

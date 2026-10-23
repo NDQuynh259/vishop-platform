@@ -12,13 +12,18 @@ services/tenant-service/src/main/
 │   ├── TenantApplication.java                # Spring Boot Main Entry Point
 │   │
 │   ├── domain/                               # [Layer 1: Domain - Thuần túy nghiệp vụ]
-│   │   ├── Tenant.java                       # Aggregate Root
-│   │   ├── TenantCode.java                   # Value Object
-│   │   ├── TenantStatus.java                 # Domain Enum
-│   │   ├── TenantRepositoryPort.java         # Domain Repository Port (Interface)
-│   │   └── event/
-│   │       ├── TenantCreatedEvent.java       # Domain Event
-│   │       └── TenantStatusChangedEvent.java # Domain Event
+│   │   ├── entities/                         # Aggregate Roots & Entities
+│   │   │   └── Tenant.java                   # Aggregate Root chính của Bounded Context
+│   │   ├── valueobjects/                     # Value Objects & Domain Enums
+│   │   │   ├── TenantCode.java               # Value Object (tự validate cú pháp code)
+│   │   │   └── TenantStatus.java             # Domain Enum (ACTIVE, SUSPENDED, ARCHIVED)
+│   │   ├── ports/                            # Outbound Repository Ports (Interfaces)
+│   │   │   └── TenantRepositoryPort.java     # Domain Repository Port (Interface thuần túy)
+│   │   ├── event/                            # Domain Events phát sinh từ Aggregate
+│   │   │   ├── TenantCreatedEvent.java       # Sự kiện tạo mới Tenant
+│   │   │   └── TenantStatusChangedEvent.java # Sự kiện đổi trạng thái Tenant
+│   │   └── services/                         # Domain Services (Nghiệp vụ đa aggregate)
+│   │       └── package-info.java
 │   │
 │   ├── application/                          # [Layer 2: Application - Use Cases & CQRS]
 │   │   ├── command/                          # CQRS Write Operations
@@ -38,9 +43,13 @@ services/tenant-service/src/main/
 │   │
 │   ├── infrastructure/                       # [Layer 3: Infrastructure - Adapters]
 │   │   └── persistence/
-│   │       ├── TenantJpaEntity.java          # JPA Table Mapping
-│   │       ├── SpringDataTenantRepository.java # Spring Data JPA
-│   │       └── TenantRepositoryAdapter.java  # Hiện thực Domain Port
+│   │       ├── entities/
+│   │       │   └── TenantJpaEntity.java      # JPA Table Mapping
+│   │       ├── repositories/
+│   │       │   ├── SpringDataTenantRepository.java # Spring Data JPA
+│   │       │   └── TenantSpecifications.java       # JPA Criteria API Specifications
+│   │       └── adapters/
+│   │           └── TenantRepositoryAdapter.java    # Hiện thực Domain Port
 │   │
 │   └── presentation/                         # [Layer 4: Presentation - Controllers]
 │       └── rest/
@@ -58,18 +67,17 @@ services/tenant-service/src/main/
 
 ### 2.1. Tầng Domain (`domain/`)
 
-Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không import Spring, JPA, Hibernate hay bất kỳ framework nào.**
+Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không import Spring, JPA, Hibernate hay bất kỳ framework nào.** Được phân chia thành các thư mục con rành mạch:
 
-#### `Tenant.java` — Aggregate Root
+#### `entities/Tenant.java` — Aggregate Root
 * Kế thừa từ `AggregateRoot<UUID>`.
 * Constructor đặt ở chế độ `private` để bắt buộc khởi tạo qua 2 static factory methods:
   * `create(TenantCode code, String name)`: Dùng khi tạo mới nghiệp vụ, nội bộ sinh ra `TenantCreatedEvent` lưu vào danh sách domain events.
   * `reconstitute(...)`: Dùng bởi Repository Adapter để tái dựng Aggregate từ database mà **không** kích hoạt domain events.
 * Không có setter công khai. Trạng thái chỉ được thay đổi qua các phương thức nghiệp vụ: `activate()`, `suspend()`, `archive()`, `updateName()`.
 
-#### `TenantCode.java` — Value Object
-* Cài đặt dưới dạng Java `record` kế thừa interface `ValueObject`.
-* Đảm bảo tính bất biến (immutable) và tự kiểm tra tính hợp lệ (invariants) trong constructor:
+#### `valueobjects/TenantCode.java` & `TenantStatus.java` — Value Objects & Enums
+* `TenantCode`: Cài đặt dưới dạng Java `record` kế thừa interface `ValueObject`. Đảm bảo tính bất biến (immutable) và tự kiểm tra tính hợp lệ (invariants) trong constructor:
   ```java
   public record TenantCode(String value) implements ValueObject {
       private static final Pattern PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$");
@@ -80,12 +88,9 @@ Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không
       }
   }
   ```
+* `TenantStatus`: Enum định nghĩa vòng đời của Tenant (`ACTIVE`, `SUSPENDED`, `ARCHIVED`).
 
-#### `event/TenantCreatedEvent.java` — Domain Event
-* Cài đặt bằng `record` implements `DomainEvent`.
-* Lưu lại dữ liệu sự kiện đã diễn ra trong quá khứ (`tenantId`, `code`, `name`, `status`, `occurredAt`).
-
-#### `TenantRepositoryPort.java` — Repository Port
+#### `ports/TenantRepositoryPort.java` — Repository Port
 * Là một interface Java thuần túy định nghĩa các phương thức lưu trữ Aggregate Root mà nghiệp vụ cần, ví dụ:
   ```java
   public interface TenantRepositoryPort extends DomainRepository<Tenant, UUID> {
@@ -94,6 +99,13 @@ Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không
       List<Tenant> findTenants(Instant cursorCreatedAt, UUID cursorId, int limit);
   }
   ```
+
+#### `event/TenantCreatedEvent.java` & `TenantStatusChangedEvent.java` — Domain Events
+* Cài đặt bằng `record` implements `DomainEvent`.
+* Lưu lại dữ liệu sự kiện đã diễn ra trong quá khứ (`tenantId`, `code`, `name`, `status`, `occurredAt`), được đưa vào Outbox để phát tán sang Kafka.
+
+#### `services/` — Domain Services
+* Nơi chứa các logic nghiệp vụ phức tạp liên quan đến nhiều Aggregate hoặc cần tính toán quy tắc nghiệp vụ không thuộc về một Entity đơn lẻ.
 
 ---
 
@@ -120,13 +132,17 @@ Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
 
 Hiện thực hóa các Ports của Domain bằng các công nghệ cụ thể.
 
-#### `persistence/TenantJpaEntity.java`
+#### `persistence/entities/TenantJpaEntity.java`
 * Entity JPA ánh xạ vào bảng `tenants` trong database PostgreSQL.
 * Có 2 hàm chuyển đổi:
   * `fromDomain(Tenant)`: Ánh xạ từ Domain Model sang JPA Entity.
   * `toDomain()`: Gọi `Tenant.reconstitute(...)` để chuyển sang Domain Model.
 
-#### `persistence/TenantRepositoryAdapter.java`
+#### `persistence/repositories/SpringDataTenantRepository.java` & `TenantSpecifications.java`
+* Interface Spring Data JPA kế thừa `JpaRepository` và `JpaSpecificationExecutor`.
+* `TenantSpecifications` đóng gói các điều kiện lọc động (Search, Filter status, Cursor pagination) bằng JPA Criteria API.
+
+#### `persistence/adapters/TenantRepositoryAdapter.java`
 * Lớp cài đặt interface `TenantRepositoryPort`.
 * Tiêm `SpringDataTenantRepository` để thực hiện câu lệnh SQL/JPA thực tế.
 

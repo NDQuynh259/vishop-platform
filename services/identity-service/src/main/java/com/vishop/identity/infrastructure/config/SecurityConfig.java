@@ -1,6 +1,7 @@
 package com.vishop.identity.infrastructure.config;
 
 import io.github.coreplatform.common.security.filter.InternalHeaderAuthFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -14,6 +15,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 public class SecurityConfig {
+
+    private final String apiPrefix;
+
+    public SecurityConfig(@Value("${vishop.api-prefix:/api/v1}") String apiPrefix) {
+        this.apiPrefix = apiPrefix.endsWith("/") ? apiPrefix.substring(0, apiPrefix.length() - 1) : apiPrefix;
+    }
 
     // #region passwordEncoder
     @Bean
@@ -34,9 +41,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/register",
-                                "/api/v1/auth/refresh",
+                                apiPrefix + "/auth/login",
+                                apiPrefix + "/auth/register",
+                                apiPrefix + "/auth/refresh",
                                 "/actuator/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

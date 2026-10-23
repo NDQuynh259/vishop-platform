@@ -1,21 +1,21 @@
-package com.vishop.identity.domain.aggregate;
+package com.vishop.identity.domain.entities;
 
 import io.github.coreplatform.common.domain.AggregateRoot;
 import io.github.coreplatform.common.domain.UuidV7;
 import com.vishop.identity.domain.event.UserLoggedInEvent;
 import com.vishop.identity.domain.event.UserRegisteredEvent;
 import com.vishop.identity.domain.event.UserStatusChangedEvent;
-import com.vishop.identity.domain.valueobject.Email;
-import com.vishop.identity.domain.valueobject.PasswordHash;
-import com.vishop.identity.domain.valueobject.UserId;
-import com.vishop.identity.domain.valueobject.UserRole;
-import com.vishop.identity.domain.valueobject.UserStatus;
+import com.vishop.identity.domain.valueobjects.Email;
+import com.vishop.identity.domain.valueobjects.PasswordHash;
+import com.vishop.identity.domain.valueobjects.UserId;
+import com.vishop.identity.domain.valueobjects.UserRole;
+import com.vishop.identity.domain.valueobjects.UserStatus;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * User Aggregate Root.
+ * User Aggregate Root / Entity.
  * Manages identity credentials, tenant scoping, lifecycle states, and domain events.
  */
 public class User extends AggregateRoot<UUID> {

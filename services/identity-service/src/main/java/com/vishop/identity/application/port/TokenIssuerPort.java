@@ -1,6 +1,6 @@
 package com.vishop.identity.application.port;
 
-import com.vishop.identity.domain.aggregate.User;
+import com.vishop.identity.domain.entities.User;
 import java.util.List;
 
 /**

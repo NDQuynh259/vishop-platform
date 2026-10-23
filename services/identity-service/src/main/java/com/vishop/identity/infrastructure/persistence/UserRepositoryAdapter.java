@@ -1,13 +1,13 @@
 package com.vishop.identity.infrastructure.persistence;
 
-import com.vishop.identity.domain.aggregate.User;
-import com.vishop.identity.domain.repository.UserRepositoryPort;
+import com.vishop.identity.domain.entities.User;
+import com.vishop.identity.domain.ports.UserRepositoryPort;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
-public class UserRepositoryAdapter implements UserRepositoryPort, com.vishop.identity.domain.UserRepositoryPort {
+public class UserRepositoryAdapter implements UserRepositoryPort {
 
     private final SpringDataUserRepository repository;
 

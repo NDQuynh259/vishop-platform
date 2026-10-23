@@ -1,7 +1,8 @@
 package com.vishop.identity.infrastructure.persistence;
 
-import com.vishop.identity.domain.aggregate.User;
-import com.vishop.identity.domain.valueobject.UserStatus;
+import com.vishop.identity.domain.entities.User;
+import com.vishop.identity.domain.valueobjects.UserRole;
+import com.vishop.identity.domain.valueobjects.UserStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,11 +32,12 @@ public class UserJpaEntity {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
-    @Column(nullable = false)
-    private String role;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 50)
+    private UserRole role;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     private UserStatus status;
 
     @Column(name = "created_at", nullable = false)
@@ -57,7 +59,7 @@ public class UserJpaEntity {
                 this.email,
                 this.passwordHash,
                 this.fullName,
-                this.role,
+                this.role.name(),
                 this.status,
                 this.createdAt,
                 this.updatedAt,
@@ -74,7 +76,7 @@ public class UserJpaEntity {
         entity.email = domain.getEmail();
         entity.passwordHash = domain.getPasswordHash();
         entity.fullName = domain.getFullName();
-        entity.role = domain.getRole();
+        entity.role = domain.getRoleVo();
         entity.status = domain.getStatus();
         entity.createdAt = domain.getCreatedAt();
         entity.updatedAt = domain.getUpdatedAt();
@@ -103,7 +105,7 @@ public class UserJpaEntity {
         return fullName;
     }
 
-    public String getRole() {
+    public UserRole getRole() {
         return role;
     }
 

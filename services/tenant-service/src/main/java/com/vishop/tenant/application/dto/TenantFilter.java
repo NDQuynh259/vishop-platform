@@ -1,6 +1,6 @@
 package com.vishop.tenant.application.dto;
 
-import com.vishop.tenant.domain.TenantStatus;
+import com.vishop.tenant.domain.valueobjects.TenantStatus;
 
 /**
  * Filter criteria for querying tenants.
@@ -10,8 +10,7 @@ import com.vishop.tenant.domain.TenantStatus;
  */
 public record TenantFilter(
         String search,
-        TenantStatus status
-) {
+        TenantStatus status) {
 
     // #region empty
     public static TenantFilter empty() {

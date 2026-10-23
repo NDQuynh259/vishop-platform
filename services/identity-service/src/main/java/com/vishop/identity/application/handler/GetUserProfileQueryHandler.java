@@ -4,8 +4,8 @@ import io.github.coreplatform.common.domain.cqrs.QueryHandler;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import com.vishop.identity.application.dto.UserResponseDto;
 import com.vishop.identity.application.query.GetUserProfileQuery;
-import com.vishop.identity.domain.aggregate.User;
-import com.vishop.identity.domain.repository.UserRepositoryPort;
+import com.vishop.identity.domain.entities.User;
+import com.vishop.identity.domain.ports.UserRepositoryPort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 

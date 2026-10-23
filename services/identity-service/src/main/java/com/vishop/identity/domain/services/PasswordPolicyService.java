@@ -1,4 +1,4 @@
-package com.vishop.identity.domain.service;
+package com.vishop.identity.domain.services;
 
 import io.github.coreplatform.common.domain.exception.DomainException;
 import java.util.regex.Pattern;

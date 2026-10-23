@@ -1,4 +1,4 @@
-package com.vishop.identity.domain.valueobject;
+package com.vishop.identity.domain.valueobjects;
 
 import io.github.coreplatform.common.domain.ValueObject;
 import io.github.coreplatform.common.domain.exception.DomainException;
@@ -9,8 +9,7 @@ import java.util.regex.Pattern;
  */
 public record Email(String value) implements ValueObject {
 
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,63}$");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,63}$");
 
     public Email {
         if (value == null || value.isBlank()) {

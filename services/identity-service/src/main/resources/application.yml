@@ -1,6 +1,9 @@
 server:
   port: 8080
 
+vishop:
+  api-prefix: ${VISHOP_API_PREFIX:/api/v1}
+
 spring:
   application:
     name: identity-service
