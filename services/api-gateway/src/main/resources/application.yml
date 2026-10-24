@@ -9,20 +9,12 @@ spring:
     gateway:
       routes:
         # ---------------------------------------------------------------------
-        # 1. Tenant Service
+        # 1. Identity, tenants and CMS share IAM
         # ---------------------------------------------------------------------
-        - id: tenant-service
-          uri: ${TENANT_SERVICE_URL:http://localhost:8081}
+        - id: iam-service
+          uri: ${IAM_SERVICE_URL:http://localhost:8080}
           predicates:
-            - Path=/api/v1/tenants/**
-
-        # ---------------------------------------------------------------------
-        # 2. Identity Service (Auth & Users)
-        # ---------------------------------------------------------------------
-        - id: identity-service
-          uri: ${IDENTITY_SERVICE_URL:http://localhost:8080}
-          predicates:
-            - Path=/api/v1/auth/**, /api/v1/users/**
+            - Path=/api/v1/auth/**,/api/v1/tenants/**,/api/v1/invitations/**,/api/v1/cms/**
 
         # ---------------------------------------------------------------------
         # 3. Audit Service
@@ -32,18 +24,48 @@ spring:
           predicates:
             - Path=/api/v1/audit/**
 
+        # ---------------------------------------------------------------------
+        # 4. OpenAPI / Swagger Documentation Aggregation
+        # ---------------------------------------------------------------------
+        - id: iam-service-docs
+          uri: ${IAM_SERVICE_URL:http://localhost:8080}
+          predicates:
+            - Path=/v3/api-docs/iam-service
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: audit-service-docs
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/v3/api-docs/audit-service
+          filters:
+            - SetPath=/v3/api-docs
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    urls:
+      - name: IAM Service
+        url: /v3/api-docs/iam-service
+      - name: Audit Service
+        url: /v3/api-docs/audit-service
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus,gateway
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: when_authorized
       probes:
         enabled: true
     gateway:
-      enabled: true
+      enabled: false
   metrics:
     tags:
       application: ${spring.application.name}
@@ -58,4 +80,11 @@ management:
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+vishop:
+  iam:
+    url: ${IAM_SERVICE_URL:http://localhost:8080}
+    internal-secret: ${IAM_INTERNAL_SECRET:}
+  security:
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
 

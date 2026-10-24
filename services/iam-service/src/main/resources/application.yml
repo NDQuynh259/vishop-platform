@@ -1,0 +1,52 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: iam-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_iam}
+    username: ${SPRING_DATASOURCE_USERNAME:vishop}
+    password: ${SPRING_DATASOURCE_PASSWORD:vishop_secret}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+    generate-ddl: false
+    hibernate:
+      ddl-auto: validate
+  sql:
+    init:
+      mode: never
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    clean-disabled: true
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+vishop:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:}
+      expiration-ms: 900000
+    internal-secret: ${IAM_INTERNAL_SECRET:}
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+    session-seconds: 604800
+    cookie:
+      secure: ${VISHOP_SECURITY_COOKIE_SECURE:true}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}

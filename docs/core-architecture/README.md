@@ -11,15 +11,19 @@ This directory is the central index for reusable Core Platform architecture and 
 
 | Document | Subject |
 | --- | --- |
-| [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, and Kafka |
+| [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, Kafka, and Database Persistence/Migration (Flyway/JPA) |
+| [Persistence standard](./persistence.md) | Required Spring Data JPA/EntityManager access, validate-only entities, and Flyway SQL migrations for all current services/libraries |
 | [API gateway](./api-gateway.md) | Gateway routing, filters, CORS, and error handling |
 | [Saga pattern](./saga-pattern.md) | Saga orchestration and compensation |
 | [Service decomposition](./scaling-to-services.md) | Service boundaries, decomposition criteria, and extraction playbook |
 | [Service module anatomy](./domain-module-anatomy.md) | Domain, application, infrastructure, and presentation layers |
-| [Multi-tenancy](./tenancy.md) | Tenant context propagation through HTTP, Kafka, and persistence |
+| [Multi-tenancy](./tenancy.md) | Tenant context propagation, 1-to-N membership data modeling, and service boundary decomposition |
 | [Idempotency and tracing](./idempotency-and-tracing.md) | Deduplication and request/message correlation |
 | [Observability](./observability.md) | Logs, metrics, distributed tracing, and alerting |
+| [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, Dynamic Token Revocation (Redis/Kafka), and Multi-Tenancy |
+| [Inter-service communication](./inter-service-communication.md) | Protocols: Kafka event-driven, REST/HTTPS, and gRPC decision framework |
 | [Spring Boot migration plan](./spring-boot-microservices-migration-plan.md) | Migration strategy and operational considerations |
+| [Source project reference](./source-project-architecture-reference.md) | Deep-dive analysis of NestJS `api-vishop` architecture, Prisma schema, Better Auth sessions, and mapping to Java |
 
 ## Core principles
 

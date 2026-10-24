@@ -1,19 +1,18 @@
 rootProject.name = "core-platform"
 
 include(
-    // Platform common modules
-    "platform-common:common-domain",
-    "platform-common:common-web",
-    "platform-common:common-security",
-    "platform-common:common-events",
-    "platform-common:common-persistence",
-    "platform-common:common-observability",
-    "platform-common:common-saga",
-    "platform-common:common-test",
+    // Platform shared libraries
+    "libs:common-domain",
+    "libs:common-web",
+    "libs:common-security",
+    "libs:common-events",
+    "libs:common-persistence",
+    "libs:common-observability",
+    "libs:common-saga",
+    "libs:common-test",
 
     // Microservices
+    "services:iam-service",
     "services:api-gateway",
-    "services:identity-service",
-    "services:tenant-service",
     "services:audit-service",
 )

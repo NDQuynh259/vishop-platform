@@ -13,12 +13,11 @@ Mở [settings.gradle.kts](../settings.gradle.kts) và thêm service vào danh s
 ```kotlin
 include(
     // Platform common modules
-    "platform-common:common-domain",
+    "libs:common-domain",
     ...
     // Services
-    "services:tenant-service",
     "services:audit-service",
-    "services:identity-service",
+    "services:iam-service",
     "services:catalog-service" // <-- Thêm service mới
 )
 ```
@@ -32,12 +31,12 @@ plugins {
 
 dependencies {
     // Kế thừa toàn bộ nền tảng platform-common
-    implementation(project(":platform-common:common-domain"))
-    implementation(project(":platform-common:common-web"))
-    implementation(project(":platform-common:common-security"))
-    implementation(project(":platform-common:common-events"))
-    implementation(project(":platform-common:common-persistence"))
-    implementation(project(":platform-common:common-observability"))
+    implementation(project(":libs:common-domain"))
+    implementation(project(":libs:common-web"))
+    implementation(project(":libs:common-security"))
+    implementation(project(":libs:common-events"))
+    implementation(project(":libs:common-persistence"))
+    implementation(project(":libs:common-observability"))
 
     // Spring Boot Starters
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -107,12 +106,18 @@ spring:
 
   jpa:
     open-in-view: false
+    generate-ddl: false
     hibernate:
       ddl-auto: validate
 
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    baseline-on-migrate: false
+    clean-disabled: true
+
+  sql:
+    init:
+      mode: never
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}

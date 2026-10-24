@@ -1,0 +1,46 @@
+# =============================================================================
+# ViShop Platform - Development Dockerfile (With Remote Debugging Support)
+# =============================================================================
+# Build Stage
+FROM eclipse-temurin:21-jdk-alpine AS builder
+
+WORKDIR /build
+
+RUN apk add --no-cache dos2unix
+
+COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
+COPY gradle ./gradle
+RUN dos2unix gradlew && chmod +x gradlew
+
+COPY libs ./libs
+COPY services ./services
+
+ARG SERVICE_NAME
+RUN if [ -z "$SERVICE_NAME" ]; then echo "SERVICE_NAME argument is required" && exit 1; fi
+
+RUN ./gradlew :services:${SERVICE_NAME}:bootJar --no-daemon -x test
+RUN cp services/${SERVICE_NAME}/build/libs/*.jar /build/app.jar
+
+# Runtime Stage
+FROM eclipse-temurin:21-jdk-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache curl bash
+
+ARG SERVICE_PORT=8080
+ARG DEBUG_PORT=5005
+
+ENV PORT=${SERVICE_PORT}
+ENV DEBUG_PORT=${DEBUG_PORT}
+ENV SPRING_PROFILES_ACTIVE="dev"
+
+# Remote Debugging JDWP enabled for developer attachment
+ENV JAVA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${DEBUG_PORT} -XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+
+COPY --from=builder /build/app.jar /app/app.jar
+
+EXPOSE ${SERVICE_PORT}
+EXPOSE ${DEBUG_PORT}
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

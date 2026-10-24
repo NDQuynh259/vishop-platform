@@ -27,12 +27,12 @@ GROUP BY status;
 
 ```bash
 # Check service logs for outbox publishing errors
-docker logs vishop-tenant-service --tail=200 | grep -i "outbox\|error\|failed"
+docker compose -f infra/compose/docker-compose.prod.yml logs --tail=200 iam-service | grep -i "outbox\|error\|failed"
 ```
 
 ```bash
 # Check scheduler logs for relay errors
-docker compose logs scheduler --tail=200 | grep -i "outbox\|error\|failed"
+docker compose -f infra/compose/docker-compose.prod.yml logs --tail=200 iam-service | grep -i "outbox\|error\|failed"
 ```
 
 **Action:**
@@ -119,7 +119,7 @@ redis-cli -h $REDIS_QUEUE_HOST -p $REDIS_QUEUE_PORT
 docker compose logs scheduler --tail=500 | grep -i "audit"
 
 # Check if outbox relay is delivering the events
-docker compose logs scheduler --tail=200 | grep "outbox"
+docker compose -f infra/compose/docker-compose.prod.yml logs --tail=200 iam-service | grep "outbox"
 ```
 
 ```sql
@@ -700,7 +700,7 @@ SQL
 **Action:**
 
 1. Confirm the scheduler container is running: `docker compose ps scheduler`.
-2. Check logs for purge errors: `docker compose logs scheduler --tail=200 | grep -E "purge|error"`.
+2. Check logs for purge errors: `docker compose -f infra/compose/docker-compose.prod.yml logs --tail=200 iam-service | grep -E "purge|error"`.
 3. If the cron has been silently failing (e.g. Prisma `$executeRawUnsafe` auth error), fix the root cause and redeploy the scheduler.
 4. If the backlog is very large (millions of rows), raise `OUTBOX_PURGE_MAX_BATCHES` temporarily — the default cap of `200 × 1000 = 200k rows/run` may not drain the backlog in a single nightly run. Set `OUTBOX_PURGE_MAX_BATCHES=5000` and redeploy the scheduler, then revert after the backlog is clear.
 

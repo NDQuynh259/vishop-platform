@@ -1,0 +1,35 @@
+# Database-only IAM preparation. Legacy services continue using their old databases
+# until their Java entities and routes are migrated.
+services:
+  iam-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${IAM_DB_USER:-vishop}
+      POSTGRES_PASSWORD: ${IAM_DB_PASSWORD:?Set IAM_DB_PASSWORD}
+      POSTGRES_DB: vishop_iam
+    ports:
+      - "127.0.0.1:${IAM_DB_PORT:-5433}:5432"
+    volumes:
+      - iam-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d vishop_iam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  iam-migrate:
+    image: flyway/flyway:10.10.0
+    environment:
+      FLYWAY_URL: jdbc:postgresql://iam-postgres:5432/vishop_iam
+      FLYWAY_USER: ${IAM_DB_USER:-vishop}
+      FLYWAY_PASSWORD: ${IAM_DB_PASSWORD:?Set IAM_DB_PASSWORD}
+      FLYWAY_CLEAN_DISABLED: "true"
+    volumes:
+      - ../../services/iam-service/src/main/resources/db/migration:/flyway/sql:ro
+    command: migrate
+    depends_on:
+      iam-postgres:
+        condition: service_healthy
+
+volumes:
+  iam-postgres-data:

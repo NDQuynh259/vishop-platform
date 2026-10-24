@@ -1,51 +1,132 @@
 # Kiến trúc Đa người thuê (Multi-Tenancy)
 
-Mọi dữ liệu nghiệp vụ trong nền tảng **ViShop Platform** đều thuộc về một **Tenant** (tổ chức / doanh nghiệp), không trực thuộc trực tiếp một User đơn lẻ. Một người dùng có thể là thành viên của nhiều Tenant khác nhau.
+## 1. Quyết định kiến trúc
 
----
+ViShop chọn **`iam-service`** (Identity & Access Management) để quản lý danh tính,
+quyền quản trị nền tảng, tổ chức và quyền thành viên. Database đích là **`vishop_iam`**.
+User là danh tính toàn cục; dữ liệu nghiệp vụ thuộc tenant. Một user có thể tham gia
+nhiều tenant và có role khác nhau ở mỗi tenant.
 
-## 1. Thuật ngữ chuẩn (Naming Convention)
+Tách module Identity và Tenant Access trong cùng service/database để tạo user,
+tenant, OWNER membership và quyền trong một transaction khi onboarding yêu cầu.
+Không gọi HTTP giữa hai service để hoàn tất transaction này.
 
-Khái niệm này có tên gọi duy nhất trong toàn bộ mã nguồn: **`tenant`**.
-* Không sử dụng các từ thay thế như `workspace`, `organization` hay `company` trong tên bảng, cột, biến hoặc API path.
-* Trên giao diện tiếng Việt, `tenant` được dịch là **"tổ chức"**; `shop` là **"gian hàng"**. Một tổ chức có thể sở hữu và liên kết nhiều gian hàng.
+**Trạng thái triển khai:** runtime IAM đã thay hai service cũ trong Gradle, gateway
+và Docker. Repository JPA dùng schema IAM mới. Đã có API tài khoản, tenant, membership,
+role, invitation, CMS và session/token. Dữ liệu từ database cũ chưa tự động chuyển.
+Xem [hướng dẫn runtime và chuyển dữ liệu](../../services/iam-service/README.md).
 
----
+## 2. Thuật ngữ và phạm vi dữ liệu
 
-## 2. Mô hình phân cấp dữ liệu
+* Dùng `tenant` trong tên bảng, biến và API; trên giao diện là **tổ chức**.
+* `shop` là **gian hàng** thuộc tổ chức: Shopee, TikTok Shop, cửa hàng offline…
+* Phân quyền ở cấp tenant, chưa phân quyền riêng từng shop. Quyền như `order.update`
+  áp dụng cho tài nguyên trong tenant hiện tại, không cho mọi tenant.
+* Dữ liệu nghiệp vụ shop/order/inventory thuộc bounded context nghiệp vụ tương ứng.
+  Nếu khác database với IAM thì `tenant_id` là tham chiếu logic, không có foreign key
+  xuyên database sang bảng `tenants`.
 
-```text
-users ──< tenant_members >── tenants ──< roles ──< role_permissions
-   │          (role tier)        │              │
-   │                             │              └──< tenant_member_roles >──┐
-   │                             └──< tenant_invitations                    │
-   └─────────────────────────────────────────────────────────────< shops ──┘
+## 3. Hai cấp role độc lập
+
+| Cấp | Lưu trữ | Phạm vi |
+| --- | --- | --- |
+| System role | `users.system_role`: `USER`, `PLATFORM_ADMIN` | Quản trị nền tảng qua CMS |
+| Tenant role | `tenant_members.role_id` → `roles` → `role_permissions` | Quyền nghiệp vụ trong một tổ chức |
+
+Không có bảng permission cho system role. API CMS kiểm tra system role do backend
+cấp; không lấy từ payload đăng ký. Tenant OWNER không phải PLATFORM_ADMIN.
+PLATFORM_ADMIN không mặc nhiên có membership hay quyền thao tác nghiệp vụ trong
+mọi tenant. Nếu cần hỗ trợ truy cập tenant, phải thiết kế luồng riêng có audit.
+
+Mỗi membership có một role. Role mặc định là `OWNER`, `OPERATIONS`, `WAREHOUSE`,
+`ACCOUNTING`; cho phép custom role. Không giữ thêm một enum role song song trên
+membership vì sẽ tạo hai nguồn quyền không nhất quán.
+
+## 4. Schema IAM
+
+```mermaid
+erDiagram
+    users ||--o{ tenant_members : joins
+    tenants ||--o{ tenant_members : contains
+    tenants ||--o{ roles : defines
+    roles ||--o{ role_permissions : grants
+    roles ||--o{ tenant_members : assigned
+    tenants ||--o{ tenant_invitations : invites
+    users ||--o{ sessions : owns
 ```
 
----
+* `users`: global identity, email, password hash, system role và trạng thái tài khoản.
+  Không có `tenant_id` hoặc tenant role. Email unique không phân biệt hoa thường.
+* `tenants`: định danh, code, tên và trạng thái `ACTIVE`, `SUSPENDED`, `ARCHIVED`.
+* `roles`: role thuộc một tenant; tên và built-in key unique trong tenant đó.
+* `role_permissions`: danh sách permission tĩnh của tenant role. Hiện code có **34**
+  key trong `CommonPermissions`; schema và kiểm thử bám theo danh mục thực tế.
+* `tenant_members`: unique `(tenant_id, user_id)`, có `role_id`, trạng thái
+  `ACTIVE`/`INACTIVE`. Khi tái gia nhập thì kích hoạt lại membership cũ.
+* `tenant_invitations`: email, role, người mời, thời hạn, trạng thái và hash token.
+* `sessions`: user, hash token, thời hạn, thời điểm thu hồi và `active_tenant_id` tùy chọn.
+* `outbox_events`, `consumed_messages`: event publication và idempotent consumption.
 
-## 3. Cơ chế cô lập Tenant trong Microservices
+Composite foreign keys bảo đảm role của membership/invitation cùng tenant;
+người mời và người nhận sau khi accept có membership trong tenant; session chỉ chọn
+tenant mà user có membership. Không có `accessibleShopIds` hay bảng gán role theo shop.
 
-### 3.1. Luồng HTTP Request (REST API)
-1. Client gửi request kèm header `X-Tenant-Id: <uuid>`.
-2. [TenantContextFilter.java](../../platform-common/common-security/src/main/java/io/github/coreplatform/common/security/TenantContextFilter.java) (Spring OncePerRequestFilter) tự động:
-   * Trích xuất giá trị UUID từ header `X-Tenant-Id`.
-   * Gán vào [TenantContext.java](../../platform-common/common-security/src/main/java/io/github/coreplatform/common/security/TenantContext.java) (`ThreadLocal<UUID>`).
-   * Thực thi request chain.
-   * Gọi `TenantContext.clear()` trong khối `finally` để giải phóng thread an toàn.
+Insert tenant tự sinh bốn built-in role và permission mặc định trong cùng transaction.
+Application phải tạo OWNER membership trong transaction onboarding; trigger không tự
+chọn user làm owner. Backend phải bảo vệ owner cuối cùng, xác minh email nhận lời mời
+và kiểm tra status/MFA/permission. Foreign key không thay thế các kiểm tra này.
 
-### 3.2. Luồng Kafka Event (Asynchronous Messaging)
-1. Khi phát hành event ra Kafka, [KafkaEventPublisher.java](../../platform-common/common-events/src/main/java/io/github/coreplatform/common/events/publisher/KafkaEventPublisher.java) tự động đính kèm header Kafka `X-Tenant-Id`.
-2. Khi Consumer nhận record, [TenantRecordInterceptor.java](../../platform-common/common-events/src/main/java/io/github/coreplatform/common/events/consumer/TenantRecordInterceptor.java) trích xuất header này và thiết lập vào `TenantContext` trước khi `@KafkaListener` xử lý, sau đó giải phóng context khi hoàn tất.
+## 5. Luồng HTTP và chọn tenant
 
-### 3.3. Tầng lưu trữ (Database Persistence)
-* Toàn bộ Entity JPA của dữ liệu phân tán theo tenant kế thừa từ [BaseTenantJpaEntity.java](../../platform-common/common-persistence/src/main/java/io/github/coreplatform/common/persistence/BaseTenantJpaEntity.java):
-  ```java
-  @MappedSuperclass
-  public abstract class BaseTenantJpaEntity {
-      @Column(name = "tenant_id", nullable = false, updatable = false)
-      private UUID tenantId;
-      ...
-  }
-  ```
-* Bất kỳ câu truy vấn lọc theo tenant đều sử dụng `TenantContext.requiredTenantId()` hoặc tham số `tenantId` từ Query object để đảm bảo tuyệt đối không rò rỉ dữ liệu chéo giữa các tenant.
+Gateway introspect cookie/session hoặc JWT qua IAM ở mỗi request. IAM kiểm tra session,
+user, tenant, membership và quyền hiện tại rồi cấp JWT cho downstream. Downstream xác minh
+JWT do IAM ký; header `X-Tenant-Id` do client gửi không tự cấp quyền truy cập. Gateway
+trả 503 nếu không xác minh được qua IAM; không dùng quyền cũ từ cache.
+
+Luồng đang triển khai:
+
+1. Xác thực danh tính và tạo session; user có thể chưa có tenant.
+2. Liệt kê membership còn hoạt động trong tenant còn hoạt động.
+3. Chọn tenant hoặc tạo tenant/nhận lời mời theo nghiệp vụ onboarding.
+4. Kiểm tra membership, trạng thái user/tenant và role trước khi cấp context/token.
+5. API nghiệp vụ yêu cầu tenant context và permission phù hợp; API CMS kiểm tra
+   system role riêng.
+
+`active_tenant_id` thuộc session, không thuộc user. Hai browser/profile có session
+riêng chọn tenant độc lập. Hai tab dùng chung cookie không tự có context riêng;
+nếu hỗ trợ đa tenant theo tab thì client cần giữ context/token theo tab/request.
+
+Cookie `vishop_session` chứa token ngẫu nhiên, DB chỉ lưu hash. JWT có session ID và
+hạn 15 phút; session mặc định bảy ngày. Logout thu hồi session; IAM/gateway kiểm tra
+quyền và trạng thái hiện tại ở request tiếp theo. Khóa user thu hồi toàn bộ session.
+Cookie-authenticated writes yêu cầu Origin hợp lệ. Downstream phải ở sau gateway vì
+xác minh JWT cục bộ không tự kiểm tra session trong DB. MFA chưa triển khai;
+role yêu cầu MFA bị chặn cho đến khi có luồng xác minh phù hợp.
+
+## 6. Cô lập dữ liệu nghiệp vụ và messaging
+
+* [InternalHeaderAuthFilter](../../libs/common-security/src/main/java/io/github/coreplatform/common/security/filter/InternalHeaderAuthFilter.java)
+  xác minh token và dựng principal/TenantContext, dọn context trong `finally`.
+* [TenantContext](../../libs/common-security/src/main/java/io/github/coreplatform/common/security/context/TenantContext.java)
+  chỉ mang context; repository vẫn phải lọc tenant, kể cả truy vấn theo ID.
+  Cột `tenant_id` trên entity không tự ngăn truy vấn chéo tenant. Schema IAM hiện
+  chưa bật PostgreSQL RLS.
+* Event nghiệp vụ mang tenant context. Consumer phải thiết lập context trong phạm vi
+  xử lý record, dọn sau khi xử lý, và kiểm tra tính nhất quán giữa tenant trong
+  envelope/header. Event danh tính toàn cục có thể không có tenant.
+* `outbox_events` phải được ghi trong cùng transaction với thay đổi nghiệp vụ;
+  consumer xử lý trùng theo `consumed_messages`.
+
+## 7. Trình tự chuyển đổi
+
+1. Chuẩn bị `vishop_iam` bằng bộ migration riêng của `iam-service` và kiểm thử ràng buộc.
+2. Lập mapping dữ liệu/role cũ; kiểm tra user tham chiếu tenant không tồn tại và email
+   trùng khi bỏ phân biệt hoa thường. Không biến legacy OWNER/ADMIN thành system admin.
+3. Runtime mới đã dùng repository, onboarding, membership, RBAC, session/token và CMS của IAM.
+4. Dừng writer cũ, backup/import dữ liệu với ID giữ nguyên, xác minh owner/quyền/outbox.
+5. Source đã đổi cấu hình và route sang IAM. Khi triển khai, vô hiệu hóa token cũ và ngừng container cũ.
+
+Giữ nguyên Flyway history và database cũ để chuyển dữ liệu/rollback. Không trỏ hai service
+cũ vào IAM hoặc xóa volume để áp dụng schema mới.
+
+Tham khảo thêm [kiến trúc dự án gốc](source-project-architecture-reference.md).

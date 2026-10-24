@@ -1,0 +1,50 @@
+package com.vishop.iam.modules.access.infrastructure.persistence.adapters;
+
+import com.vishop.iam.modules.access.domain.entity.Membership;
+import com.vishop.iam.modules.access.domain.port.MembershipRepositoryPort;
+import com.vishop.iam.modules.access.infrastructure.persistence.entities.MembershipJpaEntity;
+import com.vishop.iam.modules.access.infrastructure.persistence.repositories.SpringDataMembershipRepository;
+import com.vishop.iam.modules.access.infrastructure.persistence.repositories.SpringDataRoleRepository;
+import io.github.coreplatform.common.domain.UuidV7;
+import java.util.*;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class MembershipRepositoryAdapter implements MembershipRepositoryPort {
+  private final SpringDataMembershipRepository members;
+  private final SpringDataRoleRepository roles;
+
+  public MembershipRepositoryAdapter(
+      SpringDataMembershipRepository members, SpringDataRoleRepository roles) {
+    this.members = members;
+    this.roles = roles;
+  }
+
+  public Optional<Membership> membership(UUID user, UUID tenant) {
+    return members
+        .findByUserIdAndTenantId(user, tenant)
+        .flatMap(
+            member ->
+                roles
+                    .findByTenantIdAndId(tenant, member.roleId())
+                    .map(role -> member.toDomain(role.toDomain())));
+  }
+
+  public void addMembership(UUID user, UUID tenant, UUID role) {
+    members.saveAndFlush(MembershipJpaEntity.create(UuidV7.nextId(), tenant, user, role));
+  }
+
+  public void updateMembership(UUID user, UUID tenant, UUID role, String status) {
+    members
+        .findByUserIdAndTenantId(user, tenant)
+        .ifPresent(
+            entity -> {
+              entity.update(role, status);
+              members.saveAndFlush(entity);
+            });
+  }
+
+  public int activeOwners(UUID tenant) {
+    return members.activeOwners(tenant);
+  }
+}
