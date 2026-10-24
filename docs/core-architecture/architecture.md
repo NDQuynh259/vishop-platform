@@ -367,7 +367,7 @@ spring:
 | Trách nhiệm | Thành phần phụ trách | Phương thức thực hiện |
 | :--- | :--- | :--- |
 | **Quản trị cấu trúc Schema (DDL)**<br>*(Tạo bảng, đổi kiểu cột, index, constraint)* | **Flyway** | Viết file SQL version tuần tự (`V1__...sql`, `V2__...sql`) |
-| **Thao tác dữ liệu nghiệp vụ (DML)** | **JDBC hoặc JPA theo service** | IAM chia adapter theo phân hệ: [TenantRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/tenant/infrastructure/persistence/adapters/TenantRepositoryAdapter.java) dùng JPA; [MembershipRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/access/infrastructure/persistence/adapters/MembershipRepositoryAdapter.java) dùng JDBC với tenant predicate tường minh |
+| **Thao tác dữ liệu nghiệp vụ (DML)** | **JDBC hoặc JPA theo service** | IAM chia adapter theo phân hệ: [TenantRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/modules/tenant/infrastructure/persistence/adapters/TenantRepositoryAdapter.java) dùng JPA; [MembershipRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/modules/access/infrastructure/persistence/adapters/MembershipRepositoryAdapter.java) dùng JDBC với tenant predicate tường minh |
 | **Thực thi truy vấn ORM & Quản lý Session**<br>*(Dirty checking, First-level cache, L2 cache)* | **Hibernate** | Chạy ngầm bên dưới, được kiểm soát chặt chẽ bởi `ddl-auto: validate` |
 | **Thao tác bảng hạ tầng tốc độ cao**<br>*(Idempotency deduplication check)* | **Spring JDBC / Template** | Thao tác trực tiếp trên bảng `consumed_messages` với độ trễ thấp nhất |
 

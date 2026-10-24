@@ -6,12 +6,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vishop.iam.identity.domain.ports.UserRepositoryPort;
+import com.vishop.iam.composition.application.command.CreateTenantCommand;
+import com.vishop.iam.composition.application.command.CreateTenantCommandHandler;
+import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
+import com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort;
 import com.vishop.iam.shared.application.dto.IamActor;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
-import com.vishop.iam.tenant.application.command.CreateTenantCommand;
-import com.vishop.iam.tenant.application.command.CreateTenantCommandHandler;
-import com.vishop.iam.tenant.domain.ports.TenantRepositoryPort;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.servlet.http.Cookie;
 import java.util.*;
@@ -629,13 +629,19 @@ class IamApplicationTest {
     assertThatThrownBy(
             () ->
                 context
-                    .getBean(com.vishop.iam.access.application.api.AccessApi.class)
+                    .getBean(com.vishop.iam.contracts.tenant.TenantApi.class)
+                    .create(UUID.randomUUID(), "transaction-required", "Shop"))
+        .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
+    assertThatThrownBy(
+            () ->
+                context
+                    .getBean(com.vishop.iam.contracts.access.AccessApi.class)
                     .initializeOwner(UUID.randomUUID(), UUID.randomUUID()))
         .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
     assertThatThrownBy(
             () ->
                 context
-                    .getBean(com.vishop.iam.tenant.application.api.TenantApi.class)
+                    .getBean(com.vishop.iam.contracts.tenant.TenantApi.class)
                     .lockTenant(UUID.randomUUID()))
         .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
   }
@@ -656,17 +662,17 @@ class IamApplicationTest {
               assertThat(db.queryForObject("SELECT count(*) FROM roles", Integer.class))
                   .isEqualTo(4);
               assertThat(db.queryForObject("SELECT count(*) FROM tenant_members", Integer.class))
-                  .isEqualTo(1);
+                  .isZero();
               throw new IllegalStateException("Outbox unavailable");
             })
         .when(events)
         .publish(org.mockito.ArgumentMatchers.any());
     var handler =
         new CreateTenantCommandHandler(
-            context.getBean(TenantRepositoryPort.class),
-            context.getBean(com.vishop.iam.identity.application.api.IdentityApi.class),
-            context.getBean(com.vishop.iam.access.application.api.AccessApi.class),
-            events);
+            context.getBean(com.vishop.iam.contracts.identity.IdentityApi.class),
+            new com.vishop.iam.modules.tenant.application.api.TenantApplicationApi(
+                context.getBean(TenantRepositoryPort.class), events),
+            context.getBean(com.vishop.iam.contracts.access.AccessApi.class));
     var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     assertThatThrownBy(
             () ->
@@ -675,6 +681,52 @@ class IamApplicationTest {
                         handler.handle(new CreateTenantCommand(actor, "rollback-shop", "Shop"))))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("Outbox unavailable");
+    assertThat(db.queryForObject("SELECT count(*) FROM tenants", Integer.class)).isZero();
+    assertThat(db.queryForObject("SELECT count(*) FROM roles", Integer.class)).isZero();
+    assertThat(db.queryForObject("SELECT count(*) FROM tenant_members", Integer.class)).isZero();
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM outbox_events WHERE aggregate_type='Tenant'", Integer.class))
+        .isZero();
+  }
+
+  @Test
+  void tenantOnboardingRollsBackAllModulesWhenOwnerInitializationFails() throws Exception {
+    Account owner = register("owner-init-rollback@example.com");
+    var user =
+        context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
+    var actor =
+        new IamActor(
+            user.id(), UUID.randomUUID(), null, user.systemRole().name(), List.of(), Set.of());
+    var access = context.getBean(com.vishop.iam.contracts.access.AccessApi.class);
+    var failingAccess = org.mockito.Mockito.mock(com.vishop.iam.contracts.access.AccessApi.class);
+    org.mockito.Mockito.doAnswer(
+            invocation -> {
+              access.initializeOwner(invocation.getArgument(0), invocation.getArgument(1));
+              assertThat(db.queryForObject("SELECT count(*) FROM tenant_members", Integer.class))
+                  .isEqualTo(1);
+              assertThat(
+                      db.queryForObject(
+                          "SELECT count(*) FROM outbox_events WHERE aggregate_type='Tenant'",
+                          Integer.class))
+                  .isEqualTo(1);
+              throw new IllegalStateException("Owner initialization failed");
+            })
+        .when(failingAccess)
+        .initializeOwner(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    var handler =
+        new CreateTenantCommandHandler(
+            context.getBean(com.vishop.iam.contracts.identity.IdentityApi.class),
+            context.getBean(com.vishop.iam.contracts.tenant.TenantApi.class),
+            failingAccess);
+    var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
+    assertThatThrownBy(
+            () ->
+                tx.execute(
+                    status ->
+                        handler.handle(new CreateTenantCommand(actor, "owner-init-fail", "Shop"))))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Owner initialization failed");
     assertThat(db.queryForObject("SELECT count(*) FROM tenants", Integer.class)).isZero();
     assertThat(db.queryForObject("SELECT count(*) FROM roles", Integer.class)).isZero();
     assertThat(db.queryForObject("SELECT count(*) FROM tenant_members", Integer.class)).isZero();

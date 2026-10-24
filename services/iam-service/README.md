@@ -28,27 +28,47 @@ The service follows the [domain module architecture](../../docs/core-architectur
 ```text
 com/vishop/iam/
 ├── IamApplication.java
-├── identity/    # Global users, authentication, sessions, system roles, user CMS
-├── tenant/      # Tenant information/lifecycle, tenant CMS
-├── access/      # Memberships, tenant roles/permissions, invitations
+├── composition/     # Cross-module onboarding workflow and its REST entry point
+├── contracts/
+│   ├── identity/    # IdentityApi, UserView
+│   ├── tenant/      # TenantApi, TenantResponseDto
+│   └── access/      # AccessApi, AccessApi.Grant
+├── modules/
+│   ├── identity/    # Global users, authentication, sessions, system roles, user CMS
+│   ├── tenant/      # Tenant information/lifecycle, tenant CMS
+│   └── access/      # Memberships, tenant roles/permissions, invitations
 └── shared/      # Actor context, event contract/outbox, opaque tokens, JDBC helpers, migration CLI
 ```
 
-Each business feature has its own `domain`, `application`, `infrastructure` and
+Business features live under `modules/`. Each feature has its own `domain`,
+`application`, `infrastructure` and
 `presentation/rest` packages. `application/command` and `application/query` contain the
-use cases and transaction boundaries; `application/dto` contains request/result contracts.
+use cases and transaction boundaries; `application/dto` contains use-case results and
+shared application contracts. HTTP request bodies and their validation annotations live
+in `presentation/rest/dto`. Domain packages use singular names: `entity`, `valueobject`,
+`port`, `service` and `event`.
 Domain models remain independent of frameworks and are mapped to HTTP response DTOs.
 
-Feature interactions use public `application/api` contracts:
+Feature interactions use interfaces and immutable DTOs in `contracts/<feature>`.
+`contracts`, `modules`, `composition` and `shared` are sibling packages under `iam`.
+Contracts have no dependency on module internals or frameworks. Implementations live in
+`application/api`; DTO mapping lives in `application/mapper`. These dependencies can be
+bidirectional at the feature level; API methods must not introduce circular bean
+dependencies or recursive calls across features.
+
+Public contracts:
 
 * `IdentityApi` exposes current account data/status and system administration checks.
-* `TenantApi` exposes tenant status, a public tenant view and locking inside an existing
+* `TenantApi` exposes tenant creation, status, a public tenant view and locking inside an existing
   transaction. Access never imports tenant entities or its repository.
 * `AccessApi` exposes resolved grants, active tenant IDs and OWNER initialization inside
   an existing transaction. Identity never imports membership/role repositories.
 
-Creating a tenant checks `IdentityApi`, persists the Tenant aggregate, calls
-`AccessApi.initializeOwner`, and publishes domain events to the outbox in one transaction.
+`composition/application/command/CreateTenantCommandHandler` checks `IdentityApi`, calls
+`TenantApi.create` to persist the aggregate and its outbox events, then calls
+`AccessApi.initializeOwner`, all in one transaction. The composition layer uses only module
+contracts; modules never depend on composition. Any failure rolls back the tenant,
+default roles, OWNER membership and outbox together.
 The domain owner policy uses its own `UserActivityPort`; an integration adapter calls
 `IdentityApi` to resolve global account status.
 
@@ -58,13 +78,15 @@ read port. Access read projections may join user/tenant tables in the shared dat
 mutations go through the owning feature. JPA/JDBC use the same datasource and transaction.
 Flyway owns schema changes and Hibernate only validates the schema.
 
+`TenantOnboardingController` and `CreateTenantRequest` live in composition and handle
+`POST /api/v1/tenants`. `TenantController` handles tenant reads and renames.
 `UserCmsController` belongs to identity and `TenantCmsController` to tenant. Tenant
 membership/role endpoints belong to access's `TenantAccessController`. All HTTP paths are
 preserved. Controllers dispatch through `CommandBus`/`QueryBus`.
 
 Shared components have no dependency on business features. `IamActor` holds only request
 identity/context, never a User entity or identity response DTO. Password hashing, JWTs and
-the authentication filter/configuration remain under `identity/infrastructure/security`.
+the authentication filter/configuration remain under `modules/identity/infrastructure/security`.
 Generic opaque tokens and the Spring Security principal live under
 `shared/infrastructure/security`; outbox and migration CLI live under
 `shared/infrastructure/messaging` and `shared/infrastructure/database`.
