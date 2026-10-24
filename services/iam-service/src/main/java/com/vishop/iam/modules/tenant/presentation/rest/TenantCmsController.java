@@ -1,10 +1,10 @@
 package com.vishop.iam.modules.tenant.presentation.rest;
 
 import com.vishop.iam.contracts.tenant.TenantResponseDto;
+import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.tenant.application.command.ChangeTenantStatusCommand;
 import com.vishop.iam.modules.tenant.application.query.ListCmsTenantsQuery;
 import com.vishop.iam.modules.tenant.presentation.rest.dto.ChangeTenantStatusRequest;
-import com.vishop.iam.shared.infrastructure.security.IamPrincipal;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;

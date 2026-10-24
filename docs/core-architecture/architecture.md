@@ -339,7 +339,7 @@ Trong dự án thực tế và Microservices doanh nghiệp, tính năng tự si
 1. **Không tạo được Index chuyên sâu**: JPA không hỗ trợ tự sinh Partial Index (`WHERE status = 'PENDING'`) hay Composite Cursor Index tối ưu theo chiều DESC.
 2. **Không kiểm soát được kiểu dữ liệu đặc thù**: PostgreSQL có các kiểu dữ liệu mạnh mẽ như `JSONB` (dùng cho payload event), `TIMESTAMPTZ` (chuẩn UTC). JPA tự sinh thường mapping thành `BYTEA` hoặc `VARCHAR`.
 3. **Nguy cơ mất dữ liệu và sập Production**: Khi đổi tên trường, `ddl-auto: update` sẽ tạo thêm cột mới chứ không migrate dữ liệu từ cột cũ. Trên Production có hàng triệu dòng, Hibernate tự chạy `ALTER TABLE` có thể gây **Lock toàn bộ bảng (Table Lock)**, dẫn đến gián đoạn dịch vụ nghiêm trọng.
-4. **Không quản lý được bảng phi-Entity**: Bảng hạ tầng như `consumed_messages` được truy xuất qua JDBC thuần tốc độ cao, không có `@Entity` nên JPA không thể tự sinh.
+4. **Schema có nhiều thành phần ngoài entity**: Constraint, trigger, partial index và backfill phải được kiểm soát trong migration SQL. Các bảng hạ tầng như `consumed_messages` cũng dùng entity/repository JPA, không dùng JDBC trực tiếp.
 
 #### Cấu hình chuẩn trong `application.yml`:
 ```yaml
@@ -349,6 +349,13 @@ spring:
     generate-ddl: false          # Tắt tự sinh DDL ở tầng chuẩn JPA
     hibernate:
       ddl-auto: validate         # CHỈ KIỂM TRA ĐỐI CHIẾU, TUYỆT ĐỐI KHÔNG SỬA ĐỔI
+  sql:
+    init:
+      mode: never
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    clean-disabled: true
 ```
 * **Chế độ `validate`**: Hibernate chỉ gửi truy vấn `SELECT` đọc schema metadata để đối chiếu xem bảng, cột trong DB (do Flyway tạo) có khớp với các `@Entity` không. Nếu code Java sai lệch hoặc thiếu cột, service sẽ từ chối khởi động (fail-fast) ngay lập tức.
 
@@ -367,8 +374,10 @@ spring:
 | Trách nhiệm | Thành phần phụ trách | Phương thức thực hiện |
 | :--- | :--- | :--- |
 | **Quản trị cấu trúc Schema (DDL)**<br>*(Tạo bảng, đổi kiểu cột, index, constraint)* | **Flyway** | Viết file SQL version tuần tự (`V1__...sql`, `V2__...sql`) |
-| **Thao tác dữ liệu nghiệp vụ (DML)** | **JDBC hoặc JPA theo service** | IAM chia adapter theo phân hệ: [TenantRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/modules/tenant/infrastructure/persistence/adapters/TenantRepositoryAdapter.java) dùng JPA; [MembershipRepositoryAdapter](../../services/iam-service/src/main/java/com/vishop/iam/modules/access/infrastructure/persistence/adapters/MembershipRepositoryAdapter.java) dùng JDBC với tenant predicate tường minh |
+| **Thao tác dữ liệu nghiệp vụ (DML)** | **Spring Data JPA** | Entity và repository riêng theo module, adapter implement domain/application port; SQL đặc thù qua `@Query(nativeQuery=true)` hoặc `EntityManager` |
 | **Thực thi truy vấn ORM & Quản lý Session**<br>*(Dirty checking, First-level cache, L2 cache)* | **Hibernate** | Chạy ngầm bên dưới, được kiểm soát chặt chẽ bởi `ddl-auto: validate` |
-| **Thao tác bảng hạ tầng tốc độ cao**<br>*(Idempotency deduplication check)* | **Spring JDBC / Template** | Thao tác trực tiếp trên bảng `consumed_messages` với độ trễ thấp nhất |
+| **Thao tác bảng hạ tầng**<br>*(Outbox, idempotency)* | **Spring Data JPA / EntityManager** | `OutboxEventRepository`, `ConsumedMessageRepository`; native SQL cho khóa hoặc truy vấn đặc thù, không dùng JDBC trực tiếp |
+
+Quy định chi tiết và quy trình migration áp dụng cho toàn dự án: [Persistence standard](./persistence.md). Entity không tự tạo migration hay sửa database. Flyway chạy các file SQL trước khi Hibernate validate; không chỉnh sửa migration đã triển khai.
 
 

@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":libs:common-web"))
     implementation(project(":libs:common-security"))
     implementation(project(":libs:common-events"))
+    implementation(project(":libs:common-persistence"))
     implementation(project(":libs:common-observability"))
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -30,5 +31,5 @@ tasks.register<JavaExec>("migrateIamDb") {
     group = "database"
     description = "Migrate the explicitly configured IAM database using IAM_DB_URL/USER/PASSWORD."
     classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("com.vishop.iam.shared.infrastructure.database.IamDatabaseMigration")
+    mainClass.set("com.vishop.iam.infra.database.IamDatabaseMigration")
 }

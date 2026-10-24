@@ -12,7 +12,7 @@ tenant, OWNER membership và quyền trong một transaction khi onboarding yêu
 Không gọi HTTP giữa hai service để hoàn tất transaction này.
 
 **Trạng thái triển khai:** runtime IAM đã thay hai service cũ trong Gradle, gateway
-và Docker. Repository JDBC dùng schema IAM mới. Đã có API tài khoản, tenant, membership,
+và Docker. Repository JPA dùng schema IAM mới. Đã có API tài khoản, tenant, membership,
 role, invitation, CMS và session/token. Dữ liệu từ database cũ chưa tự động chuyển.
 Xem [hướng dẫn runtime và chuyển dữ liệu](../../services/iam-service/README.md).
 

@@ -1,12 +1,12 @@
 package com.vishop.iam.modules.identity.presentation.rest;
 
 import com.vishop.iam.contracts.identity.UserView;
+import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.identity.application.command.ChangeSystemRoleCommand;
 import com.vishop.iam.modules.identity.application.command.ChangeUserStatusCommand;
 import com.vishop.iam.modules.identity.application.query.ListCmsUsersQuery;
 import com.vishop.iam.modules.identity.presentation.rest.dto.ChangeSystemRoleRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.ChangeUserStatusRequest;
-import com.vishop.iam.shared.infrastructure.security.IamPrincipal;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;

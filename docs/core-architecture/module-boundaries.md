@@ -29,6 +29,8 @@ flowchart LR
 
 ## Ownership
 
+All database-backed services and persistence libraries follow the [JPA and SQL migration standard](./persistence.md). Entity mappings belong to infrastructure; Flyway SQL belongs to the owning service.
+
 - `common-domain` must not depend on Spring, Kafka, servlet APIs, or application policy.
 - `common-web` owns Spring MVC/WebFlux adapters and HTTP response conventions, not endpoint/business behavior.
 - `common-security` provides context primitives; consuming applications choose identity providers, authorization rules, and tenant resolution.

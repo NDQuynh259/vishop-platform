@@ -1,32 +1,31 @@
 package com.vishop.iam.modules.identity.infrastructure.persistence.adapters;
 
-import static com.vishop.iam.modules.identity.infrastructure.persistence.repositories.IdentityJdbcMappings.USER;
-import static com.vishop.iam.shared.infrastructure.persistence.JdbcValues.*;
-
 import com.vishop.iam.contracts.identity.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.port.UserReadPort;
+import com.vishop.iam.modules.identity.infrastructure.persistence.entities.UserJpaEntity;
+import jakarta.persistence.EntityManager;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class UserReadAdapter implements UserReadPort {
-  private final JdbcTemplate db;
+  private final EntityManager entityManager;
 
-  public UserReadAdapter(JdbcTemplate db) {
-    this.db = db;
+  public UserReadAdapter(EntityManager entityManager) {
+    this.entityManager = entityManager;
   }
 
-  @Override
   public List<UserView> users(int limit, int offset) {
-    return db
-        .query(
-            "SELECT * FROM users ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-            USER,
-            limit,
-            offset)
+    return entityManager
+        .createQuery(
+            "select u from UserJpaEntity u order by u.createdAt desc,u.id desc",
+            UserJpaEntity.class)
+        .setFirstResult(offset)
+        .setMaxResults(limit)
+        .getResultList()
         .stream()
+        .map(UserJpaEntity::toDomain)
         .map(UserViewMapper::from)
         .toList();
   }

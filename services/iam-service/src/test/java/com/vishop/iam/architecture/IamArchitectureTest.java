@@ -22,6 +22,7 @@ class IamArchitectureTest {
           .resideInAnyPackage(
               "com.vishop.iam..application..",
               "com.vishop.iam..infrastructure..",
+              "com.vishop.iam.infra..",
               "com.vishop.iam..presentation..",
               "org.springframework..",
               "jakarta..",
@@ -36,6 +37,7 @@ class IamArchitectureTest {
           .dependOnClassesThat()
           .resideInAnyPackage(
               "com.vishop.iam..infrastructure..",
+              "com.vishop.iam.infra..",
               "com.vishop.iam..presentation..",
               "org.springframework.security..",
               "org.springframework.jdbc..",
@@ -65,7 +67,10 @@ class IamArchitectureTest {
               "com.vishop.iam..domain.port..",
               "com.vishop.iam..domain.entity..",
               "com.vishop.iam..infrastructure.persistence..",
-              "com.vishop.iam..infrastructure.messaging..");
+              "com.vishop.iam..infrastructure.messaging..",
+              "com.vishop.iam.infra.persistence..",
+              "com.vishop.iam.infra.messaging..",
+              "com.vishop.iam.infra.database..");
 
   @ArchTest
   static final ArchRule shared_has_no_feature_dependencies =
@@ -80,6 +85,34 @@ class IamArchitectureTest {
               "com.vishop.iam.modules.access..",
               "com.vishop.iam.contracts..",
               "com.vishop.iam.composition..");
+
+  @ArchTest
+  static final ArchRule shared_is_framework_independent =
+      noClasses()
+          .that()
+          .resideInAPackage("com.vishop.iam.shared..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage(
+              "com.vishop.iam.infra..",
+              "com.vishop.iam..infrastructure..",
+              "org.springframework..",
+              "jakarta..",
+              "com.fasterxml.jackson..",
+              "java.sql..",
+              "javax.sql..",
+              "org.flywaydb..",
+              "org.apache.kafka..",
+              "io.jsonwebtoken..");
+
+  @ArchTest
+  static final ArchRule common_infrastructure_uses_no_module_internals =
+      noClasses()
+          .that()
+          .resideInAPackage("com.vishop.iam.infra..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage("com.vishop.iam.modules..", "com.vishop.iam.composition..");
 
   @ArchTest
   static final ArchRule identity_uses_public_feature_contracts =
@@ -102,6 +135,7 @@ class IamArchitectureTest {
           .dependOnClassesThat()
           .resideInAnyPackage(
               "com.vishop.iam.modules..",
+              "com.vishop.iam.infra..",
               "com.vishop.iam..domain..",
               "com.vishop.iam..infrastructure..",
               "com.vishop.iam..presentation..",
@@ -125,6 +159,14 @@ class IamArchitectureTest {
           .resideInAPackage("com.vishop.iam.composition..")
           .should()
           .dependOnClassesThat(moduleInternals("identity", "tenant", "access"));
+
+  @ArchTest
+  static final ArchRule composition_has_no_domain_models =
+      classes()
+          .that()
+          .resideInAPackage("com.vishop.iam.composition..")
+          .should()
+          .resideOutsideOfPackage("com.vishop.iam.composition..domain..");
 
   private static ArchRule publicContractsOnly(String source, String first, String second) {
     return noClasses()

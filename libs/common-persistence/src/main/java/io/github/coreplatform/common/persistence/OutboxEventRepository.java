@@ -9,6 +9,13 @@ import org.springframework.data.repository.query.Param;
 
 public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, UUID> {
 
+  /** Locks a batch until the caller's transaction commits, allowing concurrent relay instances. */
+  @Query(
+      value =
+          "SELECT * FROM outbox_events WHERE status='PENDING' ORDER BY occurred_at,id LIMIT 50 FOR UPDATE SKIP LOCKED",
+      nativeQuery = true)
+  List<OutboxEventEntity> lockPendingEvents();
+
   // #region findPendingEvents
   @Query("SELECT e FROM OutboxEventEntity e WHERE e.status = 'PENDING' ORDER BY e.occurredAt ASC")
   List<OutboxEventEntity> findPendingEvents(Pageable pageable);

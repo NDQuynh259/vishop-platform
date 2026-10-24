@@ -1,63 +1,35 @@
 package com.vishop.iam.modules.access.infrastructure.persistence.adapters;
 
-import static com.vishop.iam.modules.access.infrastructure.persistence.repositories.AccessJdbcMappings.*;
-import static com.vishop.iam.shared.infrastructure.persistence.JdbcValues.*;
-
 import com.vishop.iam.modules.access.domain.entity.Invitation;
 import com.vishop.iam.modules.access.domain.port.InvitationRepositoryPort;
+import com.vishop.iam.modules.access.infrastructure.persistence.entities.InvitationJpaEntity;
+import com.vishop.iam.modules.access.infrastructure.persistence.repositories.SpringDataInvitationRepository;
 import io.github.coreplatform.common.domain.UuidV7;
-import java.util.Optional;
-import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
+import io.github.coreplatform.common.domain.exception.BadRequestException;
+import java.util.*;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class InvitationRepositoryAdapter implements InvitationRepositoryPort {
-  private final JdbcTemplate db;
+  private final SpringDataInvitationRepository invitations;
 
-  public InvitationRepositoryAdapter(JdbcTemplate db) {
-    this.db = db;
+  public InvitationRepositoryAdapter(SpringDataInvitationRepository invitations) {
+    this.invitations = invitations;
   }
 
-  @Override
   public Invitation invite(UUID tenant, String email, UUID role, UUID inviter, String hash) {
-    db.update(
-        "UPDATE tenant_invitations SET status='EXPIRED',updated_at=now(),version=version+1 "
-            + "WHERE tenant_id=? AND lower(email)=lower(?) AND status='PENDING' AND expires_at<=clock_timestamp()",
-        tenant,
-        email);
-    UUID id = UuidV7.nextId();
-    db.update(
-        "INSERT INTO tenant_invitations(id,tenant_id,email,role_id,invited_by,token_hash,expires_at) "
-            + "VALUES (?,?,?,?,?,?,now()+interval '7 days')",
-        id,
-        tenant,
-        email,
-        role,
-        inviter,
-        hash);
-    return db.queryForObject("SELECT * FROM tenant_invitations WHERE id=?", INVITATION, id);
+    invitations.expire(tenant, email);
+    var id = UuidV7.nextId();
+    invitations.insert(id, tenant, email, role, inviter, hash);
+    return invitations.findById(id).orElseThrow().toDomain();
   }
 
-  @Override
   public Optional<Invitation> invitation(String hash) {
-    return first(
-        db.query(
-            "SELECT * FROM tenant_invitations WHERE token_hash=? AND status='PENDING' AND expires_at>clock_timestamp()",
-            INVITATION,
-            hash));
+    return invitations.active(hash).map(InvitationJpaEntity::toDomain);
   }
 
-  @Override
   public void acceptInvitation(UUID id, UUID user) {
-    int changed =
-        db.update(
-            "UPDATE tenant_invitations SET status='ACCEPTED',accepted_by=?,accepted_at=clock_timestamp(),"
-                + "updated_at=now(),version=version+1 WHERE id=? AND status='PENDING' AND expires_at>clock_timestamp()",
-            user,
-            id);
-    if (changed != 1)
-      throw new io.github.coreplatform.common.domain.exception.BadRequestException(
-          "Invitation is no longer valid");
+    if (invitations.accept(id, user) != 1)
+      throw new BadRequestException("Invitation is no longer valid");
   }
 }

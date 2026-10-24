@@ -2,7 +2,7 @@
 
 Tài liệu này giải thích chi tiết mục đích và trách nhiệm của từng file bên trong một Microservice theo chuẩn **Domain-Driven Design (DDD) + Hexagonal Architecture + CQRS**, lấy ví dụ thực tế từ [`services/iam-service`](../../services/iam-service).
 
-IAM chia theo phân hệ trước, chia tầng bên trong mỗi phân hệ. Use case dùng port của chính phân hệ và application API công khai của phân hệ khác; không dùng repository/entity của nhau. Tenant dùng JPA, identity/access dùng JDBC, cùng datasource và transaction. Chi tiết runtime xem [IAM README](../../services/iam-service/README.md).
+IAM chia theo phân hệ trước, chia tầng bên trong mỗi phân hệ. Use case dùng port của chính phân hệ và application API công khai của phân hệ khác; không dùng repository/entity của nhau. Toàn bộ persistence dùng Spring Data JPA/EntityManager, cùng datasource và transaction; native SQL cũng chạy qua JPA. Entity chỉ validate mapping, schema do Flyway SQL quản lý. Chi tiết xem [Persistence standard](./persistence.md) và [IAM README](../../services/iam-service/README.md).
 
 ---
 
@@ -16,8 +16,14 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   ├── identity/                            # IdentityApi, UserView
 │   └── access/                              # AccessApi, AccessApi.Grant
 ├── composition/
-│   ├── application/command/                  # CreateTenantCommand, CreateTenantCommandHandler
-│   └── presentation/rest/                    # TenantOnboardingController, dto/CreateTenantRequest
+│   ├── onboarding/
+│   │   ├── application/command/              # CreateTenantCommand, CreateTenantCommandHandler
+│   │   └── presentation/rest/                # TenantOnboardingController, dto/CreateTenantRequest
+│   └── members/
+│       ├── application/query/                # GetTenantMemberQuery, GetTenantMemberQueryHandler
+│       ├── application/port/                 # TenantMemberReadPort
+│       ├── infrastructure/persistence/       # JpaTenantMemberReadAdapter
+│       └── presentation/rest/                # TenantMemberController
 ├── modules/
 │   ├── tenant/
 │   │   ├── domain/
@@ -42,7 +48,7 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   │   │   ├── service/                        # SessionService, IdentityAuthorizationService
 │   │   │   ├── port/                           # Password/token/UserRead ports
 │   │   │   └── dto/
-│   │   ├── infrastructure/                     # JDBC adapters, JWT/password/authentication adapters
+│   │   ├── infrastructure/                     # JPA entities/repositories, JWT/password/authentication adapters
 │   │   └── presentation/rest/                  # AuthController, InternalAuthController, UserCmsController
 │   └── access/
 │       ├── domain/                             # Membership, Role, Invitation, RoleAssignmentPolicy, ports
@@ -54,23 +60,24 @@ services/iam-service/src/main/java/com/vishop/iam/
 │       │   ├── port/AccessReadPort.java
 │       │   └── dto/
 │       ├── infrastructure/
-│       │   ├── persistence/                    # JDBC adapters và AccessJdbcMappings
+│       │   ├── persistence/                    # JPA entities, repositories và adapters
 │       │   ├── integration/IdentityUserActivityAdapter.java
 │       │   └── config/IamDomainConfiguration.java
 │       └── presentation/rest/                  # TenantAccessController, InvitationController
+├── infra/
+│   ├── messaging/                          # IamOutbox, IamOutboxRelay
+│   ├── security/                           # IamPrincipal, opaque token utilities/adapter
+│   └── database/IamDatabaseMigration.java
 └── shared/
     ├── domain/event/IamDomainEvent.java
-    ├── application/
-    │   ├── dto/IamActor.java
-    │   └── port/                           # IamEventPublisherPort, OpaqueTokenPort
-    └── infrastructure/
-        ├── messaging/                      # IamOutbox, IamOutboxRelay
-        ├── security/                       # IamPrincipal, opaque token utilities/adapter
-        ├── persistence/JdbcValues.java
-        └── database/IamDatabaseMigration.java
+    └── application/
+        ├── dto/IamActor.java
+        └── port/                           # IamEventPublisherPort, OpaqueTokenPort
 ```
 
 Các HTTP request DTO (`*Request`) và annotation validation đặt trong `presentation/rest/dto` của từng phân hệ. `application/dto` chứa kết quả use case và các contract dùng chung ở tầng application. Package domain dùng tên số ít: `entity`, `valueobject`, `port`, `service`, `event`.
+
+Cách tổ chức tham khảo `api-vishop/libs` được áp dụng trong phạm vi microservice IAM: `infra` chứa kỹ thuật dùng chung của IAM, còn adapter riêng vẫn ở `modules/<tên>/infrastructure`. `shared` giữ kiểu dữ liệu và abstraction không phụ thuộc framework; các primitive domain/CQRS dùng lại `libs/common-*` của platform. `composition/onboarding` chỉ phối hợp các contract trong transaction, không giữ domain model hay quy tắc nghiệp vụ riêng.
 
 `resources/application.yml` và `resources/db/migration` vẫn ở cấp service. Đây là các package trong cùng một deployment và database, không phải ba service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.
 
@@ -129,7 +136,7 @@ Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không
 
 Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
 
-#### `composition/application/command/CreateTenantCommand.java` & `CreateTenantCommandHandler.java`
+#### `composition/onboarding/application/command/CreateTenantCommand.java` & `CreateTenantCommandHandler.java`
 * `Command` là một record mang dữ liệu đầu vào thực hiện hành động ghi.
 * `CommandHandler` bọc trong transaction (`@Transactional`):
   1. Xác thực actor và kiểm tra tài khoản đang hoạt động. Unique constraint bảo vệ tenant code, kể cả khi có request đồng thời.
@@ -138,6 +145,12 @@ Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
   4. Trả về `TenantResponseDto`. Tenant, role mặc định, membership và outbox cùng rollback khi có lỗi; relay gửi Kafka bất đồng bộ sau commit.
 
 Composition chỉ dùng contract công khai; không truy cập domain, repository hay implementation của các module. Module không phụ thuộc ngược vào composition.
+
+#### Truy vấn tổng hợp trong `composition/members`
+
+`TenantMemberController` nhận `GET /api/v1/tenants/{tenantId}/members/{userId}` và `/members/me`, gửi query qua `QueryBus`. Handler kiểm tra quyền qua `AccessApi`, rồi đọc qua `TenantMemberReadPort`. `JpaTenantMemberReadAdapter` dùng JPA `EntityManager` chạy native query có bind parameter, JOIN năm bảng `users`, `tenants`, `tenant_members`, `roles`, `role_permissions` trong datasource IAM và gom permissions thành một projection. Kết quả `Tuple` được map trực tiếp sang DTO, không tải entity graph. LEFT JOIN giữ được role chưa có permission; mọi liên kết dùng ID và tenant scope.
+
+Kiểm tra quyền và đọc projection chạy trong cùng transaction read-only `REPEATABLE_READ`. Composition có thể sở hữu query handler, read port và SQL adapter của luồng tổng hợp; nó không sở hữu domain model hay truy cập repository/entity Java nội bộ module. Adapter phụ thuộc schema IAM nên phải được cập nhật và kiểm thử khi schema đổi. Nó không ghi dữ liệu hoặc JOIN database của microservice khác; tổng hợp liên service dùng API hoặc read model nhận sự kiện.
 
 #### `query/ListCmsTenantsQuery.java` & `ListCmsTenantsQueryHandler.java`
 * `Query` đại diện cho yêu cầu đọc dữ liệu (`@Transactional(readOnly = true)`). Handler kiểm tra quyền CMS, đọc qua repository port và map sang response DTO.
@@ -158,7 +171,7 @@ Hiện thực hóa các Ports của Domain bằng các công nghệ cụ thể.
 #### `persistence/repositories/SpringDataTenantRepository.java`
 * Interface Spring Data JPA kế thừa `JpaRepository` và `JpaSpecificationExecutor`.
 * Repository cung cấp truy vấn khóa tenant và danh sách phân trang. `TenantJpaEntity` dùng `@Version`.
-* Identity và access có `IdentityJdbcMappings`/`AccessJdbcMappings` riêng. Chỉ các hàm JDBC thuần kỹ thuật như đọc UUID nằm trong `shared/infrastructure/persistence/JdbcValues`.
+* Identity và access có entity/repository riêng: `UserJpaEntity`, `SessionJpaEntity`, `RoleJpaEntity`, `MembershipJpaEntity`, `InvitationJpaEntity`. `RoleJpaEntity` ánh xạ `role_permissions` bằng `@ElementCollection`; các truy vấn thời hạn/cập nhật nguyên tử dùng SQL qua Spring Data JPA. Domain model không có annotation persistence.
 
 #### `persistence/adapters/TenantRepositoryAdapter.java`
 * Lớp cài đặt interface `TenantRepositoryPort`.
@@ -170,7 +183,7 @@ Hiện thực hóa các Ports của Domain bằng các công nghệ cụ thể.
 
 Giao tiếp với client bên ngoài (REST API, Webhook).
 
-#### `composition/presentation/rest/TenantOnboardingController.java`
+#### `composition/onboarding/presentation/rest/TenantOnboardingController.java`
 * Nhận HTTP Request, validate cú pháp với `@Valid`.
 * **Tuyệt đối không gọi trực tiếp repository hay domain methods**.
 * Chỉ giao tiếp với Application Layer qua `CommandBus` và `QueryBus`:
@@ -193,10 +206,10 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 - `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để phân giải session; composition dùng để hoàn tất onboarding.
 - `UserActivityPort` thuộc access domain; `IdentityUserActivityAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
 
-Các interface và DTO công khai nằm trong `contracts/<tên>`, cùng cấp với `modules`, `composition` và `shared` dưới `iam`. Contracts không phụ thuộc framework hay nội bộ module. Implementation nằm trong `modules/<tên>/application/api`; việc map domain sang DTO nằm trong `application/mapper` của module. Phân hệ khác và composition chỉ dùng `contracts`, không gọi repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc contracts nghiệp vụ, các module hay composition.
+Các interface và DTO công khai nằm trong `contracts/<tên>`, cùng cấp với `modules`, `composition`, `infra` và `shared` dưới `iam`. Contracts không phụ thuộc framework, infra hay nội bộ module. Implementation nằm trong `modules/<tên>/application/api`; việc map domain sang DTO nằm trong `application/mapper` của module. Phân hệ khác và composition chỉ dùng `contracts`, không gọi repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc contracts nghiệp vụ, các module, composition, hạ tầng hay framework.
 
-`IamActor` chỉ chứa user ID, session ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong shared.
+`IamActor` chỉ chứa user ID, session ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
 
 ## 4. Kiểm tra ranh giới kiến trúc
 
-`IamArchitectureTest` bảo vệ chiều phụ thuộc: domain độc lập framework và outer layers, application dùng port, controller không gọi repository/domain entity; phân hệ và composition chỉ dùng contracts công khai của module khác. Contracts không phụ thuộc nội bộ module; module không phụ thuộc composition; shared không phụ thuộc nghiệp vụ. `TenantTest` kiểm tra invariant và domain event. `IamApplicationTest` kiểm tra API/phân quyền, transaction bắt buộc của API thay đổi dữ liệu, cập nhật version, các request đồng thời và rollback chung giữa JPA, JDBC, role mặc định và outbox khi ghi sự kiện hoặc khởi tạo OWNER thất bại.
+`IamArchitectureTest` bảo vệ chiều phụ thuộc: domain độc lập framework và outer layers, application dùng port, controller không gọi repository/domain entity; phân hệ và composition chỉ dùng contracts công khai của module khác. Contracts không phụ thuộc nội bộ module; module không phụ thuộc composition; shared không phụ thuộc nghiệp vụ. `TenantTest` kiểm tra invariant và domain event. `IamApplicationTest` kiểm tra API/phân quyền, transaction bắt buộc của API thay đổi dữ liệu, cập nhật version, các request đồng thời và rollback JPA giữa tenant, role mặc định, membership và outbox. `PersistenceArchitectureTest` ở root chặn JDBC runtime và kiểm tra cấu hình schema/migration toàn dự án.

@@ -1,8 +1,8 @@
 package com.vishop.iam.modules.identity.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.identity.application.query.AuthenticateQuery;
-import com.vishop.iam.shared.infrastructure.security.IamPrincipal;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.DomainException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;

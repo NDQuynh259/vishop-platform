@@ -213,7 +213,7 @@ Dưới đây là bảng đối chiếu trực tiếp giữa giải pháp trong 
 | Thành phần kiến trúc | Dự án gốc: `api-vishop` (NestJS) | Dự án đích: `vishop-platform` (Java Microservices) |
 | :--- | :--- | :--- |
 | **Kiểu kiến trúc** | Modular Monolith (1 repo, 1 database). | Các runtime hiện tại: `iam-service`, `api-gateway`, `audit-service`; nghiệp vụ khác có bounded context riêng. |
-| **ORM / Migration** | Prisma 7 (`prisma/schema.prisma`). | IAM dùng JDBC repository + Flyway; các service khác có thể dùng JPA/Hibernate. |
+| **ORM / Migration** | Prisma 7 (`prisma/schema.prisma`). | Toàn dự án dùng Spring Data JPA/EntityManager; Hibernate chỉ validate mapping, Flyway SQL quản lý schema. |
 | **Cơ chế Xác thực** | Better Auth Cookie Session (`better-auth.session_token`). | Opaque session cookie `vishop_session` và JWT gắn session ID; introspection kiểm tra trạng thái/quyền hiện tại. |
 | **Tenant Context Ingestion** | NestJS `TenantContextGuard` truy vấn DB `tenant_members` in-flight. | Gateway hỏi IAM trước khi chuyển request, nhận JWT mới cho downstream; metadata tenant lấy từ kết quả IAM. |
 | **Quản lý Context trong Service** | `request.tenant` (Fastify Request property). | [TenantContext.java](../../libs/common-security/src/main/java/io/github/coreplatform/common/security/context/TenantContext.java) (`ThreadLocal<UUID>`) tự động dọn dẹp ở `finally`. |

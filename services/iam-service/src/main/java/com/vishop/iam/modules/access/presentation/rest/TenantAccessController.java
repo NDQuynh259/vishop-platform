@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.access.presentation.rest;
 
+import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.access.application.command.ChangeMemberRoleCommand;
 import com.vishop.iam.modules.access.application.command.CreateRoleCommand;
 import com.vishop.iam.modules.access.application.command.DeactivateMemberCommand;
@@ -15,7 +16,6 @@ import com.vishop.iam.modules.access.application.query.ListTenantRolesQuery;
 import com.vishop.iam.modules.access.presentation.rest.dto.ChangeMemberRoleRequest;
 import com.vishop.iam.modules.access.presentation.rest.dto.InviteMemberRequest;
 import com.vishop.iam.modules.access.presentation.rest.dto.RoleRequest;
-import com.vishop.iam.shared.infrastructure.security.IamPrincipal;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;

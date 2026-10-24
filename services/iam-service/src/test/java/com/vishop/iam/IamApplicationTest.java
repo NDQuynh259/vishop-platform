@@ -6,13 +6,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vishop.iam.composition.application.command.CreateTenantCommand;
-import com.vishop.iam.composition.application.command.CreateTenantCommandHandler;
+import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommand;
+import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommandHandler;
+import com.vishop.iam.database.JpaDatabaseFixture;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort;
 import com.vishop.iam.shared.application.dto.IamActor;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
+import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.util.*;
 import java.util.concurrent.*;
@@ -21,7 +23,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -70,13 +71,15 @@ class IamApplicationTest {
 
   @Autowired MockMvc http;
   @Autowired ObjectMapper json;
-  @Autowired JdbcTemplate db;
+  @Autowired EntityManager entityManager;
+  JpaDatabaseFixture db;
   @Autowired io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens;
   @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
   @Autowired org.springframework.context.ApplicationContext context;
 
   @BeforeEach
   void reset() {
+    db = new JpaDatabaseFixture(entityManager, transactions);
     db.execute("TRUNCATE users,tenants,outbox_events,consumed_messages CASCADE");
   }
 
@@ -165,6 +168,207 @@ class IamApplicationTest {
                     Map.of("tenantId", tenant)))
             .andExpect(status().isOk())
             .andReturn());
+  }
+
+  @Test
+  void tenantMemberDetailsReturnUserAndPermissionsForTheRequestedTenant() throws Exception {
+    Account owner = register("member-details-owner@example.com");
+    Account member = register("member-details@example.com");
+    String first = createTenant(owner, "member-details-first").path("id").asText();
+    String second = createTenant(owner, "member-details-second").path("id").asText();
+    String operations = role(first, "OPERATIONS");
+    accept(member, invite(owner, first, member.email(), operations));
+    accept(member, invite(owner, second, member.email(), role(second, "ACCOUNTING")));
+    JsonNode details =
+        body(
+            http.perform(
+                    authorized(
+                        get("/api/v1/tenants/" + first + "/members/" + member.id()), owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.tenantId").value(first))
+                .andExpect(jsonPath("$.userId").value(member.id()))
+                .andExpect(jsonPath("$.email").value(member.email()))
+                .andExpect(jsonPath("$.fullName").value("Test User"))
+                .andExpect(jsonPath("$.roleId").value(operations))
+                .andExpect(jsonPath("$.role").value("OPERATIONS"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.sessionToken").doesNotExist())
+                .andReturn());
+    assertThat(details.path("id").asText())
+        .isEqualTo(
+            db.queryForObject(
+                "SELECT id::text FROM tenant_members WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+                String.class,
+                first,
+                member.id()));
+    assertThat(List.of(json.convertValue(details.path("permissions"), String[].class)))
+        .containsExactlyInAnyOrderElementsOf(
+            db.queryForList(
+                "SELECT permission_key FROM role_permissions WHERE role_id=CAST(? AS uuid)",
+                String.class,
+                operations));
+    http.perform(authorized(get("/api/v1/tenants/" + second + "/members/me"), member.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.tenantId").value(second))
+        .andExpect(jsonPath("$.role").value("ACCOUNTING"));
+  }
+
+  @Test
+  void memberProjectionKeepsSameNamedRolesSeparateAcrossTenantsForCookieSessions()
+      throws Exception {
+    Account owner = register("projection-owner@example.com");
+    Account member = register("projection-member@example.com");
+    String first = createTenant(owner, "projection-first").path("id").asText();
+    String second = createTenant(owner, "projection-second").path("id").asText();
+    var permissionsByTenant = new LinkedHashMap<String, String>();
+    permissionsByTenant.put(first, "order.view");
+    permissionsByTenant.put(second, "product.view");
+    var roleIds = new HashMap<String, String>();
+    for (var entry : permissionsByTenant.entrySet()) {
+      JsonNode createdRole =
+          body(
+              http.perform(
+                      payload(
+                          authorized(
+                              post("/api/v1/tenants/" + entry.getKey() + "/roles"), owner.token()),
+                          Map.of("name", "Reader", "permissions", List.of(entry.getValue()))))
+                  .andExpect(status().isCreated())
+                  .andReturn());
+      String roleId = createdRole.path("id").asText();
+      roleIds.put(entry.getKey(), roleId);
+      accept(member, invite(owner, entry.getKey(), member.email(), roleId));
+    }
+    select(member, first);
+    for (var entry : permissionsByTenant.entrySet()) {
+      http.perform(
+              get("/api/v1/tenants/" + entry.getKey() + "/members/me")
+                  .cookie(new Cookie("vishop_session", member.cookie())))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.tenantId").value(entry.getKey()))
+          .andExpect(jsonPath("$.userId").value(member.id()))
+          .andExpect(jsonPath("$.roleId").value(roleIds.get(entry.getKey())))
+          .andExpect(jsonPath("$.role").value("Reader"))
+          .andExpect(jsonPath("$.permissions.length()").value(1))
+          .andExpect(jsonPath("$.permissions[0]").value(entry.getValue()));
+    }
+  }
+
+  @Test
+  void memberCanReadOwnEmptyRoleAndSeesRoleChangesWithoutANewToken() throws Exception {
+    Account owner = register("empty-role-owner@example.com");
+    Account member = register("empty-role-member@example.com");
+    String tenant = createTenant(owner, "empty-role-tenant").path("id").asText();
+    JsonNode custom =
+        body(
+            http.perform(
+                    payload(
+                        authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
+                        Map.of("name", "Observer", "permissions", List.of())))
+                .andExpect(status().isCreated())
+                .andReturn());
+    String roleId = custom.path("id").asText();
+    accept(member, invite(owner, tenant, member.email(), roleId));
+    for (String user : List.of("me", member.id())) {
+      http.perform(
+              authorized(get("/api/v1/tenants/" + tenant + "/members/" + user), member.token()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.role").value("Observer"))
+          .andExpect(jsonPath("$.permissions").isEmpty());
+    }
+    http.perform(
+            authorized(get("/api/v1/tenants/" + tenant + "/members/" + owner.id()), member.token()))
+        .andExpect(status().isForbidden());
+    http.perform(
+            payload(
+                authorized(put("/api/v1/tenants/" + tenant + "/roles/" + roleId), owner.token()),
+                Map.of("name", "Order reader", "permissions", List.of("order.view"))))
+        .andExpect(status().isOk());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), member.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.role").value("Order reader"))
+        .andExpect(jsonPath("$.permissions.length()").value(1))
+        .andExpect(jsonPath("$.permissions[0]").value("order.view"));
+  }
+
+  @Test
+  void memberDetailsRequireMembershipAndMemberViewForOtherUsers() throws Exception {
+    Account owner = register("details-access-owner@example.com");
+    Account viewer = register("details-viewer@example.com");
+    Account outsider = register("details-outsider@example.com");
+    String tenant = createTenant(owner, "details-access").path("id").asText();
+    JsonNode role =
+        body(
+            http.perform(
+                    payload(
+                        authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
+                        Map.of(
+                            "name", "Member viewer", "permissions", List.of("tenant.member.view"))))
+                .andExpect(status().isCreated())
+                .andReturn());
+    accept(viewer, invite(owner, tenant, viewer.email(), role.path("id").asText()));
+    http.perform(
+            authorized(get("/api/v1/tenants/" + tenant + "/members/" + owner.id()), viewer.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.role").value("OWNER"));
+    http.perform(
+            authorized(
+                get("/api/v1/tenants/" + tenant + "/members/" + owner.id()), outsider.token()))
+        .andExpect(status().isForbidden());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), outsider.token()))
+        .andExpect(status().isForbidden());
+    String otherTenant = createTenant(outsider, "details-other").path("id").asText();
+    http.perform(
+            authorized(
+                get("/api/v1/tenants/" + otherTenant + "/members/" + outsider.id()), owner.token()))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void memberDetailsDoNotFindUsersFromAnotherTenant() throws Exception {
+    Account owner = register("scoped-details-owner@example.com");
+    Account member = register("scoped-details-member@example.com");
+    String first = createTenant(owner, "scoped-details-first").path("id").asText();
+    String second = createTenant(owner, "scoped-details-second").path("id").asText();
+    accept(member, invite(owner, second, member.email(), role(second, "WAREHOUSE")));
+    for (String user : List.of(member.id(), UUID.randomUUID().toString())) {
+      http.perform(authorized(get("/api/v1/tenants/" + first + "/members/" + user), owner.token()))
+          .andExpect(status().isNotFound())
+          .andExpect(content().contentTypeCompatibleWith("application/problem+json"));
+    }
+  }
+
+  @Test
+  void inactiveMembersCannotReadTheirPermissionsAndManagersCanSeeTheirStatus() throws Exception {
+    Account owner = register("inactive-details-owner@example.com");
+    Account member = register("inactive-details-member@example.com");
+    String tenant = createTenant(owner, "inactive-details").path("id").asText();
+    accept(member, invite(owner, tenant, member.email(), role(tenant, "WAREHOUSE")));
+    http.perform(
+            authorized(
+                delete("/api/v1/tenants/" + tenant + "/members/" + member.id()), owner.token()))
+        .andExpect(status().isNoContent());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), member.token()))
+        .andExpect(status().isForbidden());
+    http.perform(
+            authorized(get("/api/v1/tenants/" + tenant + "/members/" + member.id()), owner.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("INACTIVE"));
+    db.update("UPDATE tenants SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", tenant);
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), owner.token()))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void memberDetailsRequireAuthenticationAndValidIdentifiers() throws Exception {
+    http.perform(get("/api/v1/tenants/" + UUID.randomUUID() + "/members/me"))
+        .andExpect(status().isUnauthorized());
+    Account owner = register("invalid-details-owner@example.com");
+    String tenant = createTenant(owner, "invalid-details").path("id").asText();
+    http.perform(
+            authorized(get("/api/v1/tenants/" + tenant + "/members/not-a-uuid"), owner.token()))
+        .andExpect(status().isBadRequest());
   }
 
   @Test
@@ -784,7 +988,10 @@ class IamApplicationTest {
                 org.mockito.ArgumentMatchers
                     .<org.apache.kafka.clients.producer.ProducerRecord<String, String>>any()))
         .thenReturn(CompletableFuture.completedFuture(null));
-    var relay = new com.vishop.iam.shared.infrastructure.messaging.IamOutboxRelay(db, kafka);
+    var relay =
+        new com.vishop.iam.infra.messaging.IamOutboxRelay(
+            context.getBean(io.github.coreplatform.common.persistence.OutboxEventRepository.class),
+            kafka);
     var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     tx.executeWithoutResult(status -> relay.publish());
     assertThat(

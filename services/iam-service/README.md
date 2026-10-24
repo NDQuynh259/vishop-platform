@@ -28,7 +28,9 @@ The service follows the [domain module architecture](../../docs/core-architectur
 ```text
 com/vishop/iam/
 ├── IamApplication.java
-├── composition/     # Cross-module onboarding workflow and its REST entry point
+├── composition/
+│   ├── onboarding/ # Cross-module tenant creation workflow and its REST entry point
+│   └── members/    # Cross-module user/tenant/role/permission read projection
 ├── contracts/
 │   ├── identity/    # IdentityApi, UserView
 │   ├── tenant/      # TenantApi, TenantResponseDto
@@ -37,7 +39,8 @@ com/vishop/iam/
 │   ├── identity/    # Global users, authentication, sessions, system roles, user CMS
 │   ├── tenant/      # Tenant information/lifecycle, tenant CMS
 │   └── access/      # Memberships, tenant roles/permissions, invitations
-└── shared/      # Actor context, event contract/outbox, opaque tokens, JDBC helpers, migration CLI
+├── infra/          # Shared IAM security, JPA outbox relay and migration CLI
+└── shared/         # Framework-independent actor context, event interface and ports
 ```
 
 Business features live under `modules/`. Each feature has its own `domain`,
@@ -50,7 +53,7 @@ in `presentation/rest/dto`. Domain packages use singular names: `entity`, `value
 Domain models remain independent of frameworks and are mapped to HTTP response DTOs.
 
 Feature interactions use interfaces and immutable DTOs in `contracts/<feature>`.
-`contracts`, `modules`, `composition` and `shared` are sibling packages under `iam`.
+`contracts`, `modules`, `composition`, `infra` and `shared` are sibling packages under `iam`.
 Contracts have no dependency on module internals or frameworks. Implementations live in
 `application/api`; DTO mapping lives in `application/mapper`. These dependencies can be
 bidirectional at the feature level; API methods must not introduce circular bean
@@ -64,7 +67,7 @@ Public contracts:
 * `AccessApi` exposes resolved grants, active tenant IDs and OWNER initialization inside
   an existing transaction. Identity never imports membership/role repositories.
 
-`composition/application/command/CreateTenantCommandHandler` checks `IdentityApi`, calls
+`composition/onboarding/application/command/CreateTenantCommandHandler` checks `IdentityApi`, calls
 `TenantApi.create` to persist the aggregate and its outbox events, then calls
 `AccessApi.initializeOwner`, all in one transaction. The composition layer uses only module
 contracts; modules never depend on composition. Any failure rolls back the tenant,
@@ -72,30 +75,81 @@ default roles, OWNER membership and outbox together.
 The domain owner policy uses its own `UserActivityPort`; an integration adapter calls
 `IdentityApi` to resolve global account status.
 
-Tenant persistence uses Spring Data JPA with versioning and explicit pessimistic locks.
-Identity/access adapters retain explicit JDBC SQL. Each feature owns its row mappings and
+All business persistence uses Spring Data JPA entities/repositories with versioning and
+explicit locks. Identity/access own their entity mappings, permission collections and
+repositories. Database-clock session/invitation checks use native Spring Data queries.
+Each feature owns its mappings and
 read port. Access read projections may join user/tenant tables in the shared database;
-mutations go through the owning feature. JPA/JDBC use the same datasource and transaction.
-Flyway owns schema changes and Hibernate only validates the schema.
+mutations go through the owning feature. JPA/native queries share the same datasource and transaction.
+Flyway SQL owns all schema changes; Hibernate only validates mappings with `generate-ddl: false`
+and `ddl-auto: validate`. Spring SQL initialization is disabled. See the platform
+[persistence standard](../../docs/core-architecture/persistence.md).
 
-`TenantOnboardingController` and `CreateTenantRequest` live in composition and handle
+`TenantOnboardingController` and `CreateTenantRequest` live in `composition/onboarding` and handle
 `POST /api/v1/tenants`. `TenantController` handles tenant reads and renames.
+`composition/members` owns the member detail and self-service read endpoints through
+`TenantMemberController`. Membership writes and the existing member list remain in access.
 `UserCmsController` belongs to identity and `TenantCmsController` to tenant. Tenant
 membership/role endpoints belong to access's `TenantAccessController`. All HTTP paths are
 preserved. Controllers dispatch through `CommandBus`/`QueryBus`.
 
-Shared components have no dependency on business features. `IamActor` holds only request
+Shared components have no dependency on business features, frameworks or infrastructure.
+They retain IAM-specific ports and the domain-event interface; reusable domain/CQRS
+primitives continue to come from `libs/common-*`. `IamActor` holds only request
 identity/context, never a User entity or identity response DTO. Password hashing, JWTs and
 the authentication filter/configuration remain under `modules/identity/infrastructure/security`.
 Generic opaque tokens and the Spring Security principal live under
-`shared/infrastructure/security`; outbox and migration CLI live under
-`shared/infrastructure/messaging` and `shared/infrastructure/database`.
+`infra/security`; the JPA outbox relay and migration CLI live under
+`infra/messaging` and `infra/database`.
+
+This layout adapts the source project's library boundaries inside the IAM microservice.
+It does not introduce a second platform core or move service-specific code into the
+platform libraries. Each feature keeps its own persistence/security adapters in
+`modules/<feature>/infrastructure`. Cross-module synchronous checks use contract APIs;
+tenant creation keeps its transaction boundary in a thin CQRS composition handler.
 
 Architecture tests prevent domain dependencies on frameworks or outer layers, application
 dependencies on concrete adapters, controllers bypassing the CQRS boundary, foreign feature
-internals, and shared components depending on business features. Integration
-tests cover JPA/JDBC rollback when event publication fails, tenant version updates, existing
+internals, shared components depending on frameworks/infrastructure, and common
+infrastructure depending on module internals. Integration
+tests cover cross-module JPA rollback when event publication fails, tenant version updates, existing
 authorization/concurrency rules, and the unchanged HTTP/event contracts.
+
+## Cross-module member read projection
+
+* `GET /api/v1/tenants/{tenantId}/members/me` returns the caller's membership.
+* `GET /api/v1/tenants/{tenantId}/members/{userId}` returns the specified membership.
+
+The response contains `id` (membership ID), `tenantId`, `userId`, `email`, `fullName`,
+`roleId`, `role`, membership `status`, and the assigned role's `permissions` array.
+Built-in roles use their key; custom roles use their name. Inspecting another user
+requires `tenant.member.view`. Reading yourself requires active tenant access. Both
+routes retain user/tenant/membership/MFA checks and return `Cache-Control: no-store`.
+Authorized managers can inspect inactive memberships; their assigned permissions do
+not imply that the member can currently exercise them. Missing target memberships
+return 404 after authorization; callers without tenant access receive 403.
+
+```text
+TenantMemberController
+  -> GetTenantMemberQueryHandler
+       -> AccessApi.requireAccess (authorization)
+       -> TenantMemberReadPort
+            -> JpaTenantMemberReadAdapter (EntityManager native query)
+```
+
+The adapter uses JPA `EntityManager` with a parameterized native query and maps its
+`Tuple` result directly to the response DTO, without loading a managed entity graph.
+It joins `users`, `tenants`, `tenant_members`, `roles` and `role_permissions`
+within the IAM datasource. It aggregates grants into one result; a LEFT JOIN preserves
+roles with no permissions. Joins use tenant/role/user IDs, never role names. Authorization
+and projection share a read-only REPEATABLE READ transaction. The handler imports only
+public module contracts and its own read port, not module entities or repositories.
+Grants come from the database, not cached token claims. The requested tenant is checked
+independently of the cookie session's selected tenant.
+
+This adapter depends on the local IAM schema, so migrations must preserve the projection
+or update it alongside the schema. It performs no writes and does not query other
+microservices' databases. Cross-service aggregation requires APIs or an event-fed read model.
 
 ## Authentication
 

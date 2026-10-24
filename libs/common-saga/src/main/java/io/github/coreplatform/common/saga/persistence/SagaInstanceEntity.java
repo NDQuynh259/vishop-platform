@@ -9,6 +9,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** JPA entity tracking the execution state and compensation history of a Saga instance. */
 @Entity
@@ -36,6 +38,7 @@ public class SagaInstanceEntity {
   private String currentStepName;
 
   @Column(name = "payload", columnDefinition = "jsonb")
+  @JdbcTypeCode(SqlTypes.JSON)
   private String payload;
 
   @Column(name = "error_message", length = 1000)

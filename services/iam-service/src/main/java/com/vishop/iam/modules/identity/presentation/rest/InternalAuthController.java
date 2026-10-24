@@ -1,9 +1,9 @@
 package com.vishop.iam.modules.identity.presentation.rest;
 
+import com.vishop.iam.infra.security.OpaqueTokens;
 import com.vishop.iam.modules.identity.application.dto.ResolvedIdentity;
 import com.vishop.iam.modules.identity.application.query.IntrospectQuery;
 import com.vishop.iam.modules.identity.presentation.rest.dto.IntrospectRequest;
-import com.vishop.iam.shared.infrastructure.security.OpaqueTokens;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;

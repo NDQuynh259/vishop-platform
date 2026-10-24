@@ -106,12 +106,18 @@ spring:
 
   jpa:
     open-in-view: false
+    generate-ddl: false
     hibernate:
       ddl-auto: validate
 
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    baseline-on-migrate: false
+    clean-disabled: true
+
+  sql:
+    init:
+      mode: never
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}

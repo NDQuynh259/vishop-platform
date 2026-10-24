@@ -24,6 +24,10 @@ Shared code uses the `io.github.coreplatform.common` Java package namespace. See
 
 ## Build and test
 
+Runtime database access uses Spring Data JPA or JPA `EntityManager`, including native SQL.
+Hibernate only validates entity mappings; Flyway SQL migrations own every schema change.
+See the [persistence standard](docs/core-architecture/persistence.md).
+
 ```powershell
 .\gradlew.bat clean test
 ```

@@ -65,7 +65,7 @@ Nguồn tham chiếu:
 | Build | Gradle Kotlin DSL hoặc Maven; chọn một, không trộn |
 | API | Spring MVC hoặc WebFlux; ưu tiên MVC ở giai đoạn đầu |
 | Security | Spring Security 6 |
-| Persistence | Spring Data JPA + jOOQ cho query phức tạp |
+| Persistence | Spring Data JPA + JPA native query cho query phức tạp |
 | Migration | Flyway |
 | Validation | Jakarta Bean Validation |
 | Messaging | Kafka hoặc RabbitMQ; ưu tiên Kafka nếu cần replay/event stream |
@@ -648,7 +648,7 @@ Thứ tự:
 
 1. `platform-common`.
 2. Error handling, request ID, validation, pagination.
-3. Database access với Flyway và jOOQ/JPA.
+3. Database access với Flyway và JPA/EntityManager.
 4. Tenant context và permission.
 5. Audit/outbox framework.
 6. Users/tenants.
