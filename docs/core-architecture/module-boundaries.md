@@ -5,6 +5,7 @@ flowchart LR
     Domain[common-domain]
     Web[common-web]
     Security[common-security]
+    Cache[common-cache]
     Events[common-events]
     Persistence[common-persistence]
     Saga[common-saga]
@@ -21,6 +22,7 @@ flowchart LR
     Observability --> Domain
     App --> Web
     App --> Security
+    App --> Cache
     App --> Events
     App --> Persistence
     App --> Saga
@@ -34,6 +36,7 @@ All database-backed services and persistence libraries follow the [JPA and SQL m
 - `common-domain` must not depend on Spring, Kafka, servlet APIs, or application policy.
 - `common-web` owns Spring MVC/WebFlux adapters and HTTP response conventions, not endpoint/business behavior.
 - `common-security` provides context primitives; consuming applications choose identity providers, authorization rules, and tenant resolution.
+- [`common-cache`](../../libs/common-cache/README.md) provides string/JSON caching, TTL, nonblocking batch/hash reads and execution of caller-owned Lua. Services configure beans and connections in infrastructure; business adapters own keys, invalidation and scripts. JWT authentication does not depend on Redis cache or security projection. Redis deployment remains in `infra/compose`; the library has no dependency on security or business modules.
 - `common-events` provides transport integration; applications own event schemas, topics, and consumer business logic.
 - `common-persistence` and `common-saga` provide reusable reliability primitives; applications own their domain entities, transactions, and workflow definitions.
 - `common-observability` provides instrumentation/export integration; applications choose sampling, retention, backend, and sensitive-data policy.

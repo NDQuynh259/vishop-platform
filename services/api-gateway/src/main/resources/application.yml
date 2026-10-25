@@ -82,9 +82,7 @@ management:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 vishop:
-  iam:
-    url: ${IAM_SERVICE_URL:http://localhost:8080}
-    internal-secret: ${IAM_INTERNAL_SECRET:}
   security:
+    jwt:
+      secret: ${JWT_SECRET:}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
-

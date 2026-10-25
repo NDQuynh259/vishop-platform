@@ -61,6 +61,7 @@ public class IamSecurityConfiguration {
                     .requestMatchers(
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
+                        "/api/v1/auth/refresh",
                         "/internal/auth/introspect",
                         "/actuator/health",
                         "/actuator/health/**",

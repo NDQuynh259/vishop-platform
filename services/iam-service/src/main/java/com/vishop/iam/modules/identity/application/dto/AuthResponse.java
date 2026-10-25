@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record AuthResponse(
     String accessToken,
+    String refreshToken,
     String tokenType,
     long expiresIn,
     UserView user,

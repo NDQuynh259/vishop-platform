@@ -1,5 +1,10 @@
 # Fork guide: running and understanding the codebase
 
+> This guide describes the historical Fastify/Better Auth source. Current Java IAM uses
+> stateless JWT access/refresh tokens. See [IAM README](../services/iam-service/README.md)
+> for the active API and authentication contract.
+
+
 This is the shortest path for a developer who forks the repository and needs to
 understand the deployable services, API surfaces, and code ownership.
 
@@ -10,7 +15,7 @@ configuration into:
 
 | File             | Process             | Main credential scope                          |
 | ---------------- | ------------------- | ---------------------------------------------- |
-| `.env.api`       | Fastify API         | session/auth, S3, CORS, API database role      |
+| `.env.api`       | Fastify API         | JWT auth, S3, CORS, API database role      |
 | `.env.worker`    | BullMQ worker       | queues, mail, S3, ClamAV, worker database role |
 | `.env.scheduler` | cron + outbox relay | queue/cache, scheduler database role           |
 | `.env.migration` | Prisma migration    | migration/admin database role                  |
@@ -52,9 +57,9 @@ The API runs at `http://localhost:3000` by default.
 | `GET`  | `/api/v1/health`              | public            | aggregate health check             |
 | `GET`  | `/api/v1/health/dependencies` | metrics allowlist | BullMQ, PgBouncer, and replica lag |
 | `GET`  | `/metrics`                    | metrics allowlist | Prometheus metrics                 |
-| `GET`  | `/api/v1/users/me`            | session cookie    | current user profile               |
-| `POST` | `/api/v1/upload/presign`      | session cookie    | issue a presigned POST policy      |
-| `POST` | `/api/v1/upload/confirm`      | session cookie    | confirm an upload                  |
+| `GET`  | `/api/v1/users/me`            | Bearer access JWT | current user profile               |
+| `POST` | `/api/v1/upload/presign`      | Bearer access JWT | issue a presigned POST policy      |
+| `POST` | `/api/v1/upload/confirm`      | Bearer access JWT | confirm an upload                  |
 
 Upload flow:
 
@@ -67,22 +72,35 @@ POST /api/v1/upload/presign { "contentType": "image/png" }
 
 A download URL is returned only after the file reaches `READY`.
 
-### Authentication
+### Authentication hiện tại (Java IAM)
 
-Better Auth is mounted under `/api/auth/*`, uses cookie sessions, and does not
-use JWTs. Common routes include:
+Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
+API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
+chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
+không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
+trên mỗi request.
+
+`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
+đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
+mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
+Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
+
+Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
+không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
+`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
+rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
 
 ```text
-POST /api/auth/sign-up/email
-POST /api/auth/sign-in/email
-POST /api/auth/sign-out
-GET  /api/auth/get-session
-POST /api/auth/request-password-reset
-POST /api/auth/reset-password
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/switch-tenant
+POST /api/v1/auth/logout
+GET  /api/v1/auth/me
 ```
 
-Use `/docs` or the generated OpenAPI document for the complete list because
-Better Auth may add provider or social-login routes.
+Các API GraphQL, WebSocket và module TypeScript bên dưới là tham khảo nguồn,
+không phải runtime Java đang triển khai.
 
 ### GraphQL
 
@@ -105,16 +123,14 @@ production.
 
 ### WebSocket
 
-Socket.IO uses the `/ws` path and authenticates with the session cookie or a
-handshake token, as implemented by the current adapter. Browser clients should
-send the cookie from the same origin; other clients should use `auth.token`.
+Java runtime hiện tại chưa cung cấp WebSocket auth adapter. Khi port luồng này, dùng access JWT được xác minh ở handshake và khi cần revalidation; không dùng cookie đăng nhập. Không coi đường dẫn `/ws` của nguồn là endpoint Java đã triển khai.
 
 ## Where to find the code
 
 | Concern                                     | Location               |
 | ------------------------------------------- | ---------------------- |
 | HTTP bootstrap, CORS, Helmet, rate limiting | `apps/api/src/main.ts` |
-| Authentication, sessions, and role guards   | `libs/infra/auth`      |
+| Authentication and role guards (source only)   | `libs/infra/auth`      |
 | User use cases and repositories             | `libs/modules/users`   |
 | Upload presign and confirmation             | `libs/modules/upload`  |
 | Prisma schema and migrations                | `prisma/`              |

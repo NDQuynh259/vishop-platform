@@ -1,4 +1,9 @@
 > Historical design proposal: service boundaries and security flows below predate the IAM merge.
+
+> Historical migration plan: authentication decisions below have been superseded by
+> stateless JWT access/refresh tokens. The current contract is documented in
+> [security architecture](security-architecture.md) and [IAM README](../../services/iam-service/README.md).
+
 > Current runtime/configuration is documented in [IAM README](../../services/iam-service/README.md).
 > The separate identity/tenant service source directories have been removed.
 
@@ -41,7 +46,7 @@ Các hạ tầng quan trọng:
 - PostgreSQL + Prisma, schema lớn trong `prisma/schema.prisma`.
 - Redis + BullMQ + Dead Letter Queue.
 - Transactional outbox trong `outbox_events`.
-- Better Auth với cookie session, không dùng JWT.
+- Nguồn NestJS cũ dùng Better Auth. Runtime Java đích dùng JWT stateless access/refresh; contract nguồn không áp dụng cho xác thực hiện tại.
 - TikTok Shop adapter, OAuth, request signing, webhook và rate limit.
 - S3/MinIO presigned upload.
 - OpenTelemetry, Prometheus metrics và Sentry.
@@ -122,11 +127,11 @@ scheduler
 
 Sở hữu:
 
-- User, session, account, verification, two-factor.
+- Global user, password, JWT access/refresh; verification và two-factor là phạm vi mở rộng, chưa được triển khai đầy đủ.
 - Login, logout, password reset, email verification.
-- Cookie session hoặc opaque session token.
+- JWT access token và refresh token trong JSON body; API dùng Bearer access token.
 
-Khuyến nghị giữ session cookie ở gateway/BFF. Các service phía sau nhận identity context đã được xác minh. Không chia sẻ bảng session cho các service khác.
+Gateway và downstream xác minh access JWT tại chỗ bằng JWT_SECRET. Không lưu session đăng nhập hoặc introspect IAM cho từng request.
 
 #### `tenant-service`
 
@@ -441,23 +446,21 @@ Mỗi consumer phải:
 
 ### 7.1. Authentication
 
-Không chuyển sang JWT chỉ vì Spring Security hỗ trợ sẵn JWT. Có hai lựa chọn:
+Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
+API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
+chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
+không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
+trên mỗi request.
 
-**Lựa chọn A — khuyến nghị khi cần giữ tương thích:**
+`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
+đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
+mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
+Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
 
-- Identity service giữ opaque session.
-- Gateway đọc cookie session và gọi identity service/introspection.
-- Gateway truyền signed internal identity headers hoặc short-lived internal token.
-- Service không tự đọc database session của identity service.
-
-**Lựa chọn B — chỉ dùng khi chấp nhận thay đổi contract:**
-
-- Identity service phát access token ngắn hạn.
-- Có refresh token rotation.
-- Gateway/service validate JWT bằng JWKS.
-- Phải cập nhật frontend, revoke/logout và security documentation.
-
-Giai đoạn migration nên dùng lựa chọn A để không phá frontend và Better Auth contract.
+Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
+không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
+`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
+rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
 
 ### 7.2. Tenant context
 
@@ -521,7 +524,7 @@ Các nhóm job hiện tại cần chuyển:
 - Email/Telegram notification.
 - Upload verification.
 - Settlement/reconciliation.
-- Cleanup session, verification, file, label cache, outbox.
+- Cleanup verification, file, label cache, outbox; JWT tự hết hạn, không có bảng session đăng nhập cần cleanup.
 - DLQ monitor và alert digest.
 
 ## 9. API Gateway
@@ -532,7 +535,7 @@ Gateway chịu trách nhiệm:
 - Routing service.
 - CORS, rate limit, request size limit.
 - Correlation ID.
-- Authentication/session introspection.
+- Xác minh JWT access tại chỗ và cấp lại token bằng refresh JWT tại IAM.
 - Centralized access log.
 - Circuit breaker và timeout.
 - API versioning.
@@ -755,7 +758,7 @@ Dùng expand-and-contract:
 
 ### 12.3. Tách dữ liệu nhạy cảm
 
-- Identity/token/password/session cần migration riêng.
+- Identity/password cần migration riêng; client đăng nhập lại để nhận cặp JWT access/refresh, không chuyển session cũ sang runtime mới.
 - OAuth token phải re-encrypt hoặc validate decrypt sau khi chuyển.
 - PII của order phải có policy masking và access control tương đương hệ thống cũ.
 
@@ -788,7 +791,7 @@ Dùng expand-and-contract:
 
 ### End-to-end test
 
-- Login/session.
+- Login, refresh sau access expiry, đổi tenant và logout stateless.
 - Create tenant/member/permission.
 - Connect shop.
 - Import SKU.
@@ -836,7 +839,7 @@ Readiness chỉ kiểm tra dependency cần để phục vụ request. Không đ
 |---|---|
 | Distributed transaction | Outbox, saga, idempotent consumer |
 | Data drift khi dual-write | Reconciliation job, checksum, single write owner |
-| Session/auth không tương thích | Giữ opaque cookie session ở migration phase |
+| Auth contract không tương thích | Cập nhật client sang Bearer access JWT và refresh JWT; yêu cầu đăng nhập lại |
 | Mất event | Transactional outbox, retry, DLQ |
 | Duplicate TikTok webhook | Unique event ID + idempotent handler |
 | Race condition inventory | Optimistic lock/DB lock + stock movement |
@@ -899,7 +902,7 @@ mkdir -p platform-common services workers infra docs
 2. Bắt đầu bằng modular monolith Java, không triển khai 12 microservice ngay.
 3. Giữ PostgreSQL hiện tại trong giai đoạn migration đầu.
 4. Dùng Flyway; Hibernate chỉ validate schema.
-5. Giữ UUID v7, cursor pagination, Problem Details và opaque session contract.
+5. Giữ UUID v7, cursor pagination và Problem Details; xác thực dùng JWT stateless access/refresh theo contract IAM hiện tại.
 6. Dùng transactional outbox cho mọi cross-context event.
 7. Chọn Kafka cho domain/integration event; RabbitMQ cho task queue nếu hệ thống cần cả hai loại.
 8. Tách audit và file trước; identity/auth sau cùng.

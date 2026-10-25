@@ -1,6 +1,6 @@
 # ViShop — API Contract nội bộ (FE ↔ BE) v1.0
 
-**Nguồn đối chiếu:** `vishop-build-spec-v1.2.md` và `vishop-function-list.md` (249 FR đã audit) cho phần nghiệp vụ; repo backend `api-vishop` cho phần hình dạng kỹ thuật (§0). Hai nguồn này không ngang hàng: nghiệp vụ nói **cái gì**, repo nói **viết ra sao** — và repo thắng ở mọi tranh chấp về hình dạng request/response, mã lỗi, phân trang và xác thực, trừ các đoạn được đánh dấu rõ là quyết định contract chưa hiện thực hoá.
+**Nguồn đối chiếu:** `vishop-build-spec-v1.2.md` và `vishop-function-list.md` (249 FR đã audit) cho phần nghiệp vụ; code Java hiện tại trong `vishop-platform` cho xác thực và tenant bootstrap (§0, §9.3); các API nghiệp vụ chưa port vẫn là đặc tả từ nguồn `api-vishop`. Hai nguồn này không ngang hàng: nghiệp vụ nói **cái gì**, repo nói **viết ra sao** — và repo thắng ở mọi tranh chấp về hình dạng request/response, mã lỗi, phân trang và xác thực, trừ các đoạn được đánh dấu rõ là quyết định contract chưa hiện thực hoá.
 **Phạm vi:** 6 nhóm theo `ChannelAdapter` §2.1 — AuthProvider, ProductProvider, OrderProvider, FulfillmentProvider, InventoryProvider, FinanceProvider. Các module không nằm sau adapter (M08 Quét mã, M09 Sau bán, M11 Affiliate/Livestream, M13 Báo cáo, M14 Cảnh báo, M15 Billing) là API nội bộ thuần — hợp đồng riêng, không thuộc file này.
 **Chốt trước khi code:** contract dưới đây giả định Capability Matrix §9 đã xác minh cho từng FR P0 liên quan. Riêng nhóm FinanceProvider/M12 còn treo theo câu hỏi #1 ở §9 (Finance API trả settlement theo đơn hay chỉ theo kỳ) — nếu kết quả xác minh là "chỉ theo kỳ", shape ở mục 6 phải sửa lại trước khi FE bắt tay code màn đối soát.
 
@@ -8,14 +8,18 @@
 
 ## 0. Quy ước chung
 
-Toàn bộ mục này bám theo contract đã chốt trong repo backend `api-vishop` — `CLAUDE.md` mục "API contract is fixed" và code trong `libs/contracts`, `apps/api/src/common`. Không có dòng nào ở đây là lựa chọn riêng của tài liệu này. Khi tài liệu lệch với repo thì repo đúng, và tài liệu phải sửa theo — không đi ngược lại.
+Xác thực và tenant bootstrap bám code Java IAM hiện tại. Những quy ước nghiệp vụ chưa port được giữ như đặc tả sản phẩm; không suy ra rằng module NestJS hoặc endpoint nguồn đang chạy trong repo này.
 
 ### 0.1 Đường dẫn và xác thực
 
-- **Base path:** `/api/v1/...`. Prefix toàn cục là `api`, khai báo tại `apps/api/src/common/http/global-prefix.ts`; hai nhánh `metrics` và `errors/*` nằm ngoài prefix.
-- **Xác thực là phiên cookie Better Auth, không phải JWT.** Cookie tên `better-auth.session_token`; toàn bộ surface đăng nhập nằm ở `/api/auth/*` do `BetterAuthModule` mount. Controller khai báo `@ApiCookieAuth('session')` và đọc người gọi qua `@CurrentUser() user: AuthenticatedSession`. **Không có Bearer token, không có access/refresh token, không có JWT blacklist** — mọi thiết kế FE dựa trên ba thứ đó là sai nền tảng. Phiên hỏng hoặc hết hạn trả `401` với `code: "unauthorized"`.
-- **Endpoint tenant-scoped không nhận `tenantId` trong body, query hay path.** Với browser, tenant hiện hành được resolve từ server-side session. Header `X-Tenant-Id` được giữ làm override cho caller machine-to-machine, nhưng server vẫn phải xác minh caller có membership trong tenant đó; header không thay đổi tenant đã lưu trong session.
-- **ID trên đường dẫn là UUID v7.** Route param khai báo `@Param('id', new ParseUUIDPipe({ version: '7' }))` — `ParseUUIDPipe` trần nhận mọi phiên bản nên một id v4 sẽ lọt vào handler. ID sai phiên bản trả `400`.
+- **Base path:** `/api/v1/...`; auth được triển khai bởi `AuthController` trong `iam-service`.
+- **JWT stateless:** login/register trả `accessToken`, `refreshToken`, `tokenType`, `expiresIn`, `user`, `tenantId`, `roles`, `permissions` trong body. API được bảo vệ nhận Bearer access token. Không dùng Better Auth hoặc cookie đăng nhập.
+- **Refresh:** `POST /api/v1/auth/refresh` nhận `{refreshToken}`, không cần access token còn hạn. Access mặc định 15 phút, refresh 7 ngày. Refresh không kéo dài hạn tuyệt đối ban đầu; token refresh cũ vẫn hợp lệ đến hết hạn.
+- **Logout:** `POST /api/v1/auth/logout` với Bearer access token trả 204; client xoá cả hai JWT. Server không lưu trạng thái thu hồi token.
+- **Tenant context:** lấy từ access JWT đã xác minh. Đổi tenant bằng `POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`; hai token phải cùng user và user phải có membership hoạt động. Client thay cặp token sau khi đổi tenant. `X-Tenant-Id` không override tenant đã ký trong JWT.
+- **ID:** dùng UUID; ID dữ liệu mới được sinh bằng UUID v7. Spring bind UUID trên route; không khẳng định mọi route từ chối UUID v4 nếu code chưa có validation tương ứng.
+
+Các ví dụ nghiệp vụ chưa port bên dưới là đặc tả sản phẩm, không phải bằng chứng endpoint đã tồn tại trong Java. Khi tích hợp xác thực hoặc tenant bootstrap, dùng code IAM và [IAM README](../../services/iam-service/README.md) làm nguồn đối chiếu.
 
 ### 0.2 Hình dạng response
 
@@ -2745,7 +2749,7 @@ Hai endpoint GET đều theo contract cursor ở §0.2. Danh sách luôn gồm t
 flag chưa có bản ghi override của tenant được trả về với `enabled=false`. Cursor là opaque key cursor,
 client phải truyền lại nguyên văn và không được tự suy ra từ `key`.
 
-Endpoint tenant lấy tenant từ session (`activeTenantId`), không nhận `tenantId` từ query và chỉ trả
+Endpoint tenant lấy tenant từ access JWT đã xác minh (`tenantId`), không nhận tenant override từ query và chỉ trả
 `key`, `name`, `description`, `enabled`. `updatedAt`/`updatedBy` là metadata vận hành nội bộ, chỉ có
 trong endpoint admin. Endpoint admin yêu cầu platform role `ADMIN`; `PUT` chỉ chấp nhận key có trong
 `FEATURE_FLAG_CATALOG`, key sai trả `feature_flag_key_unknown`, tenant không tồn tại trả
@@ -2820,111 +2824,56 @@ Mọi thao tác bật/tắt cờ ghi vào `audit_logs` (FR-00-04).
 
 #### Danh sách, chọn và tạo tổ chức
 
-| Method | Path                             | FR       | Quyền/ngữ cảnh                          | Ghi chú                                                                                                    |
-| ------ | -------------------------------- | -------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/v1/tenants`                | FR-01-12 | Chỉ cần phiên hợp lệ                    | Membership của user, phân trang cursor; không cần active tenant                                            |
-| PUT    | `/api/v1/sessions/active-tenant` | FR-01-13 | Chỉ cần phiên hợp lệ và membership đích | Body `{ tenantId }`; lưu lựa chọn vào chính session hiện tại                                               |
-| POST   | `/api/v1/tenants`                | FR-01-14 | Chỉ cần phiên hợp lệ                    | Body `{ name, slug?, baseCurrency?, logoUrl? }`; user tạo trở thành `OWNER`; không tự kích hoạt tenant mới |
+Contract bootstrap hiện tại của Java IAM:
 
-`GET /api/v1/tenants` phân trang bằng **cursor** như mọi list khác trong hệ thống — `?limit=20&cursor=<pageInfo.nextCursor>`, không có ngoại lệ "danh sách ngắn nên trả hết". Sắp xếp theo membership mới nhất trước. Ba endpoint này là bootstrap: chúng chạy được khi session chưa chọn tổ chức và không đi qua guard đòi tenant context.
-
-`isActive` được đối chiếu với membership chứ không phải với trang hiện tại — tổ chức đang chọn có thể nằm ở trang sau, và nếu đối chiếu theo trang thì picker sẽ hiện "chưa chọn gì" một cách sai.
-
-```json
-{
-  "object": "list",
-  "url": "/api/v1/tenants",
-  "data": [
-    {
-      "id": "0199a111-1111-7000-8000-000000000001",
-      "name": "ViShop Miền Nam",
-      "slug": "vishop-mien-nam",
-      "baseCurrency": "VND",
-      "logoUrl": null,
-      "status": "ACTIVE",
-      "role": "OWNER",
-      "isActive": true,
-      "createdAt": "2026-08-14T02:00:00.000Z"
-    },
-    {
-      "id": "0199a222-2222-7000-8000-000000000002",
-      "name": "Nhãn hàng An Nhiên",
-      "slug": "an-nhien",
-      "baseCurrency": "VND",
-      "logoUrl": "https://storage.vishop.vn/signed/files/.../logo.png?X-Amz-Signature=...",
-      "status": "ACTIVE",
-      "role": "MEMBER",
-      "isActive": false,
-      "createdAt": "2026-08-14T03:00:00.000Z"
-    }
-  ],
-  "pageInfo": { "hasNextPage": false, "nextCursor": null }
-}
-```
+| Method | Path | Quyền/ngữ cảnh | Request / response |
+| --- | --- | --- | --- |
+| GET | `/api/v1/tenants` | Bearer access token; cho phép tenant null | Mảng tenant đang hoạt động mà user có membership; hiện chưa phân trang |
+| POST | `/api/v1/auth/switch-tenant` | Bearer access token và membership đích | `{tenantId,refreshToken}` → `AuthResponse` chứa cặp JWT mới và tenant grants |
+| POST | `/api/v1/tenants` | Bearer access token; cho phép tenant null | `{code,name}` → tenant mới; user trở thành OWNER |
 
 ```http
-PUT /api/v1/sessions/active-tenant
+POST /api/v1/auth/switch-tenant
+Authorization: Bearer <accessToken>
 Content-Type: application/json
 
-{ "tenantId": "0199a222-2222-7000-8000-000000000002" }
+{ "tenantId": "0199a222-2222-7000-8000-000000000002", "refreshToken": "<refreshToken>" }
 ```
 
 ```json
 {
-  "activeTenantId": "0199a222-2222-7000-8000-000000000002",
-  "switchedAt": "2026-08-14T03:15:00.000Z"
+  "accessToken": "<newAccessToken>",
+  "refreshToken": "<newRefreshToken>",
+  "tokenType": "Bearer",
+  "expiresIn": 900,
+  "user": {
+    "id": "0199a111-1111-7000-8000-000000000001",
+    "email": "owner@example.com",
+    "fullName": "Owner",
+    "systemRole": "USER",
+    "status": "ACTIVE",
+    "createdAt": "2026-10-25T00:00:00Z"
+  },
+  "tenantId": "0199a222-2222-7000-8000-000000000002",
+  "roles": ["OWNER"],
+  "permissions": ["tenant.view", "tenant.manage"]
 }
 ```
 
-Switch là idempotent: chọn lại tenant đang active vẫn trả `200`. `tenantId` không tồn tại, tenant không còn active, hoặc caller không có membership đều trả cùng `404 tenant_not_found` để không biến id thành kênh dò dữ liệu. Sau response `200`, mọi request tenant-scoped tiếp theo của session resolve sang tenant mới; request đã vào server trước đó giữ context đã resolve khi nhận request.
+`permissions` trong ví dụ được rút gọn. Client dùng access token mới cho request tenant-scoped,
+và refresh token tương ứng để cấp lại token trong context đó. Các tab có thể giữ cặp token
+riêng. Chọn lại cùng tenant vẫn cấp cặp JWT; đây không phải cập nhật state trên server.
+Membership/tenant không hoạt động trả 403 theo kiểm tra quyền IAM; token không hợp lệ hoặc
+hai token khác user trả 401. Không dùng lỗi `tenant_ambiguous` hay contract switch session cũ.
 
-```http
-POST /api/v1/tenants
-Content-Type: application/json
+Login chọn tenant tự động khi user có đúng một active membership; còn lại trả tenant null.
+Gateway cho phép các API identity/bootstrap với tenant null, nhưng chặn business API thiếu
+tenant bằng 403. FE hiển thị picker, gọi switch và chỉ chuyển màn sau khi nhận cặp token mới.
+Tạo tenant và đổi tenant là hai thao tác riêng; tạo tenant không đổi JWT đang giữ.
 
-{ "name": "Nhãn hàng An Nhiên", "slug": "an-nhien", "baseCurrency": "VND", "logoUrl": "files/.../logo.png" }
-```
-
-```json
-{
-  "id": "0199a333-3333-7000-8000-000000000003",
-  "name": "Nhãn hàng An Nhiên",
-  "slug": "an-nhien",
-  "baseCurrency": "VND",
-  "logoUrl": "https://storage.vishop.vn/signed/files/.../logo.png?X-Amz-Signature=...",
-  "status": "ACTIVE",
-  "role": "OWNER",
-  "isActive": false,
-  "createdAt": "2026-08-14T03:20:00.000Z"
-}
-```
-
-`slug`, `baseCurrency` và `logoUrl` đều tuỳ chọn ở request tạo tổ chức, và cả ba **không đổi được sau
-khi tạo** — không có endpoint update nào ghi lại chúng:
-
-- `slug`: 3-63 ký tự, chỉ chữ thường/số/gạch ngang đơn, không bắt đầu/kết thúc bằng gạch ngang. Bỏ
-  trống thì server tự sinh `tenant-<uuid không dấu gạch>`. Trùng với slug của một tổ chức đang hoạt
-  động khác → `409 tenant_slug_taken`.
-- `baseCurrency`: mã ISO 4217. Bỏ trống thì mặc định `VND`. Sai mã → `422`.
-- `logoUrl`: cùng ngữ nghĩa ghi/đọc như `TenantSettings.logoUrl` (xem mục FR-00-10 bên dưới) — gửi
-  `key` từ `POST /upload/confirm`, server kiểm tra file đó thuộc chính tài khoản này và đã qua xác
-  minh malware (`404 tenant_logo_not_found` nếu không khớp), mọi response luôn trả về signed URL
-  chứ không phải raw key.
-
-**Quyết định contract 14/08/2026:** active tenant của browser được lưu trong server-side session và chỉ đổi qua `PUT /api/v1/sessions/active-tenant`. Bắt SPA tự nhớ rồi gắn `X-Tenant-Id` vào mọi request là dễ vỡ: chỉ một call quên header cũng có thể chạy trong context mặc định và ghi nhầm tổ chức mà không có tín hiệu rõ. `X-Tenant-Id` vì vậy chỉ override tenant cho đúng request của caller machine-to-machine, có độ ưu tiên cao hơn session nhưng không mutate session.
-
-Thứ tự resolve tenant cho request đã xác thực:
-
-1. Có `X-Tenant-Id` hợp lệ và caller có membership → dùng tenant trong header cho request này.
-2. Không có header, session có active tenant hợp lệ → dùng tenant trong session.
-3. Session chưa có active tenant và user chỉ có một membership → dùng membership duy nhất để tương thích với phiên cũ; FE phải gọi switch để ghi lựa chọn vào session.
-4. Session chưa có active tenant và user có nhiều membership → `422 tenant_ambiguous`.
-
-**Trạng thái 14/08/2026 — backend đã xong, frontend chưa.** Ba endpoint trên và thứ tự resolve tenant ở trên đã hiện thực hoá: `sessions.activeTenantId` lưu lựa chọn, `TenantContextService` đọc nó, và `BetterAuthGuard` chạy với `disableCookieCache: true` nên switch có hiệu lực ngay ở request kế tiếp.
-
-Phần còn thiếu là frontend: `D:\tiktok-shop\vishop-next` chưa có màn chọn tổ chức và chưa gọi endpoint switch. Cho tới khi màn đó lên, một user có từ hai membership vẫn nhận `422 tenant_ambiguous` trên mọi request tenant-scoped vì session chưa bao giờ chọn tổ chức. FE **không** được vá bằng cách tự gắn `X-Tenant-Id` — header đó dành cho caller machine-to-machine, xem quyết định contract ở trên.
-
-**Quyết định sản phẩm 14/08/2026:** mọi user đã đăng nhập được `POST /api/v1/tenants` để tạo thêm tổ chức và trở thành `OWNER`. Tenant mới rỗng; không chuyển hoặc sao chép shop, thành viên hay dữ liệu từ tenant hiện hành. Tạo và switch là hai thao tác tách biệt để thay đổi session luôn đi qua endpoint switch tường minh.
+Danh sách tenant hiện trả các field `id`, `code`, `name`, `status`, `createdAt` theo
+`TenantResponseDto`. Các field `isActive`, `slug`, `logoUrl`, `baseCurrency` và pagination
+trong thiết kế sản phẩm chưa thuộc contract bootstrap Java hiện tại.
 
 #### Thành viên Tenant (`/tenants/members`)
 
@@ -2934,17 +2883,16 @@ Phần còn thiếu là frontend: `D:\tiktok-shop\vishop-next` chưa có màn ch
 - `POST /api/v1/tenants/members/invitations/accept` — Chấp nhận lời mời bằng token. Body: `{ token }`.
 - `POST /api/v1/tenants/members/invitations/{id}/revoke` — Hủy lời mời PENDING (OWNER/ADMIN).
 - `PATCH /api/v1/tenants/members/{id}/role` — Gán/đổi vai trò kinh doanh (`roleId`) cho thành viên.
-- `POST /api/v1/tenants/members/{id}/reset-password` — OWNER đặt mật khẩu tạm cho member đơn-tenant; revoke toàn bộ session và bắt buộc member tự đổi mật khẩu.
+- Reset password bởi OWNER là yêu cầu sản phẩm chưa triển khai trong Java IAM; không mô tả endpoint nguồn như API đang hoạt động, và không cam kết thu hồi JWT trước hạn.
 - `POST /api/v1/tenants/members/{id}/deactivate` — OWNER vô hiệu membership trong tenant hiện hành; không ban global User.
 - `POST /api/v1/tenants/members/{id}/reactivate` — OWNER khôi phục membership cùng vai trò đã gán.
 - `DELETE /api/v1/tenants/members/{id}` — OWNER xoá mềm membership, giữ lịch sử và giải phóng seat.
 
-Lifecycle ở đây luôn có phạm vi tenant. `TenantMember.status=INACTIVE` chỉ chặn tenant tương ứng;
-admin hệ thống ban toàn cục bằng `User.status` là flow khác. Riêng password là credential cấp User,
-vì vậy reset bị từ chối với `409 member_belongs_to_multiple_tenants` nếu target còn hơn một membership
-chưa xoá (kể cả tenant suspended), và `409 member_credential_account_not_found` nếu target không có
-credential password. Khi `mustChangePassword=true`, `/api/auth/*`, Nest API và WebSocket đều bị chặn,
-ngoại trừ các route cần để đọc session, đăng xuất và tự đặt lại mật khẩu.
+Lifecycle membership có phạm vi tenant, còn trạng thái tài khoản có phạm vi global user.
+IAM kiểm tra trạng thái và quyền hiện tại khi cấp token và trong use case nghiệp vụ.
+JWT đã cấp ở gateway/downstream vẫn có hiệu lực đến expiry; không có session để revoke.
+Forced password change và reset password bởi OWNER cần thiết kế/triển khai riêng trước
+khi áp dụng các acceptance criteria tương ứng của đặc tả nguồn.
 
 #### Danh mục quyền (`/permissions/catalog`)
 
@@ -3066,7 +3014,7 @@ dòng mà nguyên nhân vẫn còn.
 
 #### `GET /api/v1/orders/missing-stock`
 
-**Auth:** cookie session + `X-Tenant-Id`, quyền `orders.view`, phạm vi theo `tenant.shopScope`.
+**Auth:** Bearer access JWT với tenant context đã ký; quyền và shop scope là yêu cầu nghiệp vụ cần được kiểm tra phía server khi module tương ứng được triển khai.
 **Query:** `limit?` (1–100, mặc định 20) · `cursor?` · `shopId?: uuid` · `reason?: insufficient_stock|unmapped_sku|sku_deleted` · `search?: string` (≤200)
 
 `reason` thu hẹp **danh sách đơn**, không cắt bớt `shortages[]` của đơn được giữ lại.

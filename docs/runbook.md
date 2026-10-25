@@ -166,7 +166,7 @@ ORDER BY 1;
 
 ## 4. Redis down
 
-**Symptom:** API returns 503 on health check (`/api/v1/health/ready`). BullMQ job processing halted. Session validation failing or slow (Better Auth cache miss).
+**Symptom:** API returns 503 on health check (`/api/v1/health/ready`). BullMQ job processing halted. JWT access verification in the Java runtime remains local and does not depend on Redis.
 
 **Diagnostic:**
 
@@ -185,8 +185,7 @@ docker compose logs redis-queue --tail=100
 
 **Fallback behavior while Redis is down:**
 
-- **Session auth**: unaffected. Better Auth is not configured with `secondaryStorage`, so sessions
-  always resolve against Postgres — there is no Redis path to lose.
+- **JWT authentication (Java IAM/gateway)**: access verification is local and unaffected by Redis loss. Refresh reads current IAM account/grants in PostgreSQL; no authentication cookie or Redis token projection is used.
 - **BullMQ**: Jobs queue in memory briefly; if the connection times out, new job enqueues fail with a 500.
   The queue client retries reconnecting indefinitely with a 3 s cap, so it recovers on its own once
   Redis is back — no restart needed.
@@ -746,7 +745,7 @@ Set `OUTBOX_PURGE_MAX_BATCHES` to at least that value and redeploy.
 2. False positive on a legitimate format — extend `SIGNATURES` in `libs/shared/src/lib/file-signature.ts` to recognize the binary header, add a unit test, redeploy worker.
 3. Repeated false positives from a single user — review whether the allow-list in the `presign` DTO is too narrow for the use case.
 
-**Escalation:** Surge of deletions correlated with a single IP range may indicate an automated probe. Tighten `/upload/presign` rate-limit (currently 10/min per session — see `PRESIGN_LIMIT` in `upload.controller.ts`) or add a global ban list.
+**Escalation:** Surge of deletions correlated with a single IP range may indicate an automated probe. Tighten `/upload/presign` rate-limit (currently 10/min per authenticated user in the source implementation; verify the limit when porting — see `PRESIGN_LIMIT` in `upload.controller.ts`) or add a global ban list.
 
 ## 10. Backups
 

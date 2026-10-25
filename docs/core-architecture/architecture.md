@@ -6,10 +6,11 @@ Dự án **ViShop Platform** được tổ chức theo cấu trúc Gradle Multi-
 
 ```text
 vishop-platform/
-├── platform-common/                     # Thư viện dùng chung (Shared libraries)
+├── libs/                                # Thư viện dùng chung (Shared libraries)
 │   ├── common-domain/                   # Hạt nhân Domain thuần túy (AggregateRoot, Entity, VO, Event, CQRS interfaces)
 │   ├── common-web/                      # Web & CQRS Bus: SpringCommandBus, SpringQueryBus, Problem Details (RFC 9457)
 │   ├── common-security/                 # Multi-Tenancy context (TenantContext, TenantContextFilter)
+│   ├── common-cache/                    # Cache Redis dùng chung: JSON, get/put/evict, TTL; code sử dụng quyết định policy
 │   ├── common-events/                   # Kafka Backbone (EventEnvelope, KafkaEventPublisher, DLQ, RecordInterceptor)
 │   ├── common-persistence/              # Transactional Outbox, OutboxPublisher, ConsumedMessage (Idempotency)
 │   ├── common-saga/                     # Saga Pattern Orchestrator (Distributed Transactions with Compensation)
@@ -18,11 +19,11 @@ vishop-platform/
 │
 ├── services/                            # Các Microservices độc lập (Bounded Contexts)
 │   ├── api-gateway/                     # Spring Cloud Gateway (:8000) - Unified Routing, CorrelationId, CORS
-│   ├── iam-service/                     # Identity, system role, tenant, membership, RBAC và session
+│   ├── iam-service/                     # Identity, system role, tenant, membership, RBAC và JWT stateless
 │   └── audit-service/                   # Event-driven consumer ghi nhận lịch sử audit log từ Kafka
 │
 ├── infra/
-│   └── docker-compose/                  # Môi trường chạy local: Kafka KRaft, Kafka UI, PostgreSQL 16, Redis 7
+│   └── compose/                         # Môi trường chạy local: Kafka KRaft, Kafka UI, PostgreSQL 16, Redis 7
 │
 ├── build.gradle.kts                      # Cấu hình build gốc
 ├── settings.gradle.kts                   # Đăng ký các modules
@@ -379,5 +380,3 @@ spring:
 | **Thao tác bảng hạ tầng**<br>*(Outbox, idempotency)* | **Spring Data JPA / EntityManager** | `OutboxEventRepository`, `ConsumedMessageRepository`; native SQL cho khóa hoặc truy vấn đặc thù, không dùng JDBC trực tiếp |
 
 Quy định chi tiết và quy trình migration áp dụng cho toàn dự án: [Persistence standard](./persistence.md). Entity không tự tạo migration hay sửa database. Flyway chạy các file SQL trước khi Hibernate validate; không chỉnh sửa migration đã triển khai.
-
-

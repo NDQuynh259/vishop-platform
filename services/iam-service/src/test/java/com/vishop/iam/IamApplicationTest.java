@@ -32,6 +32,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @SpringBootTest(
     properties = {
       "vishop.outbox.enabled=false",
+      "spring.kafka.listener.auto-startup=false",
       "management.tracing.enabled=false",
       "vishop.security.jwt.secret=test-jwt-secret-with-at-least-thirty-two-bytes",
       "vishop.security.internal-secret=test-internal-secret-with-at-least-thirty-two-bytes"
@@ -77,13 +78,16 @@ class IamApplicationTest {
   @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
   @Autowired org.springframework.context.ApplicationContext context;
 
+  @org.springframework.boot.test.mock.mockito.SpyBean(proxyTargetAware = true)
+  com.vishop.iam.modules.access.application.api.AccessApplicationApi accessApiSpy;
+
   @BeforeEach
   void reset() {
     db = new JpaDatabaseFixture(entityManager, transactions);
     db.execute("TRUNCATE users,tenants,outbox_events,consumed_messages CASCADE");
   }
 
-  record Account(String email, String id, String token, String cookie) {}
+  record Account(String email, String id, String token, String refreshToken) {}
 
   private JsonNode body(MvcResult result) throws Exception {
     return json.readTree(result.getResponse().getContentAsString());
@@ -108,19 +112,13 @@ class IamApplicationTest {
             .andExpect(status().isCreated())
             .andReturn();
     JsonNode response = body(result);
-    assertThat(result.getResponse().getHeader("Set-Cookie"))
-        .contains("HttpOnly", "Secure", "SameSite=Lax");
-    String cookie =
-        result
-            .getResponse()
-            .getHeader("Set-Cookie")
-            .split(";", 2)[0]
-            .substring("vishop_session=".length());
+    assertThat(result.getResponse().getHeader("Set-Cookie")).isNull();
+    assertThat(response.path("refreshToken").asText()).isNotBlank();
     return new Account(
         email,
         response.path("user").path("id").asText(),
         response.path("accessToken").asText(),
-        cookie);
+        response.path("refreshToken").asText());
   }
 
   private JsonNode createTenant(Account account, String code) throws Exception {
@@ -165,7 +163,7 @@ class IamApplicationTest {
         http.perform(
                 payload(
                     authorized(post("/api/v1/auth/switch-tenant"), account.token()),
-                    Map.of("tenantId", tenant)))
+                    Map.of("tenantId", tenant, "refreshToken", account.refreshToken())))
             .andExpect(status().isOk())
             .andReturn());
   }
@@ -216,8 +214,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void memberProjectionKeepsSameNamedRolesSeparateAcrossTenantsForCookieSessions()
-      throws Exception {
+  void memberProjectionKeepsSameNamedRolesSeparateAcrossTenants() throws Exception {
     Account owner = register("projection-owner@example.com");
     Account member = register("projection-member@example.com");
     String first = createTenant(owner, "projection-first").path("id").asText();
@@ -243,8 +240,7 @@ class IamApplicationTest {
     select(member, first);
     for (var entry : permissionsByTenant.entrySet()) {
       http.perform(
-              get("/api/v1/tenants/" + entry.getKey() + "/members/me")
-                  .cookie(new Cookie("vishop_session", member.cookie())))
+              authorized(get("/api/v1/tenants/" + entry.getKey() + "/members/me"), member.token()))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.tenantId").value(entry.getKey()))
           .andExpect(jsonPath("$.userId").value(member.id()))
@@ -372,17 +368,20 @@ class IamApplicationTest {
   }
 
   @Test
-  void registrationIsGlobalAndStoresOnlySessionHashes() throws Exception {
+  void registrationIsGlobalAndDoesNotPersistTokens() throws Exception {
     Account user = register("User@example.com");
     assertThat(db.queryForObject("SELECT count(*) FROM tenants", Integer.class)).isZero();
     assertThat(db.queryForObject("SELECT system_role FROM users", String.class)).isEqualTo("USER");
     assertThat(db.queryForObject("SELECT password_hash FROM users", String.class))
         .startsWith("$2a$")
         .isNotEqualTo("StrongPass123!");
-    assertThat(db.queryForObject("SELECT token_hash FROM sessions", String.class))
-        .hasSize(64)
-        .isNotEqualTo(user.cookie());
-    http.perform(get("/api/v1/auth/me").cookie(new Cookie("vishop_session", user.cookie())))
+    assertThat(tokens.parseClaims(user.token())).doesNotContainKeys("sid", "sv");
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name='sessions'",
+                Integer.class))
+        .isZero();
+    http.perform(authorized(get("/api/v1/auth/me"), user.token()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.systemRole").value("USER"))
         .andExpect(jsonPath("$.passwordHash").doesNotExist())
@@ -407,7 +406,7 @@ class IamApplicationTest {
     assertThat(
             db.queryForObject(
                 "SELECT string_agg(payload::text,',') FROM outbox_events", String.class))
-        .doesNotContain("StrongPass123!", user.cookie());
+        .doesNotContain("StrongPass123!", user.refreshToken());
   }
 
   @Test
@@ -458,7 +457,7 @@ class IamApplicationTest {
     http.perform(
             payload(
                 authorized(post("/api/v1/auth/switch-tenant"), other.token()),
-                Map.of("tenantId", tenant)))
+                Map.of("tenantId", tenant, "refreshToken", other.refreshToken())))
         .andExpect(status().isForbidden());
   }
 
@@ -481,40 +480,33 @@ class IamApplicationTest {
     http.perform(authorized(get("/api/v1/tenants"), member.token()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(2));
-    // Switching the cookie context does not overwrite a previous tab's signed tenant token.
+    // Each tab retains the tenant context in its own refresh token.
     var result =
         http.perform(
-                authorized(post("/api/v1/auth/refresh"), operations.path("accessToken").asText()))
+                payload(
+                    post("/api/v1/auth/refresh"),
+                    Map.of("refreshToken", operations.path("refreshToken").asText())))
             .andExpect(status().isOk())
             .andReturn();
     assertThat(body(result).path("tenantId").asText()).isEqualTo(first);
   }
 
   @Test
-  void cookiesRequireOriginForWritesAndHeadersNeverAuthenticate() throws Exception {
+  void cookiesAndUntrustedHeadersNeverAuthenticate() throws Exception {
     Account user = register("user@example.com");
     http.perform(
             get("/api/v1/auth/me")
                 .header("X-User-Id", user.id())
                 .header("X-User-Roles", "PLATFORM_ADMIN"))
         .andExpect(status().isUnauthorized());
-    http.perform(post("/api/v1/auth/logout").cookie(new Cookie("vishop_session", user.cookie())))
-        .andExpect(status().isForbidden());
-    http.perform(
-            post("/api/v1/auth/logout")
-                .cookie(new Cookie("vishop_session", user.cookie()))
-                .header("Origin", "https://evil.example"))
-        .andExpect(status().isForbidden());
-    http.perform(
-            get("/api/v1/auth/me")
-                .cookie(new Cookie("vishop_session", user.cookie()))
-                .header("Authorization", "Bearer invalid"))
+    http.perform(get("/api/v1/auth/me").cookie(new Cookie("vishop_session", user.refreshToken())))
+        .andExpect(status().isUnauthorized());
+    http.perform(authorized(get("/api/v1/auth/me"), user.refreshToken()))
         .andExpect(status().isUnauthorized());
     http.perform(
-            post("/api/v1/auth/logout")
-                .cookie(new Cookie("vishop_session", user.cookie()))
-                .header("Origin", "http://localhost:3000"))
-        .andExpect(status().isNoContent());
+            authorized(post("/api/v1/auth/logout"), user.token())
+                .header("Origin", "https://evil.example"))
+        .andExpect(status().isForbidden());
   }
 
   @Test
@@ -551,28 +543,23 @@ class IamApplicationTest {
   }
 
   @Test
-  void logoutRevokesBothCookieAndAlreadyIssuedJwt() throws Exception {
-    Account user = register("user@example.com");
-    http.perform(
-            payload(
-                post("/internal/auth/introspect").header("X-Iam-Internal-Key", INTERNAL),
-                Map.of("credential", user.token(), "type", "BEARER")))
-        .andExpect(status().isOk());
+  void statelessLogoutAuditsAndClientMustDiscardTokens() throws Exception {
+    Account user = register("logout@example.com");
     http.perform(authorized(post("/api/v1/auth/logout"), user.token()))
-        .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/auth/me"), user.token()))
-        .andExpect(status().isUnauthorized());
-    http.perform(get("/api/v1/auth/me").cookie(new Cookie("vishop_session", user.cookie())))
-        .andExpect(status().isUnauthorized());
-    http.perform(
-            payload(
-                post("/internal/auth/introspect").header("X-Iam-Internal-Key", INTERNAL),
-                Map.of("credential", user.token(), "type", "BEARER")))
-        .andExpect(status().isUnauthorized());
+        .andExpect(status().isNoContent())
+        .andExpect(header().doesNotExist("Set-Cookie"));
+    http.perform(authorized(get("/api/v1/auth/me"), user.token())).andExpect(status().isOk());
+    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", user.refreshToken())))
+        .andExpect(status().isOk());
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM outbox_events WHERE event_type='UserLoggedOut'",
+                Integer.class))
+        .isEqualTo(1);
   }
 
   @Test
-  void suspendedUsersAndTenantsLoseAccessImmediately() throws Exception {
+  void suspendedUsersAndTenantsCannotIssueNewTokens() throws Exception {
     Account admin = register("admin@example.com");
     Account owner = register("owner@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
@@ -586,7 +573,7 @@ class IamApplicationTest {
     http.perform(
             payload(
                 authorized(post("/api/v1/auth/switch-tenant"), selected),
-                Map.of("tenantId", tenant)))
+                Map.of("tenantId", tenant, "refreshToken", owner.refreshToken())))
         .andExpect(status().isForbidden());
     var resolved =
         body(
@@ -596,7 +583,7 @@ class IamApplicationTest {
                         Map.of("credential", selected, "type", "BEARER")))
                 .andExpect(status().isOk())
                 .andReturn());
-    assertThat(resolved.path("tenantId").isNull()).isTrue();
+    assertThat(resolved.path("tenantId").asText()).isEqualTo(tenant);
     http.perform(
             payload(
                 authorized(patch("/api/v1/cms/users/" + owner.id() + "/status"), admin.token()),
@@ -609,8 +596,7 @@ class IamApplicationTest {
                 authorized(patch("/api/v1/cms/users/" + owner.id() + "/status"), admin.token()),
                 Map.of("status", "ACTIVE")))
         .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/auth/me"), owner.token()))
-        .andExpect(status().isUnauthorized());
+    http.perform(authorized(get("/api/v1/auth/me"), owner.token())).andExpect(status().isOk());
     http.perform(
             payload(
                 post("/api/v1/auth/login"),
@@ -624,7 +610,9 @@ class IamApplicationTest {
     Account member = register("member@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
     accept(member, invite(owner, tenant, member.email(), role(tenant, "OPERATIONS")));
-    String old = select(member, tenant).path("accessToken").asText();
+    var selectedTokens = select(member, tenant);
+    String old = selectedTokens.path("accessToken").asText();
+    String refresh = selectedTokens.path("refreshToken").asText();
     http.perform(
             payload(
                 authorized(
@@ -634,7 +622,7 @@ class IamApplicationTest {
         .andExpect(status().isNoContent());
     var refreshed =
         body(
-            http.perform(authorized(post("/api/v1/auth/refresh"), old))
+            http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", refresh)))
                 .andExpect(status().isOk())
                 .andReturn());
     assertThat(refreshed.path("permissions").toString())
@@ -646,13 +634,8 @@ class IamApplicationTest {
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/tenants/" + tenant), old))
         .andExpect(status().isForbidden());
-    assertThat(
-            body(http.perform(authorized(post("/api/v1/auth/refresh"), old))
-                    .andExpect(status().isOk())
-                    .andReturn())
-                .path("tenantId")
-                .isNull())
-        .isTrue();
+    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", refresh)))
+        .andExpect(status().isForbidden());
   }
 
   @Test
@@ -783,32 +766,54 @@ class IamApplicationTest {
   }
 
   @Test
-  void aValidSignatureCannotAttachAnotherUsersSession() throws Exception {
-    Account first = register("first@example.com");
-    Account second = register("second@example.com");
-    UUID session =
-        db.queryForObject(
-            "SELECT id FROM sessions WHERE user_id=CAST(? AS uuid)", UUID.class, first.id());
-    String mismatched =
-        tokens.generateSessionAccessToken(
-            UUID.fromString(second.id()),
-            null,
-            "PLATFORM_ADMIN",
-            session,
-            List.of(),
-            Set.of(),
-            java.time.Instant.now().plusSeconds(3600));
-    http.perform(authorized(get("/api/v1/auth/me"), mismatched))
+  void refreshRequiresRefreshJwtAndPreservesAbsoluteExpiry() throws Exception {
+    Account user = register("refresh@example.com");
+    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", user.token())))
         .andExpect(status().isUnauthorized());
-    String legacy =
-        tokens.generateAccessToken(
-            UUID.fromString(first.id()),
-            UUID.randomUUID(),
-            first.email(),
-            "First",
-            List.of("OWNER"),
-            List.of("tenant.manage"));
-    http.perform(authorized(get("/api/v1/auth/me"), legacy)).andExpect(status().isUnauthorized());
+    http.perform(post("/api/v1/auth/refresh")).andExpect(status().isBadRequest());
+    var refreshed =
+        body(
+            http.perform(
+                    payload(
+                        post("/api/v1/auth/refresh"), Map.of("refreshToken", user.refreshToken())))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn());
+    assertThat(tokens.parseClaims(refreshed.path("refreshToken").asText()).getExpiration())
+        .isEqualTo(tokens.parseClaims(user.refreshToken()).getExpiration());
+    assertThat(refreshed.path("refreshToken").asText()).isNotEqualTo(user.refreshToken());
+    String expired =
+        tokens.generateRefreshToken(
+            UUID.fromString(user.id()), null, java.time.Instant.now().minusSeconds(1));
+    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", expired)))
+        .andExpect(status().isUnauthorized());
+    String foreign =
+        tokens.generateRefreshToken(
+            UUID.randomUUID(), null, java.time.Instant.now().plusSeconds(100));
+    http.perform(
+            payload(
+                post("/api/v1/auth/switch-tenant")
+                    .header("Authorization", "Bearer " + user.token()),
+                Map.of("tenantId", UUID.randomUUID(), "refreshToken", foreign)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void expiredAccessDoesNotPreventRefresh() throws Exception {
+    Account user = register("expired-access@example.com");
+    var expiredProvider =
+        new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
+            "test-jwt-secret-with-at-least-thirty-two-bytes", -1000);
+    String expired =
+        expiredProvider.generateIamAccessToken(
+            UUID.fromString(user.id()), null, "USER", List.of(), Set.of());
+    http.perform(authorized(get("/api/v1/auth/me"), expired)).andExpect(status().isUnauthorized());
+    http.perform(
+            payload(
+                authorized(post("/api/v1/auth/refresh"), expired),
+                Map.of("refreshToken", user.refreshToken())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accessToken").isNotEmpty());
   }
 
   @Test
@@ -855,9 +860,7 @@ class IamApplicationTest {
     Account owner = register("rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
-    var actor =
-        new IamActor(
-            user.id(), UUID.randomUUID(), null, user.systemRole().name(), List.of(), Set.of());
+    var actor = new IamActor(user.id(), null, user.systemRole().name(), List.of(), Set.of());
     var events = org.mockito.Mockito.mock(IamEventPublisherPort.class);
     org.mockito.Mockito.doAnswer(
             invocation -> {
@@ -899,9 +902,7 @@ class IamApplicationTest {
     Account owner = register("owner-init-rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
-    var actor =
-        new IamActor(
-            user.id(), UUID.randomUUID(), null, user.systemRole().name(), List.of(), Set.of());
+    var actor = new IamActor(user.id(), null, user.systemRole().name(), List.of(), Set.of());
     var access = context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class);
     var failingAccess =
         org.mockito.Mockito.mock(com.vishop.iam.modules.access.application.api.AccessApi.class);
@@ -997,7 +998,7 @@ class IamApplicationTest {
     tx.executeWithoutResult(status -> relay.publish());
     assertThat(
             db.queryForObject(
-                "SELECT count(*) FROM outbox_events WHERE status='PUBLISHED' AND published_at IS NOT NULL",
+                "SELECT count(*) FROM outbox_events WHERE status='PUBLISHED' AND published_at IS NOT NULL AND event_type='UserRegistered'",
                 Integer.class))
         .isEqualTo(1);
     register("second@example.com");
@@ -1009,12 +1010,13 @@ class IamApplicationTest {
     tx.executeWithoutResult(status -> relay.publish());
     assertThat(
             db.queryForObject(
-                "SELECT retry_count FROM outbox_events WHERE status='PENDING'", Integer.class))
+                "SELECT retry_count FROM outbox_events WHERE status='PENDING' AND event_type='UserRegistered'",
+                Integer.class))
         .isEqualTo(1);
     for (int i = 0; i < 4; i++) tx.executeWithoutResult(status -> relay.publish());
     assertThat(
             db.queryForObject(
-                "SELECT count(*) FROM outbox_events WHERE status='FAILED' AND published_at IS NULL",
+                "SELECT count(*) FROM outbox_events WHERE status='FAILED' AND published_at IS NULL AND event_type='UserRegistered'",
                 Integer.class))
         .isEqualTo(1);
   }

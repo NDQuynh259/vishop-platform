@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.vishop.gateway.security.IamAuthenticationClient;
-import com.vishop.gateway.security.IamAuthenticationClient.Identity;
+import com.vishop.gateway.security.AuthenticationFailure;
+import com.vishop.gateway.security.LocalAuthenticationVerifier;
+import com.vishop.gateway.security.LocalAuthenticationVerifier.Identity;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.mockito.ArgumentCaptor;
@@ -15,39 +15,27 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.*;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 class AuthenticationGlobalFilterTest {
   private final UUID user = UUID.randomUUID(), tenant = UUID.randomUUID();
-  private IamAuthenticationClient iam;
+  private LocalAuthenticationVerifier authentication;
   private GatewayFilterChain chain;
   private AuthenticationGlobalFilter filter;
   private Identity identity;
 
   @BeforeEach
   void setup() {
-    iam = mock(IamAuthenticationClient.class);
+    authentication = mock(LocalAuthenticationVerifier.class);
     chain = mock(GatewayFilterChain.class);
-    filter = new AuthenticationGlobalFilter(iam, "http://localhost:3000");
-    identity =
-        new Identity(
-            user,
-            tenant,
-            "USER",
-            List.of("OWNER"),
-            Set.of("tenant.view", "order.create"),
-            "trusted-jwt");
+    filter = new AuthenticationGlobalFilter(authentication, "http://localhost:3000");
+    identity = new Identity(user, tenant, "trusted-jwt");
     when(chain.filter(any())).thenReturn(Mono.empty());
-    when(iam.authenticate(anyString(), anyBoolean()))
-        .thenReturn(
-            Mono.error(
-                WebClientResponseException.create(
-                    401, "Unauthorized", HttpHeaders.EMPTY, new byte[0], StandardCharsets.UTF_8)));
-    when(iam.authenticate("valid-token", true)).thenReturn(Mono.just(identity));
-    when(iam.authenticate("opaque-cookie", false)).thenReturn(Mono.just(identity));
+    when(authentication.authenticate(anyString(), anyBoolean()))
+        .thenReturn(Mono.error(new AuthenticationFailure(401, "unauthorized")));
+    when(authentication.authenticate("valid-token", true)).thenReturn(Mono.just(identity));
   }
 
   private MockServerWebExchange run(MockServerHttpRequest request) {
@@ -72,21 +60,21 @@ class AuthenticationGlobalFilterTest {
             .build());
     assertThat(forwarded().getRequest().getHeaders())
         .doesNotContainKeys("X-User-Id", "X-Tenant-Id", "X-Iam-Internal-Key");
-    verifyNoInteractions(iam);
+    verifyNoInteractions(authentication);
   }
 
   @Test
   void optionsDoesNotRequireCredentials() {
     run(MockServerHttpRequest.method(HttpMethod.OPTIONS, "/api/v1/tenants").build());
     verify(chain).filter(any());
-    verifyNoInteractions(iam);
+    verifyNoInteractions(authentication);
   }
 
   @Test
   void identityEndpointsStillRequireAuthentication() {
     var exchange = run(MockServerHttpRequest.get("/api/v1/auth/me").build());
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    verifyNoInteractions(iam);
+    verifyNoInteractions(authentication);
     verify(chain, never()).filter(any());
   }
 
@@ -102,7 +90,7 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void validBearerUsesLiveIamGrantsAndReplacesUntrustedContext() {
+  void validBearerPreservesVerifiedTokenAndReplacesUntrustedContext() {
     run(
         MockServerHttpRequest.get("/api/v1/tenants")
             .header("Authorization", "Bearer valid-token")
@@ -121,43 +109,31 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void opaqueCookieIsMediatedIntoJwtWithoutForwardingCookie() {
-    run(
-        MockServerHttpRequest.get("/api/v1/tenants")
-            .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
-            .build());
-    assertThat(forwarded().getRequest().getHeaders().getFirst("Authorization"))
-        .isEqualTo("Bearer trusted-jwt");
-    verify(iam).authenticate("opaque-cookie", false);
-  }
-
-  @Test
-  void cookieWritesRequireAnAllowedOriginBeforeMediation() {
+  void cookiesNeverAuthenticateBusinessRequests() {
     var exchange =
         run(
-            MockServerHttpRequest.post("/api/v1/auth/logout")
+            MockServerHttpRequest.get("/api/v1/tenants")
                 .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
                 .build());
-    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-    verifyNoInteractions(iam);
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    verifyNoInteractions(authentication);
     verify(chain, never()).filter(any());
   }
 
   @Test
-  void cookieWritesWithAllowedOriginProceed() {
+  void refreshReachesIamEvenWithExpiredAccessToken() {
     run(
-        MockServerHttpRequest.post("/api/v1/auth/logout")
-            .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
-            .header("Origin", "http://localhost:3000")
+        MockServerHttpRequest.post("/api/v1/auth/refresh")
+            .header("Authorization", "Bearer expired")
             .build());
     verify(chain).filter(any());
-    verify(iam).authenticate("opaque-cookie", false);
+    verifyNoInteractions(authentication);
   }
 
   @Test
   void tenantlessIdentityCanUseIamButCannotUseBusinessApis() {
-    var global = new Identity(user, null, "USER", List.of(), Set.of(), "identity-jwt");
-    when(iam.authenticate("identity", true)).thenReturn(Mono.just(global));
+    var global = new Identity(user, null, "identity-jwt");
+    when(authentication.authenticate("identity", true)).thenReturn(Mono.just(global));
     run(
         MockServerHttpRequest.get("/api/v1/auth/me")
             .header("Authorization", "Bearer identity")
@@ -174,8 +150,8 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void iamFailureFailsClosed() {
-    when(iam.authenticate("valid-token", true))
+  void unexpectedVerificationFailureFailsClosed() {
+    when(authentication.authenticate("valid-token", true))
         .thenReturn(Mono.error(new IllegalStateException("IAM unavailable")));
     var exchange =
         run(
@@ -195,6 +171,6 @@ class AuthenticationGlobalFilterTest {
                 .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
                 .build());
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    verifyNoInteractions(iam);
+    verifyNoInteractions(authentication);
   }
 }

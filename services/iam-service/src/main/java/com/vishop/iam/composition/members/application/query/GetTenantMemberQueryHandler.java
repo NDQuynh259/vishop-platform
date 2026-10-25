@@ -24,7 +24,8 @@ public class GetTenantMemberQueryHandler
   @Override
   @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public TenantMemberResponseDto handle(GetTenantMemberQuery query) {
-    String permission = query.actor().userId().equals(query.user()) ? null : CommonPermissions.Tenant.MEMBER_VIEW;
+    String permission =
+        query.actor().userId().equals(query.user()) ? null : CommonPermissions.Tenant.MEMBER_VIEW;
     authorization.requireAccess(query.actor().userId(), query.tenant(), permission);
     return reads
         .member(query.tenant(), query.user())

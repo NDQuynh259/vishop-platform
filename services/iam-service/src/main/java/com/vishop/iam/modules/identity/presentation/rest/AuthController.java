@@ -1,23 +1,21 @@
 package com.vishop.iam.modules.identity.presentation.rest;
 
 import com.vishop.iam.infra.security.IamPrincipal;
-import com.vishop.iam.modules.identity.application.command.LoginCommand;
-import com.vishop.iam.modules.identity.application.command.LogoutCommand;
-import com.vishop.iam.modules.identity.application.command.RegisterUserCommand;
-import com.vishop.iam.modules.identity.application.command.SwitchTenantCommand;
+import com.vishop.iam.modules.identity.application.command.login.LoginCommand;
+import com.vishop.iam.modules.identity.application.command.logout.LogoutCommand;
+import com.vishop.iam.modules.identity.application.command.register.RegisterUserCommand;
+import com.vishop.iam.modules.identity.application.command.switchtenant.SwitchTenantCommand;
 import com.vishop.iam.modules.identity.application.dto.AuthResponse;
-import com.vishop.iam.modules.identity.application.dto.AuthenticationResult;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.query.GetUserProfileQuery;
 import com.vishop.iam.modules.identity.application.query.RefreshAccessTokenQuery;
-import com.vishop.iam.modules.identity.infrastructure.security.IamAuthenticationFilter;
 import com.vishop.iam.modules.identity.presentation.rest.dto.LoginRequest;
+import com.vishop.iam.modules.identity.presentation.rest.dto.RefreshTokenRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.RegisterUserRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.SwitchTenantRequest;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -27,18 +25,10 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
   private final CommandBus commands;
   private final QueryBus queries;
-  private final boolean secure;
-  private final long sessionSeconds;
 
-  public AuthController(
-      CommandBus commands,
-      QueryBus queries,
-      @Value("${vishop.security.cookie.secure:true}") boolean secure,
-      @Value("${vishop.security.session-seconds:604800}") long sessionSeconds) {
+  public AuthController(CommandBus commands, QueryBus queries) {
     this.commands = commands;
     this.queries = queries;
-    this.secure = secure;
-    this.sessionSeconds = sessionSeconds;
   }
 
   @PostMapping("/register")
@@ -60,22 +50,8 @@ public class AuthController {
         commands.dispatch(new LoginCommand(request.email(), request.password())), HttpStatus.OK);
   }
 
-  private ResponseEntity<AuthResponse> authenticated(
-      AuthenticationResult result, HttpStatus status) {
-    return ResponseEntity.status(status)
-        .cacheControl(CacheControl.noStore())
-        .header(HttpHeaders.SET_COOKIE, cookie(result.sessionToken(), sessionSeconds).toString())
-        .body(result.response());
-  }
-
-  private ResponseCookie cookie(String value, long seconds) {
-    return ResponseCookie.from(IamAuthenticationFilter.COOKIE, value)
-        .httpOnly(true)
-        .secure(secure)
-        .sameSite("Lax")
-        .path("/")
-        .maxAge(seconds)
-        .build();
+  private ResponseEntity<AuthResponse> authenticated(AuthResponse result, HttpStatus status) {
+    return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(result);
   }
 
   @GetMapping("/me")
@@ -89,21 +65,22 @@ public class AuthController {
       @Valid @RequestBody SwitchTenantRequest request) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(commands.dispatch(new SwitchTenantCommand(actor.actor(), request.tenantId())));
+        .body(
+            commands.dispatch(
+                new SwitchTenantCommand(
+                    actor.actor(), request.tenantId(), request.refreshToken())));
   }
 
   @PostMapping("/refresh")
-  public ResponseEntity<AuthResponse> refresh(@AuthenticationPrincipal IamPrincipal actor) {
+  public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(queries.dispatch(new RefreshAccessTokenQuery(actor.actor())));
+        .body(queries.dispatch(new RefreshAccessTokenQuery(request.refreshToken())));
   }
 
   @PostMapping("/logout")
   public ResponseEntity<Void> logout(@AuthenticationPrincipal IamPrincipal actor) {
     commands.dispatch(new LogoutCommand(actor.actor()));
-    return ResponseEntity.noContent()
-        .header(HttpHeaders.SET_COOKIE, cookie("", 0).toString())
-        .build();
+    return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
   }
 }

@@ -6,6 +6,9 @@ Tài liệu này lưu trữ phân tích chuyên sâu về kiến trúc, mô hìn
 
 ---
 
+
+> Phần phân tích NestJS/Prisma bên dưới mô tả nguồn lịch sử, không phải xác thực runtime Java. Session của nguồn không được port. Java hiện dùng JWT stateless access/refresh; xem [security architecture](security-architecture.md).
+
 ## 1. Tổng quan Kiến trúc Dự án Gốc (`api-vishop`)
 
 Dự án gốc là một hệ thống **Modular Monolith** được tổ chức theo chuẩn **DDD (Domain-Driven Design) + CQRS** trong một **Nx Monorepo**:
@@ -214,8 +217,8 @@ Dưới đây là bảng đối chiếu trực tiếp giữa giải pháp trong 
 | :--- | :--- | :--- |
 | **Kiểu kiến trúc** | Modular Monolith (1 repo, 1 database). | Các runtime hiện tại: `iam-service`, `api-gateway`, `audit-service`; nghiệp vụ khác có bounded context riêng. |
 | **ORM / Migration** | Prisma 7 (`prisma/schema.prisma`). | Toàn dự án dùng Spring Data JPA/EntityManager; Hibernate chỉ validate mapping, Flyway SQL quản lý schema. |
-| **Cơ chế Xác thực** | Better Auth Cookie Session (`better-auth.session_token`). | Opaque session cookie `vishop_session` và JWT gắn session ID; introspection kiểm tra trạng thái/quyền hiện tại. |
-| **Tenant Context Ingestion** | NestJS `TenantContextGuard` truy vấn DB `tenant_members` in-flight. | Gateway hỏi IAM trước khi chuyển request, nhận JWT mới cho downstream; metadata tenant lấy từ kết quả IAM. |
+| **Cơ chế Xác thực** | Better Auth Cookie Session (`better-auth.session_token`). | Stateless JWT access/refresh tokens; local access verification and refresh-time grant checks. |
+| **Tenant Context Ingestion** | NestJS `TenantContextGuard` truy vấn DB `tenant_members` in-flight. | Gateway xác minh access JWT tại chỗ và chuyển tiếp JWT nguyên vẹn; metadata tenant lấy từ claims đã xác minh. |
 | **Quản lý Context trong Service** | `request.tenant` (Fastify Request property). | [TenantContext.java](../../libs/common-security/src/main/java/io/github/coreplatform/common/security/context/TenantContext.java) (`ThreadLocal<UUID>`) tự động dọn dẹp ở `finally`. |
 | **Bảo vệ API / Kiểm tra Quyền** | Decorator `@RequirePermission('key')` + `PermissionGuard`. | IAM kiểm tra membership/permission hiện tại trong application service; downstream dùng Spring method security cho tenant permissions. |
 | **Nhận diện Người dùng** | Decorator `@CurrentUser()`. | IAM dùng `@AuthenticationPrincipal IamPrincipal`; downstream dùng `CommonUserDetails`. |
@@ -230,15 +233,15 @@ Dưới đây là bảng đối chiếu trực tiếp giữa giải pháp trong 
    * Java [CommonPermissions.java](../../libs/common-security/src/main/java/io/github/coreplatform/common/security/constants/CommonPermissions.java) hiện có **34** key. Schema IAM dùng danh mục này và có kiểm thử so sánh quyền OWNER với code. Cần tiếp tục đối chiếu với source gốc trước khi khẳng định tương đương đầy đủ; con số 75 trong bản mô tả trước chưa khớp code hiện tại.
 2. **Kế thừa 4 Role chuẩn (`OWNER`, `OPERATIONS`, `WAREHOUSE`, `ACCOUNTING`)**:
    * Khi khởi tạo Tenant mới, hệ thống tự động sinh 4 vai trò này để người dùng có thể sử dụng ngay mà không cần cấu hình thủ công.
-3. **Ý tưởng `activeTenantId` trên Session**:
-   * Token phản ánh **tổ chức đang chọn**. `POST /api/v1/auth/switch-tenant` kiểm tra membership hoạt động rồi cấp token mới, cập nhật lựa chọn của session. Đổi gian hàng trong cùng tổ chức không nhất thiết đổi tenant/token.
+3. **Tenant context trong JWT thay cho state đăng nhập của nguồn**:
+   * Token phản ánh **tổ chức đang chọn**. `POST /api/v1/auth/switch-tenant` nhận Bearer access và `{tenantId,refreshToken}`, kiểm tra membership rồi trả cặp JWT mang tenant đã chọn. Đổi gian hàng trong cùng tổ chức không nhất thiết đổi tenant/token.
 
 ## 7. Hành vi bảo mật hiện tại
 
-* Runtime IAM đã quản lý global user, system role, membership N:M, invitation và session; xem [IAM README](../../services/iam-service/README.md).
+* Runtime IAM đã quản lý global user, system role, membership N:M, invitation và JWT access/refresh; xem [IAM README](../../services/iam-service/README.md).
 * Public registration tạo global user với system role USER, không nhận tenant/role từ client. API tạo tenant ghi tenant, bốn role và OWNER membership trong cùng transaction.
-* Gateway xóa header danh tính/tenant và khóa nội bộ do client gửi. Cookie/JWT được introspect qua IAM; downstream nhận JWT mới và tự xác minh chữ ký/issuer/audience. Không dựng principal từ header.
+* Gateway xóa header danh tính/tenant và khoá nội bộ do client gửi, xác minh access JWT tại chỗ và chuyển tiếp JWT nguyên vẹn. Downstream tự verify JWT; không dựng principal từ header client.
 * Tenant OWNER chỉ có tenant permissions. API CMS kiểm tra system role PLATFORM_ADMIN; system admin không mặc nhiên là thành viên mọi tenant. Không có bảng permissions cho system role.
-* IAM và downstream dùng JWT_SECRET; gateway gọi IAM bằng IAM_INTERNAL_SECRET riêng (đều tối thiểu 32 byte). Cookie mặc định Secure; local HTTP có thể tắt qua cấu hình riêng.
-* Logout thu hồi session. User bị khóa mất toàn bộ session; thay đổi role/membership/tenant status được kiểm tra ở request tiếp theo qua IAM/gateway. Downstream phải ở sau gateway để hưởng kiểm tra thu hồi trực tuyến.
+* IAM, gateway và downstream dùng JWT_SECRET (ít nhất 32 byte). IAM_INTERNAL_SECRET chỉ bảo vệ introspection tương thích nội bộ; gateway không introspect IAM và không dùng cookie đăng nhập.
+Current IAM logout is stateless: clients discard tokens, which remain valid until expiry. See [security architecture](security-architecture.md).
 * Source đã chuyển runtime/configuration. Việc import dữ liệu từ database cũ và chuyển traffic trên hạ tầng đang chạy vẫn phải làm theo hướng dẫn cutover.

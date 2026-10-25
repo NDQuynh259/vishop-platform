@@ -7,8 +7,8 @@ Tài liệu này tổng hợp toàn bộ các API Endpoints, kiểu dữ liệu 
 ## 🔐 1. Quy chuẩn chung & Authentication
 
 - **Base URL**: `http://localhost:3000/api/v1` (hoặc biến môi trường `NEXT_PUBLIC_API_URL`).
-- **Authentication**: Session cookie `better-auth.session_token` (đính kèm tự động trong các request với `credentials: 'include'`).
-- **Multi-tenancy**: Gửi header `X-Tenant-Id: <tenant-id>` (nếu tài khoản thuộc nhiều tenant) hoặc session tự resolve tenant active.
+- **Authentication**: gửi `Authorization: Bearer <accessToken>`. Login/register trả cặp JWT trong JSON body; refresh bằng `POST /api/v1/auth/refresh` với `{refreshToken}` khi access hết hạn.
+- **Multi-tenancy**: tenant context nằm trong access JWT. Đổi tenant qua `POST /api/v1/auth/switch-tenant` với `{tenantId,refreshToken}` và Bearer access; dùng cặp JWT mới. Không dùng header tenant để override quyền.
 - **Phân trang chuẩn (§0.2 / §0.3)**:
   - **Cursor Pagination** (`limit`, `cursor`):
     - Trả về: `{ data: T[], pageInfo: { hasNextPage: boolean, nextCursor: string | null } }`

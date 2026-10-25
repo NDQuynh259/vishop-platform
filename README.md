@@ -14,6 +14,7 @@ Reusable Java 21 and Spring Boot 3.3 libraries for building service-oriented app
 - `common-domain`: DDD building blocks, CQRS contracts, and domain exceptions
 - `common-web`: Spring web adapters, pagination, and CQRS dispatch
 - `common-security`: request context primitives
+- [`common-cache`](libs/common-cache/README.md): shared Redis cache with JSON values and TTL; callers choose when to cache
 - `common-events`: event envelope and Kafka integration
 - `common-persistence`: outbox and idempotent consumer support
 - `common-saga`: saga orchestration primitives
@@ -39,15 +40,16 @@ accounts, system roles, tenants, memberships, tenant roles and permissions in `v
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
 
-IAM uses opaque HTTP-only session cookies and session-backed access JWTs. Gateway asks
-IAM for current grants on protected requests; logout and membership/role changes apply
-on subsequent requests. CMS requires the user's system role PLATFORM_ADMIN; a tenant
-OWNER does not get CMS access, and a system administrator gets no automatic tenant membership.
+IAM uses stateless JWT access and refresh tokens, returned in the response body. Gateway
+and downstream services verify access tokens locally without session storage, Redis state
+or IAM introspection. Refresh accepts `{ "refreshToken": "..." }`; logout records an audit
+event and clients discard both tokens. Issued JWTs remain valid until expiry.
+CMS requires PLATFORM_ADMIN; tenant OWNER does not grant CMS access.
 
 Configure independent JWT_SECRET and IAM_INTERNAL_SECRET secrets (at least 32 bytes each),
-database credentials and exact ALLOWED_ORIGINS. Downstream services verify JWT_SECRET;
-gateway uses IAM_INTERNAL_SECRET to call IAM's private introspection endpoint. Cookie
-Secure defaults to true; the dev Compose file overrides it for local HTTP only.
+database credentials and exact ALLOWED_ORIGINS. JWT_SECRET is shared by IAM, gateway and
+downstream verification. IAM_INTERNAL_SECRET protects the private compatibility endpoint.
+
 
 Public registration accepts email, password and fullName; tenantId/role assignment is
 rejected. Create an organization through POST /api/v1/tenants, then select it through

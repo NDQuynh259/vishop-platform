@@ -13,7 +13,7 @@ Không gọi HTTP giữa hai service để hoàn tất transaction này.
 
 **Trạng thái triển khai:** runtime IAM đã thay hai service cũ trong Gradle, gateway
 và Docker. Repository JPA dùng schema IAM mới. Đã có API tài khoản, tenant, membership,
-role, invitation, CMS và session/token. Dữ liệu từ database cũ chưa tự động chuyển.
+role, invitation, CMS và JWT access/refresh. Dữ liệu từ database cũ chưa tự động chuyển.
 Xem [hướng dẫn runtime và chuyển dữ liệu](../../services/iam-service/README.md).
 
 ## 2. Thuật ngữ và phạm vi dữ liệu
@@ -52,7 +52,6 @@ erDiagram
     roles ||--o{ role_permissions : grants
     roles ||--o{ tenant_members : assigned
     tenants ||--o{ tenant_invitations : invites
-    users ||--o{ sessions : owns
 ```
 
 * `users`: global identity, email, password hash, system role và trạng thái tài khoản.
@@ -64,12 +63,11 @@ erDiagram
 * `tenant_members`: unique `(tenant_id, user_id)`, có `role_id`, trạng thái
   `ACTIVE`/`INACTIVE`. Khi tái gia nhập thì kích hoạt lại membership cũ.
 * `tenant_invitations`: email, role, người mời, thời hạn, trạng thái và hash token.
-* `sessions`: user, hash token, thời hạn, thời điểm thu hồi và `active_tenant_id` tùy chọn.
 * `outbox_events`, `consumed_messages`: event publication và idempotent consumption.
 
-Composite foreign keys bảo đảm role của membership/invitation cùng tenant;
-người mời và người nhận sau khi accept có membership trong tenant; session chỉ chọn
-tenant mà user có membership. Không có `accessibleShopIds` hay bảng gán role theo shop.
+Composite foreign keys keep membership/invitation roles in the same tenant. Invitation
+participants must have the expected membership. JWT tenant selection is validated in IAM;
+there is no session table or persisted active tenant. There are no shop-scoped role grants.
 
 Insert tenant tự sinh bốn built-in role và permission mặc định trong cùng transaction.
 Application phải tạo OWNER membership trong transaction onboarding; trigger không tự
@@ -78,30 +76,22 @@ và kiểm tra status/MFA/permission. Foreign key không thay thế các kiểm 
 
 ## 5. Luồng HTTP và chọn tenant
 
-Gateway introspect cookie/session hoặc JWT qua IAM ở mỗi request. IAM kiểm tra session,
-user, tenant, membership và quyền hiện tại rồi cấp JWT cho downstream. Downstream xác minh
-JWT do IAM ký; header `X-Tenant-Id` do client gửi không tự cấp quyền truy cập. Gateway
-trả 503 nếu không xác minh được qua IAM; không dùng quyền cũ từ cache.
+Gateway and downstream verify Bearer access JWTs locally. Authentication does not read
+session state, Redis or IAM introspection. Client-supplied tenant headers confer no authority.
 
-Luồng đang triển khai:
+1. Login/register return JWT access and refresh tokens; tenant can be null.
+2. List active memberships, create a tenant or accept an invitation.
+3. Switch tenant with Bearer access plus `{tenantId,refreshToken}`. IAM checks active
+   membership and grants before returning a pair carrying the selected tenant.
+4. Business APIs require tenant context and permission; CMS checks system role separately.
+5. Refresh with `{refreshToken}` even after access expiry. IAM reads current account/grants.
 
-1. Xác thực danh tính và tạo session; user có thể chưa có tenant.
-2. Liệt kê membership còn hoạt động trong tenant còn hoạt động.
-3. Chọn tenant hoặc tạo tenant/nhận lời mời theo nghiệp vụ onboarding.
-4. Kiểm tra membership, trạng thái user/tenant và role trước khi cấp context/token.
-5. API nghiệp vụ yêu cầu tenant context và permission phù hợp; API CMS kiểm tra
-   system role riêng.
-
-`active_tenant_id` thuộc session, không thuộc user. Hai browser/profile có session
-riêng chọn tenant độc lập. Hai tab dùng chung cookie không tự có context riêng;
-nếu hỗ trợ đa tenant theo tab thì client cần giữ context/token theo tab/request.
-
-Cookie `vishop_session` chứa token ngẫu nhiên, DB chỉ lưu hash. JWT có session ID và
-hạn 15 phút; session mặc định bảy ngày. Logout thu hồi session; IAM/gateway kiểm tra
-quyền và trạng thái hiện tại ở request tiếp theo. Khóa user thu hồi toàn bộ session.
-Cookie-authenticated writes yêu cầu Origin hợp lệ. Downstream phải ở sau gateway vì
-xác minh JWT cục bộ không tự kiểm tra session trong DB. MFA chưa triển khai;
-role yêu cầu MFA bị chặn cho đến khi có luồng xác minh phù hợp.
+Each tab can retain its own JWT pair and tenant context. Tenant selection is carried in
+signed claims, with no mutable session selection. Access defaults to 15 minutes and refresh
+to seven days. Refresh preserves the absolute refresh expiry. Logout records audit and the
+client discards tokens; existing JWTs remain valid until expiry. MFA is not implemented;
+roles requiring MFA remain blocked until the appropriate verification flow exists.
+See [security architecture](security-architecture.md).
 
 ## 6. Cô lập dữ liệu nghiệp vụ và messaging
 
@@ -122,7 +112,7 @@ role yêu cầu MFA bị chặn cho đến khi có luồng xác minh phù hợp.
 1. Chuẩn bị `vishop_iam` bằng bộ migration riêng của `iam-service` và kiểm thử ràng buộc.
 2. Lập mapping dữ liệu/role cũ; kiểm tra user tham chiếu tenant không tồn tại và email
    trùng khi bỏ phân biệt hoa thường. Không biến legacy OWNER/ADMIN thành system admin.
-3. Runtime mới đã dùng repository, onboarding, membership, RBAC, session/token và CMS của IAM.
+3. Runtime mới đã dùng repository, onboarding, membership, RBAC, JWT access/refresh và CMS của IAM.
 4. Dừng writer cũ, backup/import dữ liệu với ID giữ nguyên, xác minh owner/quyền/outbox.
 5. Source đã đổi cấu hình và route sang IAM. Khi triển khai, vô hiệu hóa token cũ và ngừng container cũ.
 

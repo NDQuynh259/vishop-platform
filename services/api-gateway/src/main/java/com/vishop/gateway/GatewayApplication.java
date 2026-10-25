@@ -9,7 +9,6 @@ import org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDeta
 @SpringBootApplication(
     exclude = {
       ReactiveSecurityAutoConfiguration.class,
-      io.github.coreplatform.common.security.jwt.JwtAutoConfiguration.class,
       ReactiveUserDetailsServiceAutoConfiguration.class,
       ReactiveManagementWebSecurityAutoConfiguration.class
     })

@@ -18,7 +18,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class IamAuthenticationFilter extends OncePerRequestFilter {
-  public static final String COOKIE = "vishop_session";
   private final QueryBus queries;
   private final ObjectMapper json;
   private final Set<String> origins;
@@ -30,7 +29,11 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
   }
 
   private boolean publicPath(String path) {
-    return Set.of("/api/v1/auth/login", "/api/v1/auth/register", "/internal/auth/introspect")
+    return Set.of(
+                "/api/v1/auth/login",
+                "/api/v1/auth/register",
+                "/api/v1/auth/refresh",
+                "/internal/auth/introspect")
             .contains(path)
         || path.startsWith("/actuator/")
         || path.startsWith("/swagger-ui")
@@ -52,26 +55,17 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         return;
       }
       String authorization = request.getHeader("Authorization");
-      boolean bearer = authorization != null;
-      String credential = null;
-      if (bearer)
-        credential = authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "";
-      else if (request.getCookies() != null)
-        for (Cookie cookie : request.getCookies())
-          if (cookie.getName().equals(COOKIE)) credential = cookie.getValue();
+      String credential =
+          authorization != null && authorization.startsWith("Bearer ")
+              ? authorization.substring(7).trim()
+              : null;
       if (credential == null || credential.isBlank()) {
-        error(response, 401, "Authentication is required");
-        return;
-      }
-      if (!bearer
-          && !Set.of("GET", "HEAD", "OPTIONS").contains(request.getMethod())
-          && origin == null) {
-        error(response, 403, "Cookie-authenticated writes require an allowed Origin");
+        error(response, 401, "Bearer access token is required");
         return;
       }
       IamPrincipal actor;
       try {
-        actor = new IamPrincipal(queries.dispatch(new AuthenticateQuery(credential, bearer)));
+        actor = new IamPrincipal(queries.dispatch(new AuthenticateQuery(credential, true)));
       } catch (DomainException failure) {
         error(response, failure instanceof ForbiddenException ? 403 : 401, failure.getMessage());
         return;

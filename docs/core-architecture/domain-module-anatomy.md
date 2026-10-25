@@ -36,13 +36,18 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   │   ├── infrastructure/persistence/         # JPA entity, repository và adapter
 │   │   └── presentation/rest/                  # TenantController, TenantCmsController
 │   ├── identity/
-│   │   ├── domain/                             # User, Session, SystemRole, PasswordPolicy, ports
+│   │   ├── domain/                             # User, SystemRole, PasswordPolicy, ports
 │   │   ├── application/
 │   │   │   ├── api/                           # IdentityApi, IdentityApplicationApi
 │   │   │   ├── mapper/UserViewMapper.java
-│   │   │   ├── command/                        # RegisterUser, Login, Logout, SwitchTenant, CMS user
+│   │   │   ├── command/                        # Gom theo bộ use case: login/, register/, logout/, switchtenant/, cms/
+│   │   │   │   ├── login/                      # LoginCommand, LoginCommandHandler
+│   │   │   │   ├── register/                   # RegisterUserCommand, RegisterUserCommandHandler
+│   │   │   │   ├── logout/                     # LogoutCommand, LogoutCommandHandler
+│   │   │   │   ├── switchtenant/               # SwitchTenantCommand, SwitchTenantCommandHandler
+│   │   │   │   └── cms/                        # ChangeSystemRole/Status Commands & Handlers
 │   │   │   ├── query/                          # Authenticate, Introspect, RefreshAccessToken, profile
-│   │   │   ├── service/                        # SessionService, IdentityAuthorizationService
+│   │   │   ├── service/                        # TokenService, IdentityAuthorizationService
 │   │   │   ├── port/                           # Password/token/UserRead ports
 │   │   │   └── dto/
 │   │   ├── infrastructure/                     # JPA entities/repositories, JWT/password/authentication adapters
@@ -133,6 +138,16 @@ Tầng trung tâm chứa toàn bộ quy tắc nghiệp vụ cốt lõi. **Không
 
 Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
 
+#### Chuẩn thiết kế Command và CommandHandler trong CQRS
+- **Tổ chức theo bộ use case (Feature Subpackages)**: Trong package `application/command/`, các use case được gom thành các thư mục con riêng biệt (ví dụ: `login/`, `register/`, `logout/`, `switchtenant/`, `cms/`). Mỗi thư mục chứa đúng cặp `*Command` và `*CommandHandler` tương ứng.
+- **`Command` khai báo là `public record`**:
+  - `record`: Bất biến (immutable), không có setter, đảm bảo an toàn tuyệt đối khi luân chuyển dữ liệu qua `CommandBus`.
+  - `public`: Bắt buộc để Controller ở tầng `presentation.rest` (nằm khác package) có thể khởi tạo (`new XxxCommand(...)`) và gửi vào `CommandBus.dispatch(...)`.
+- **`CommandHandler` với `@Override` và `@Transactional`**:
+  - Cài đặt interface `CommandHandler<C, R>` với hàm `@Override R handle(C command)`, cho phép `CommandBus` tự động ánh xạ và gọi đúng bean xử lý.
+  - `@Transactional`: Đóng vai trò ranh giới giao dịch (Transaction Boundary), đảm bảo tính nguyên tử giữa việc ghi dữ liệu vào database (như tạo user, đổi quyền) và ghi sự kiện vào Transactional Outbox (`outbox.append`). Nếu có bất kỳ lỗi nào, DB và Outbox cùng rollback 100%.
+  - `isolation = Isolation.REPEATABLE_READ`: Dùng cho các use case cấp phát token hoặc quyền hạn để đóng băng snapshot dữ liệu, ngăn ngừa tình trạng token bị ghép quyền cũ với security version mới khi có mutation đồng thời.
+
 #### `composition/onboarding/application/command/CreateTenantCommand.java` & `CreateTenantCommandHandler.java`
 * `Command` là một record mang dữ liệu đầu vào thực hiện hành động ghi.
 * `CommandHandler` bọc trong transaction (`@Transactional`):
@@ -168,7 +183,7 @@ Hiện thực hóa các Ports của Domain bằng các công nghệ cụ thể.
 #### `persistence/repositories/SpringDataTenantRepository.java`
 * Interface Spring Data JPA kế thừa `JpaRepository` và `JpaSpecificationExecutor`.
 * Repository cung cấp truy vấn khóa tenant và danh sách phân trang. `TenantJpaEntity` dùng `@Version`.
-* Identity và access có entity/repository riêng: `UserJpaEntity`, `SessionJpaEntity`, `RoleJpaEntity`, `MembershipJpaEntity`, `InvitationJpaEntity`. `RoleJpaEntity` ánh xạ `role_permissions` bằng `@ElementCollection`; các truy vấn thời hạn/cập nhật nguyên tử dùng SQL qua Spring Data JPA. Domain model không có annotation persistence.
+* Identity và access có entity/repository riêng: `UserJpaEntity`, `RoleJpaEntity`, `MembershipJpaEntity`, `InvitationJpaEntity`. `RoleJpaEntity` ánh xạ `role_permissions` bằng `@ElementCollection`; các truy vấn thời hạn/cập nhật nguyên tử dùng SQL qua Spring Data JPA. Domain model không có annotation persistence.
 
 #### `persistence/adapters/TenantRepositoryAdapter.java`
 * Lớp cài đặt interface `TenantRepositoryPort`.
@@ -200,12 +215,15 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 
 - `IdentityApi`: kiểm tra tài khoản, quyền CMS và cung cấp user view hiện tại.
 - `TenantApi`: tạo tenant, kiểm tra trạng thái, trả tenant view và lấy khóa trong transaction của use case.
-- `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để phân giải session; composition dùng để hoàn tất onboarding.
+- `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để cấp JWT theo tenant; composition dùng để hoàn tất onboarding.
 - `UserActivityPort` thuộc access domain; `IdentityUserActivityAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
 
 Interface công khai nằm trong `modules/<tên>/application/api`, DTO công khai nằm trong `application/dto` của chính module: `UserView`, `TenantResponseDto`, `TenantMemberResponseDto`. Các kiểu công khai này không phụ thuộc framework, infra hay nội bộ module. Implementation cùng nằm trong `application/api` nhưng chỉ được dùng nội bộ; việc map domain sang DTO nằm trong `application/mapper`. Phân hệ khác và composition chỉ dùng interface công khai và ba DTO được phép, không gọi implementation, repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc các module, composition, hạ tầng hay framework.
 
-`IamActor` chỉ chứa user ID, session ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
+`IamActor` chỉ chứa user ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
+
+JWT issuance uses `TokenService` and verification uses `AccessTokenPort`.
+Authentication has no session persistence or Redis security projection.
 
 ## 4. Kiểm tra ranh giới kiến trúc
 

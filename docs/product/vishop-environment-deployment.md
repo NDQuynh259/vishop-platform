@@ -51,10 +51,24 @@ Ba loại secret cần phân biệt, xử lý khác nhau:
 Mã hoá at-rest, không bao giờ ghi ra log — nguyên văn yêu cầu §6.3. Tự động gia hạn trước khi hết hạn (FR-02-05); thất bại thì chuyển shop sang trạng thái "Cần kết nối lại" và bắn cảnh báo, không âm thầm giữ token chết. **Sửa 07/08/2026:** mọi uỷ quyền của ViShop đều là scope `seller` — TikTok Shop không cho Public App chọn vai trò `creator`/`partner` khi uỷ quyền, mô hình 3 role đó đã bị bỏ (xem build-spec §2.2, runbook §1.2/§2). Scope `seller` có webhook deauthorization/token-expiration, nên cảnh báo hết hạn ủy quyền ở mốc 7/3/1 ngày (FR-02-06) đi bằng webhook, không polling. Chỉ giữ một vòng quét dự phòng 6 giờ ở BE để bắt trường hợp webhook rơi — không phải cơ chế chính.
 
 **Phiên đăng nhập của người dùng.**
-Repo backend dùng **Better Auth 1.6 với phiên lưu ở cookie** (`better-auth.session_token`, mount tại `/api/auth/*`), phiên lưu trong Postgres. **Không có JWT, không có access/refresh token cho người dùng ViShop** — mọi thiết kế dựa trên ba thứ đó là sai nền tảng, và repo cấm cả việc dùng lại thuật ngữ đó trong code. Đừng nhầm với token TikTok ở mục trên: token TikTok là bí mật của một kết nối với sàn, không phải phiên đăng nhập.
+Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
+API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
+chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
+không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
+trên mỗi request.
+
+`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
+đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
+mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
+Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
+
+Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
+không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
+`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
+rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
 
 **Danh tính dịch vụ nội bộ (service-to-service).**
-Không dùng static API key sống lâu giữa các service nội bộ. Danh tính service nạp từ biến môi trường theo từng môi trường triển khai, khoá xoay vòng định kỳ. Yêu cầu "mọi API nội bộ kiểm tra tenant + quyền ở tầng server, không tin client" (§6.3) được đáp ứng ở tầng ứng dụng bằng phiên Better Auth cho lời gọi có người dùng, và bằng danh tính service cho lời gọi máy-với-máy — **không phát hành JWT riêng cho việc này**, vì thêm một cơ chế xác thực thứ hai là thêm một chỗ để cấu hình sai.
+Lời gọi có người dùng chuyển tiếp Bearer access JWT; gateway và service xác minh JWT_SECRET theo cấu hình hiện tại. IAM_INTERNAL_SECRET chỉ bảo vệ endpoint introspection tương thích nội bộ; gateway không dùng endpoint này để xác thực request. Danh tính máy-với-máy ngoài phạm vi token người dùng cần contract riêng, không được giả lập user bằng header client.
 
 **Secret hạ tầng (DB credential, signing key, client secret app TikTok).**
 Lưu trong secret manager tập trung (KMS-backed), không đặt plaintext trong biến môi trường hay file cấu hình commit vào repo. Rotate định kỳ, tách biệt secret theo môi trường (dev/staging/prod dùng key khác nhau tuyệt đối).

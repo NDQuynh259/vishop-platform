@@ -5,11 +5,17 @@ import java.time.Instant;
 import java.util.UUID;
 
 public interface AccessTokenPort {
-  record Identity(UUID userId, UUID sessionId, UUID tenantId) {}
+  record RefreshIdentity(UUID userId, UUID tenantId, Instant expiresAt) {}
 
-  Identity verify(String credential);
+  IamActor verify(String credential);
 
-  String issue(IamActor actor, Instant sessionExpiresAt);
+  RefreshIdentity verifyRefresh(String credential);
+
+  String issue(IamActor actor);
+
+  String issueRefresh(UUID userId, UUID tenantId, Instant expiresAt);
 
   long expirationMs();
+
+  long refreshExpirationMs();
 }

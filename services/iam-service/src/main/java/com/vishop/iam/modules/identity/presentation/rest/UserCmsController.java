@@ -1,8 +1,8 @@
 package com.vishop.iam.modules.identity.presentation.rest;
 
 import com.vishop.iam.infra.security.IamPrincipal;
-import com.vishop.iam.modules.identity.application.command.ChangeSystemRoleCommand;
-import com.vishop.iam.modules.identity.application.command.ChangeUserStatusCommand;
+import com.vishop.iam.modules.identity.application.command.cms.ChangeSystemRoleCommand;
+import com.vishop.iam.modules.identity.application.command.cms.ChangeUserStatusCommand;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.query.ListCmsUsersQuery;
 import com.vishop.iam.modules.identity.presentation.rest.dto.ChangeSystemRoleRequest;

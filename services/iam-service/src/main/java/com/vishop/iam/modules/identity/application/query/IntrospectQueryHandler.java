@@ -9,12 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class IntrospectQueryHandler implements QueryHandler<IntrospectQuery, ResolvedIdentity> {
   private final AuthenticateQueryHandler authenticate;
-  private final RefreshAccessTokenQueryHandler refresh;
 
-  public IntrospectQueryHandler(
-      AuthenticateQueryHandler authenticate, RefreshAccessTokenQueryHandler refresh) {
+  public IntrospectQueryHandler(AuthenticateQueryHandler authenticate) {
     this.authenticate = authenticate;
-    this.refresh = refresh;
   }
 
   @Override
@@ -24,13 +21,12 @@ public class IntrospectQueryHandler implements QueryHandler<IntrospectQuery, Res
     var bearer = query.bearer();
 
     var actor = authenticate.handle(new AuthenticateQuery(credential, bearer));
-    var response = refresh.handle(new RefreshAccessTokenQuery(actor));
     return new ResolvedIdentity(
         actor.userId(),
         actor.tenantId(),
         actor.systemRole(),
         actor.roles(),
         actor.permissions(),
-        response.accessToken());
+        credential);
   }
 }

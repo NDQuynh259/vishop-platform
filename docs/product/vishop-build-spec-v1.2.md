@@ -338,22 +338,22 @@ Ký hiệu: **P0** không có thì không ship · **P1** fast follow · **P2** c
 
 Một user có thể thuộc nhiều tenant, và một tenant có nhiều user. Quan hệ N–N được lưu bằng `TenantMember`, duy nhất theo cặp `(tenantId, userId)`; role và quyền theo tenant gắn với membership, không gắn trực tiếp lên `User`. Trong giao diện seller-facing, tenant được gọi là **tổ chức** và chứa nhiều gian hàng.
 
-**Quyết định contract 14/08/2026 (FR-01-13):** lựa chọn tổ chức của browser được lưu trong server-side session và dùng lại cho các request sau. `X-Tenant-Id` được giữ làm override cho caller machine-to-machine, không phải cơ chế chính của SPA.
+**Contract hiện tại (FR-01-13):** tổ chức hiện hành nằm trong JWT. Browser gọi `POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`, rồi dùng cặp token mới. Không lưu lựa chọn đăng nhập trên server; `X-Tenant-Id` không override tenant đã ký.
 
 **Quyết định sản phẩm 14/08/2026 (FR-01-14):** mọi user đã đăng nhập được tạo thêm tổ chức và trở thành `OWNER` của tổ chức đó. Tạo mới không chuyển hay sao chép gian hàng, thành viên hoặc dữ liệu từ tổ chức đang dùng.
 
 **BR-01-01** Số tài khoản phụ giới hạn theo gói; vượt thì chặn tạo, không tự tính thêm tiền
 **BR-01-02** Chủ tài khoản không tự hạ quyền chính mình
-**BR-01-03** User bị vô hiệu → huỷ mọi phiên trong ≤60 giây
+**BR-01-03** User bị vô hiệu không được cấp token mới; IAM kiểm tra trạng thái hiện tại trong use case. JWT đã cấp tại gateway/downstream còn hiệu lực đến expiry (access mặc định 15 phút); không cam kết thu hồi trong 60 giây với mô hình stateless.
 
 **AC**
 
 - [ ] User vai trò Vận hành gán Shop A → chỉ thấy đơn Shop A, không có tuỳ chọn lọc sang shop khác
 - [ ] User không có quyền `Xem giá vốn` → UI hiện `***` **và API response cũng không chứa giá trị thật**
-- [ ] User có nhiều membership và session chưa có active tenant → phải chọn tổ chức trước khi vào màn tenant-scoped
+- [ ] User có nhiều membership và JWT chưa có tenant context → phải chọn tổ chức trước khi vào màn tenant-scoped
 - [ ] Switch tổ chức → request tiếp theo dùng tenant mới; không hiển thị dữ liệu cache của tenant cũ
 - [ ] User tạo thêm tổ chức → có membership `OWNER`; tổ chức mới không chứa shop hoặc dữ liệu của tổ chức cũ
-- [ ] Vô hiệu hoá user B → B bị đăng xuất trong ≤60s kèm thông báo
+- [ ] Vô hiệu hoá user B → login/refresh bị từ chối; use case IAM kiểm tra trạng thái hiện tại. Access JWT đã cấp tại gateway/downstream còn hiệu lực đến expiry; client xoá token khi nhận lỗi xác thực.
 
 ---
 

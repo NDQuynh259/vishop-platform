@@ -27,7 +27,7 @@ class IamSchemaTest {
             .dataSource(postgres.getPostgresDatabase())
             .locations("classpath:db/migration")
             .load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
   }
 
   @AfterAll
@@ -234,47 +234,6 @@ class IamSchemaTest {
   }
 
   @Test
-  void sessionsRequireMembershipForActiveTenantAndKeepIndependentSelections() throws Exception {
-    UUID user = user("session@example.com");
-    UUID first = tenant("first-tenant");
-    UUID second = tenant("second-tenant");
-    member(user, first, role(first, "OWNER"));
-    execute(
-        "INSERT INTO sessions(user_id,token_hash,expires_at) VALUES (?,repeat('a',64),now()+interval '1 hour')",
-        user);
-    execute(
-        "INSERT INTO sessions(user_id,token_hash,active_tenant_id,expires_at) "
-            + "VALUES (?,repeat('b',64),?,now()+interval '1 hour')",
-        user,
-        first);
-    rejects(
-        "23503",
-        "INSERT INTO sessions(user_id,token_hash,active_tenant_id,expires_at) "
-            + "VALUES (?,repeat('c',64),?,now()+interval '1 hour')",
-        user,
-        second);
-    member(user, second, role(second, "ACCOUNTING"));
-    execute(
-        "INSERT INTO sessions(user_id,token_hash,active_tenant_id,expires_at) "
-            + "VALUES (?,repeat('c',64),?,now()+interval '1 hour')",
-        user,
-        second);
-    assertThat(
-            scalar("SELECT count(DISTINCT active_tenant_id) FROM sessions WHERE user_id=?", user))
-        .isEqualTo("2");
-    rejects(
-        "23514",
-        "INSERT INTO sessions(user_id,token_hash,expires_at) "
-            + "VALUES (?,'raw-session-token',now()+interval '1 hour')",
-        user);
-    rejects(
-        "23514",
-        "INSERT INTO sessions(user_id,token_hash,expires_at) "
-            + "VALUES (?,repeat('d',64),now()-interval '1 hour')",
-        user);
-  }
-
-  @Test
   void invitationsCannotUseForeignTenantRolesOrInviters() throws Exception {
     UUID user = user("inviter@example.com");
     UUID first = tenant("first-tenant");
@@ -330,5 +289,17 @@ class IamSchemaTest {
     member(recipient, tenant, role(tenant, "OPERATIONS"));
     execute(accept, recipient);
     assertThat(scalar("SELECT status FROM tenant_invitations")).isEqualTo("ACCEPTED");
+  }
+
+  @Test
+  void statelessAuthenticationRemovesSessionAndProjectionStorage() throws Exception {
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('sessions','security_states')"))
+        .isEqualTo("0");
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'security_%'"))
+        .isEqualTo("0");
   }
 }

@@ -30,7 +30,7 @@ public class AcceptInvitationCommandHandler
   private final RoleRepositoryPort roleRepository;
   private final InvitationRepositoryPort invitationRepository;
   private final TenantApi tenants;
-  private final OpaqueTokenPort sessionTokens;
+  private final OpaqueTokenPort invitationTokens;
   private final AccessAuthorizationService authorization;
   private final RoleAssignmentPolicy rolePolicy;
 
@@ -41,7 +41,7 @@ public class AcceptInvitationCommandHandler
       RoleRepositoryPort roleRepository,
       InvitationRepositoryPort invitationRepository,
       TenantApi tenants,
-      OpaqueTokenPort sessionTokens,
+      OpaqueTokenPort invitationTokens,
       AccessAuthorizationService authorization,
       RoleAssignmentPolicy rolePolicy) {
     this.identities = identities;
@@ -50,7 +50,7 @@ public class AcceptInvitationCommandHandler
     this.roleRepository = roleRepository;
     this.invitationRepository = invitationRepository;
     this.tenants = tenants;
-    this.sessionTokens = sessionTokens;
+    this.invitationTokens = invitationTokens;
     this.authorization = authorization;
     this.rolePolicy = rolePolicy;
   }
@@ -64,12 +64,12 @@ public class AcceptInvitationCommandHandler
     UserView user = identities.requireActive(actor.userId());
     var invitation =
         invitationRepository
-            .invitation(sessionTokens.hash(token))
+            .invitation(invitationTokens.hash(token))
             .orElseThrow(() -> new BadRequestException("Invalid or expired invitation"));
     tenants.lockTenant(invitation.tenantId());
     invitation =
         invitationRepository
-            .invitation(sessionTokens.hash(token))
+            .invitation(invitationTokens.hash(token))
             .orElseThrow(() -> new BadRequestException("Invalid or expired invitation"));
     if (!invitation.email().equalsIgnoreCase(user.email()))
       throw new ForbiddenException("Invitation email does not match your account");

@@ -46,14 +46,12 @@ class InternalHeaderAuthFilterTest {
     request.addHeader(
         "Authorization",
         "Bearer "
-            + tokens.generateSessionAccessToken(
+            + tokens.generateIamAccessToken(
                 userId,
                 tenantId,
                 "USER",
-                UUID.randomUUID(),
                 java.util.List.of("OWNER", "OPERATOR"),
-                java.util.Set.of("order.create", "product.view"),
-                java.time.Instant.now().plusSeconds(3600)));
+                java.util.Set.of("order.create", "product.view")));
     request.addHeader(SecurityHeaders.X_USER_ID, userId.toString());
     request.addHeader(SecurityHeaders.X_TENANT_ID, tenantId.toString());
     request.addHeader(SecurityHeaders.X_USER_ROLES, "OWNER, OPERATOR");

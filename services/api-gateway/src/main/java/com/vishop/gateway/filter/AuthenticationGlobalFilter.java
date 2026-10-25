@@ -1,6 +1,7 @@
 package com.vishop.gateway.filter;
 
-import com.vishop.gateway.security.IamAuthenticationClient;
+import com.vishop.gateway.security.AuthenticationFailure;
+import com.vishop.gateway.security.LocalAuthenticationVerifier;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -12,20 +13,19 @@ import org.springframework.core.Ordered;
 import org.springframework.http.*;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-/** IAM is the authority for live sessions and grants; untrusted headers never confer access. */
+/** Stateless JWT verification; untrusted headers never confer access. */
 @Component
 public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
-  private final IamAuthenticationClient iam;
+  private final LocalAuthenticationVerifier authentication;
   private final Set<String> origins;
 
   public AuthenticationGlobalFilter(
-      IamAuthenticationClient iam,
+      LocalAuthenticationVerifier authentication,
       @Value("${vishop.security.allowed-origins:http://localhost:3000}") String origins) {
-    this.iam = iam;
+    this.authentication = authentication;
     this.origins = Arrays.stream(origins.split(",")).map(String::trim).collect(Collectors.toSet());
   }
 
@@ -55,31 +55,22 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
       return chain.filter(exchange);
 
     String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-    boolean bearer = authorization != null;
     String credential =
-        bearer
-            ? (authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "")
-            : request.getCookies().containsKey("vishop_session")
-                ? request.getCookies().getFirst("vishop_session").getValue()
-                : null;
+        authorization != null && authorization.startsWith("Bearer ")
+            ? authorization.substring(7).trim()
+            : null;
     if (credential == null || credential.isBlank()) return error(exchange, 401);
-    // Mediation turns a cookie into a Bearer token downstream, so enforce CSRF here too.
-    if (!bearer
-        && !Set.of(HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS)
-            .contains(request.getMethod())
-        && origin == null) return error(exchange, 403);
 
-    return iam.authenticate(credential, bearer)
+    return authentication
+        .authenticate(credential, true)
         .materialize()
         .flatMap(
             signal -> {
               if (signal.isOnError()) {
                 var failure = signal.getThrowable();
-                return error(
-                    exchange,
-                    failure instanceof WebClientResponseException.Unauthorized
-                        ? 401
-                        : failure instanceof WebClientResponseException.Forbidden ? 403 : 503);
+                return failure instanceof AuthenticationFailure rejected
+                    ? error(exchange, rejected.status(), rejected.code())
+                    : error(exchange, 503);
               }
               var identity = signal.get();
               if (identity == null) return error(exchange, 503);
@@ -111,6 +102,7 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
     return Set.of(
                 "/api/v1/auth/login",
                 "/api/v1/auth/register",
+                "/api/v1/auth/refresh",
                 "/actuator/health",
                 "/actuator/health/liveness",
                 "/actuator/health/readiness")
@@ -120,11 +112,18 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
   }
 
   private Mono<Void> error(ServerWebExchange exchange, int status) {
+    return error(
+        exchange,
+        status,
+        status == 401
+            ? "unauthorized"
+            : status == 403 ? "forbidden" : "authentication-unavailable");
+  }
+
+  private Mono<Void> error(ServerWebExchange exchange, int status, String code) {
     var response = exchange.getResponse();
     response.setStatusCode(HttpStatusCode.valueOf(status));
     response.getHeaders().setContentType(MediaType.APPLICATION_PROBLEM_JSON);
-    String code =
-        status == 401 ? "unauthorized" : status == 403 ? "forbidden" : "authentication-unavailable";
     String title =
         status == 401 ? "Unauthorized" : status == 403 ? "Forbidden" : "Authentication unavailable";
     byte[] json =

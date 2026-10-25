@@ -17,8 +17,8 @@ riêng; không xóa volume để áp dụng lại init script.
 
 Thiết lập `JWT_SECRET`, `IAM_INTERNAL_SECRET`, database credentials và
 `ALLOWED_ORIGINS` theo [hướng dẫn IAM](../services/iam-service/README.md).
-Các tiến trình phải có cấu hình secrets tương ứng. Chỉ với HTTP local, đặt
-`VISHOP_SECURITY_COOKIE_SECURE=false` cho IAM.
+Gateway and downstream use `JWT_SECRET` for local verification; authentication does not
+require Redis. `IAM_INTERNAL_SECRET` only protects internal introspection.
 
 ## Build và kiểm thử
 
@@ -27,7 +27,7 @@ Các tiến trình phải có cấu hình secrets tương ứng. Chỉ với HTT
 .\gradlew.bat :services:iam-service:bootJar :services:api-gateway:bootJar :services:audit-service:bootJar
 ```
 
-Kiểm thử IAM dùng PostgreSQL tạm riêng, không cần Docker và không truy cập database vận hành.
+Kiểm thử IAM/gateway dùng PostgreSQL tạm riêng, không cần Docker và không truy cập database vận hành.
 
 ## Khởi chạy
 
@@ -59,9 +59,11 @@ Gửi request qua gateway tại `http://localhost:8000`:
 2. Dùng accessToken trả về trong `Authorization: Bearer ...`.
 3. `POST /api/v1/tenants` với code/name: IAM tạo tenant, bốn role và OWNER membership
    trong cùng transaction, đồng thời ghi event vào outbox.
-4. `POST /api/v1/auth/switch-tenant` với tenantId để lấy JWT của tenant đã chọn.
-5. Kiểm tra event trên topic `vishop.tenant.events` trong Kafka UI (:8088).
+4. `POST /api/v1/auth/switch-tenant` with `{tenantId,refreshToken}` and Bearer access
+   token returns a new pair carrying the selected tenant.
+5. After access expiry, call `POST /api/v1/auth/refresh` with `{refreshToken}` and use the new pair.
+6. Inspect `vishop.tenant.events` and `vishop.user.events` in Kafka UI (:8088).
    Audit service nhận cả event user và tenant, xử lý chống trùng rồi lưu audit log.
 
-API, response mới, session cookie và hướng dẫn chuyển dữ liệu được mô tả trong
+API, response mới, JWT access/refresh và hướng dẫn chuyển dữ liệu được mô tả trong
 [IAM README](../services/iam-service/README.md) và [kiến trúc tenancy](core-architecture/tenancy.md).

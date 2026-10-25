@@ -1,6 +1,6 @@
 # Core Platform Architecture
 
-This directory is the central index for reusable Core Platform architecture and preserved architecture documents from the ViShop source project. The source documents remain unchanged in `docs/architecture/`.
+This directory is the central index for reusable Core Platform architecture and preserved architecture documents from the ViShop source project. The source reference is explicitly historical; current authentication follows the Java IAM contract.
 
 ## Core platform
 
@@ -19,8 +19,8 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Service module anatomy](./domain-module-anatomy.md) | Domain, application, infrastructure, and presentation layers |
 | [Multi-tenancy](./tenancy.md) | Tenant context propagation, 1-to-N membership data modeling, and service boundary decomposition |
 | [Idempotency and tracing](./idempotency-and-tracing.md) | Deduplication and request/message correlation |
-| [Observability](./observability.md) | Logs, metrics, distributed tracing, and alerting |
-| [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, Dynamic Token Revocation (Redis/Kafka), and Multi-Tenancy |
+| [Observability](./observability-architecture.md) | Logs, metrics, distributed tracing, and alerting |
+| [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, stateless JWT access/refresh and expiry-based logout, and Multi-Tenancy |
 | [Inter-service communication](./inter-service-communication.md) | Protocols: Kafka event-driven, REST/HTTPS, and gRPC decision framework |
 | [Spring Boot migration plan](./spring-boot-microservices-migration-plan.md) | Migration strategy and operational considerations |
 | [Source project reference](./source-project-architecture-reference.md) | Deep-dive analysis of NestJS `api-vishop` architecture, Prisma schema, Better Auth sessions, and mapping to Java |
@@ -39,4 +39,4 @@ The shared Java namespace is `io.github.coreplatform.common`. See [module bounda
 
 ## Source-project documents
 
-The handbook entries above are preserved copies of the original documents in `docs/architecture/`. They describe the ViShop source project and may refer to services or infrastructure that are not part of the reusable core build. Shared module links in these copies point to the current core source paths where available.
+The source-project reference preserves the NestJS design for comparison. Current IAM/gateway, JWT authentication and tenant bootstrap are documented in the security, gateway and tenancy guides above; historical source behavior is not a runtime guarantee.

@@ -141,28 +141,43 @@ public class JwtTokenProvider {
     return expirationMs;
   }
 
-  /** Session-backed IAM access token. A null tenant is valid only for identity/IAM APIs. */
-  public String generateSessionAccessToken(
+  public String generateIamAccessToken(
       UUID userId,
       UUID tenantId,
       String systemRole,
-      UUID sessionId,
       List<String> roles,
-      java.util.Set<String> permissions,
-      java.time.Instant sessionExpiry) {
+      java.util.Set<String> permissions) {
     long now = System.currentTimeMillis();
     return Jwts.builder()
         .subject(userId.toString())
         .issuer("iam-service")
-        .claim("aud", "vishop-api")
+        .audience()
+        .add("vishop-api")
+        .and()
+        .id(UUID.randomUUID().toString())
         .claim("token_use", "access")
-        .claim("sid", sessionId.toString())
         .claim("tenantId", tenantId == null ? null : tenantId.toString())
         .claim("systemRole", systemRole)
         .claim("roles", roles)
         .claim("permissions", permissions)
         .issuedAt(new Date(now))
-        .expiration(new Date(Math.min(now + expirationMs, sessionExpiry.toEpochMilli())))
+        .expiration(new Date(now + expirationMs))
+        .signWith(key)
+        .compact();
+  }
+
+  public String generateRefreshToken(UUID userId, UUID tenantId, java.time.Instant expiresAt) {
+    return Jwts.builder()
+        .subject(userId.toString())
+        .issuer("iam-service")
+        .audience()
+        .add("vishop-refresh")
+        .and()
+        .id(UUID.randomUUID().toString())
+        .claim("token_use", "refresh")
+        .claim("tenantId", tenantId == null ? null : tenantId.toString())
+        .issuedAt(new Date())
+        .expiration(Date.from(expiresAt))
         .signWith(key)
         .compact();
   }

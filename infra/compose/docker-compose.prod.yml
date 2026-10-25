@@ -98,7 +98,6 @@ services:
     expose:
       - "6379"
     volumes:
-      - redis-prod-data:/data
     deploy:
       resources:
         limits:
@@ -304,7 +303,7 @@ services:
       - "${GATEWAY_PORT:-8000}:8000"
     environment:
       SERVER_PORT: 8000
-      IAM_INTERNAL_SECRET: ${IAM_INTERNAL_SECRET:?Set IAM_INTERNAL_SECRET to a random value of at least 32 bytes}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       SPRING_PROFILES_ACTIVE: prod
       IAM_SERVICE_URL: http://iam-service:8080
@@ -321,7 +320,6 @@ services:
           cpus: "0.25"
           memory: 512M
     depends_on:
-      - iam-service
       - audit-service
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/actuator/health || exit 1"]

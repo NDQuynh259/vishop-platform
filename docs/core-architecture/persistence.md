@@ -65,7 +65,7 @@ Không sửa/xóa migration đã chạy. Thêm migration version mới cho mỗi
 - Use case ghi giữ `@Transactional`; query dùng `@Transactional(readOnly = true)` và isolation phù hợp.
 - Native bulk update phải flush thay đổi đang chờ và clear persistence context khi cần, tránh đọc entity cũ sau SQL.
 - Giữ điều kiện tenant, optimistic version, khóa tenant/advisory lock và kiểm tra thời hạn trong database.
-- Session/invitation dùng SQL qua Spring Data JPA khi cần `clock_timestamp()` hoặc cập nhật có điều kiện để tránh race.
+- Invitation dùng SQL qua Spring Data JPA khi cần `clock_timestamp()` hoặc cập nhật có điều kiện để tránh race.
 - IAM dùng chung `OutboxEventEntity`/repository của `common-persistence`; relay khóa bản ghi bằng native `FOR UPDATE SKIP LOCKED` trong transaction và chỉ đánh dấu gửi sau Kafka acknowledgement.
 
 ## Kiểm tra tự động

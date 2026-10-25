@@ -24,6 +24,7 @@ class IamArchitectureTest {
               "com.vishop.iam..infrastructure..",
               "com.vishop.iam.infra..",
               "com.vishop.iam..presentation..",
+              "io.github.coreplatform.common.cache..",
               "org.springframework..",
               "jakarta..",
               "com.fasterxml.jackson..");
@@ -41,6 +42,8 @@ class IamArchitectureTest {
               "com.vishop.iam..presentation..",
               "org.springframework.security..",
               "org.springframework.jdbc..",
+              "org.springframework.data.redis..",
+              "io.github.coreplatform.common.cache..",
               "org.springframework.web..",
               "jakarta.validation..",
               "jakarta.persistence..",
@@ -102,6 +105,7 @@ class IamArchitectureTest {
               "javax.sql..",
               "org.flywaydb..",
               "org.apache.kafka..",
+              "io.github.coreplatform.common.cache..",
               "io.jsonwebtoken..");
 
   @ArchTest

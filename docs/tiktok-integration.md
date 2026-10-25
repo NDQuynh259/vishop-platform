@@ -36,8 +36,8 @@ FE                        api                          TikTok
  │◀── { shops: [{ shopId, shopName }] } ┤               │
 ```
 
-`state` is single-use and carries the tenant, so the callback — which arrives with no
-session cookie of ours — still lands on the right tenant. It is consumed _before_ the code
+`state` is single-use and carries the tenant, so the callback — which does not carry the
+user's Bearer access JWT — still lands on the right tenant. It is consumed _before_ the code
 exchange, so a replayed callback cannot start a second exchange.
 
 **BR-02-01 Enforcement**: A physical TikTok shop (`externalShopId`, unique together with `platform`) can only be linked to a single tenant at a time. If the callback resolves a shop already belonging to another tenant, a `409 Conflict` (`TIKTOK_SHOP_OWNED_BY_ANOTHER_TENANT`) is thrown. Newly connected shops start with `PENDING_INITIAL_SYNC` status before initial sync completes.

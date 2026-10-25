@@ -4,17 +4,31 @@ Defense-in-depth tooling covers source, dependencies, code, images, and supply-c
 All layers have local scripts. The current GitLab pipeline does not yet invoke those security
 scripts, so a clean local run is additional evidence rather than CI parity.
 
-## Owner-issued temporary passwords
+## Authentication hiện tại và reset password
 
-An owner reset revokes every session and sets `User.mustChangePassword`. The target may sign in with
-the temporary password, but may use only Better Auth session inspection, sign-out, password recovery,
-and password-change routes until they choose a new password. Nest HTTP routes and WebSocket
-handshake/revalidation enforce the same gate. Better Auth requests must enforce it in
-`better-auth.config.ts` because `/api/auth/*` is hijacked before Nest guards run.
+Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
+API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
+chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
+không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
+trên mỗi request.
 
-The reset endpoint returns `409 member_credential_account_not_found` for social-only accounts. It
-must never report success, revoke sessions, or set the forced-change flag when no credential password
-was updated.
+`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
+đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
+mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
+Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
+
+Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
+không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
+`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
+rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
+
+Owner-issued temporary password và `mustChangePassword` là đặc tả từ backend nguồn,
+chưa được triển khai trong Java IAM hiện tại. Không dùng luồng Better Auth/NestJS hoặc
+cam kết revoke phiên làm hướng dẫn vận hành. Trước khi triển khai reset password, cần
+định nghĩa riêng quy tắc đổi mật khẩu bắt buộc và hiệu lực của JWT đã cấp.
+
+Các công cụ scanning bên dưới là hướng dẫn nguồn; kiểm tra script tồn tại trong checkout
+trước khi chạy, không coi chúng là kiểm tra CI đã được áp dụng cho Java.
 
 ## Layers
 

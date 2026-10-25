@@ -5,7 +5,6 @@ import io.github.coreplatform.common.security.context.TenantContext;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -47,7 +46,6 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
               || !"access".equals(claims.get("token_use"))) {
             throw new IllegalArgumentException("An IAM access token is required");
           }
-          UUID.fromString(claims.get("sid", String.class));
           UUID userId = UUID.fromString(claims.getSubject());
           UUID tenantId = UUID.fromString(claims.get("tenantId", String.class));
           var authorities = new ArrayList<GrantedAuthority>();
@@ -91,14 +89,6 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
     String authorization = request.getHeader("Authorization");
     if (authorization != null) {
       return authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "";
-    }
-    if (request.getCookies() != null) {
-      for (Cookie cookie : request.getCookies()) {
-        if (Set.of("better-auth.session_token", "vishop_session", "vishop_token")
-            .contains(cookie.getName())) {
-          return cookie.getValue();
-        }
-      }
     }
     return null;
   }

@@ -5,6 +5,7 @@ include(
     "libs:common-domain",
     "libs:common-web",
     "libs:common-security",
+    "libs:common-cache",
     "libs:common-events",
     "libs:common-persistence",
     "libs:common-observability",

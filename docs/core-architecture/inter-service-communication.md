@@ -87,7 +87,7 @@ Tất cả các thao tác làm **thay đổi trạng thái dữ liệu (State Mu
 
 gRPC được áp dụng khi giao tiếp nội bộ (East-West) đạt tới các tiêu chí:
 1. **Độ trễ yêu cầu dưới 5ms (Hot-path Latency Sensitive)**:
-   - Phân giải Token và kiểm tra quyền hạn: API Gateway xác thực tính hợp lệ của JWT token hoặc phân quyền RBAC bằng cách gọi HTTP introspection sang `iam-service` cho hàng nghìn request/giây.
+   - Xác thực access JWT: API Gateway kiểm tra chữ ký, issuer, audience, token_use và thời hạn tại chỗ; không gọi IAM HTTP introspection trên mỗi request. Refresh token chỉ được gửi tới IAM để cấp lại token.
 2. **Thu thập Dữ liệu Viễn thám & Giám sát (Telemetry Streaming)**:
    - Các service đẩy log, metrics, traces tới OpenTelemetry Collector qua giao thức OTLP gRPC (cổng `4317` đã cấu hình trong `docker-compose.infra.yml`).
 3. **Tiết kiệm tài nguyên mạng và CPU**:

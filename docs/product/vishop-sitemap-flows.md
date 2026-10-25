@@ -143,7 +143,7 @@ M01 · FR-01-03, FR-01-04, FR-01-06"]
 
 ### 1.1a Màn chọn và bộ chọn tổ chức
 
-`/select-tenant` là màn chặn trước App Shell khi phiên đăng nhập có nhiều membership nhưng chưa có tổ chức hiện hành. Mỗi dòng chỉ hiển thị tên tổ chức và vai trò của user trong tổ chức đó; không hiển thị shop như một cấp ngang hàng, vì một tổ chức chứa nhiều shop. Chọn một dòng gọi endpoint switch, lưu lựa chọn vào server-side session rồi mới đi vào `/work`.
+`/select-tenant` là màn chặn trước App Shell khi phiên đăng nhập có nhiều membership nhưng chưa có tổ chức hiện hành. Mỗi dòng chỉ hiển thị tên tổ chức và vai trò của user trong tổ chức đó; không hiển thị shop như một cấp ngang hàng, vì một tổ chức chứa nhiều shop. Chọn một dòng gọi endpoint switch, nhận và lưu cặp JWT mang tenant context mới ở client rồi mới đi vào `/work`.
 
 Bộ chọn thường trực nằm ở đầu sidebar của App Shell, ngay trên menu nghiệp vụ, và luôn hiển thị tên tổ chức hiện hành. Với đúng một membership, App Shell vào thẳng tổ chức đó; bộ chọn chỉ hiển thị tên cùng hành động **Tạo tổ chức**, không mở một danh sách một phần tử. Với từ hai membership trở lên, bấm vào bộ chọn mở danh sách tên tổ chức, vai trò và dấu chọn hiện hành, kèm hành động **Tạo tổ chức**.
 
@@ -187,31 +187,32 @@ Khi switch thành công, FE xoá toàn bộ cache mang phạm vi tenant, tải l
 sequenceDiagram
     actor U as User đã đăng nhập
     participant P as Màn chọn / App Shell picker
-    participant S as Server-side session
+    participant S as IAM JWT API
     participant A as API tenant-scoped
 
     P->>S: GET /api/v1/tenants (FR-01-12)
     alt Đúng một tổ chức
         S-->>P: Danh sách một membership, chọn tự động
-        P->>S: PUT /api/v1/sessions/active-tenant (FR-01-13)
+        P->>S: POST /api/v1/auth/switch-tenant {tenantId,refreshToken} + Bearer access (FR-01-13)
     else Nhiều tổ chức, phiên chưa có lựa chọn
         S-->>P: Danh sách membership
         P-->>U: Hiện /select-tenant
         U->>P: Chọn tổ chức
-        P->>S: PUT /api/v1/sessions/active-tenant
+        P->>S: POST /api/v1/auth/switch-tenant {tenantId,refreshToken} + Bearer access
     else Tạo thêm tổ chức (FR-01-14)
         U->>P: Nhập tên tổ chức
         P->>S: POST /api/v1/tenants
         S-->>P: Tổ chức mới, user là OWNER
-        P->>S: PUT /api/v1/sessions/active-tenant
+        P->>S: POST /api/v1/auth/switch-tenant {tenantId,refreshToken} + Bearer access
     end
-    S-->>P: Xác nhận activeTenantId
+    S-->>P: accessToken + refreshToken + tenantId
     P->>P: Xoá cache tenant-scoped, tải lại quyền và shop scope
-    P->>A: Request tiếp theo dùng active tenant trong session
+    P->>P: Thay cặp JWT cho tenant đã chọn
+    P->>A: Request tiếp theo dùng Bearer accessToken mới
     A-->>P: Dữ liệu của tổ chức mới
 ```
 
-`X-Tenant-Id` không tham gia luồng browser này. Header chỉ override context cho caller machine-to-machine và không thay đổi lựa chọn đã lưu trong session.
+`X-Tenant-Id` từ client không override context đã ký. Tenant lấy từ access JWT; đổi tenant không thay context của JWT đã cấp cho tab khác.
 
 ---
 

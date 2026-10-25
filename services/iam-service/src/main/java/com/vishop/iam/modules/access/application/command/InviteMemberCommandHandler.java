@@ -23,7 +23,7 @@ public class InviteMemberCommandHandler
   private final RoleRepositoryPort roleRepository;
   private final InvitationRepositoryPort invitationRepository;
   private final TenantApi tenants;
-  private final OpaqueTokenPort sessionTokens;
+  private final OpaqueTokenPort invitationTokens;
   private final AccessAuthorizationService authorization;
   private final RoleAssignmentPolicy rolePolicy;
 
@@ -32,14 +32,14 @@ public class InviteMemberCommandHandler
       RoleRepositoryPort roleRepository,
       InvitationRepositoryPort invitationRepository,
       TenantApi tenants,
-      OpaqueTokenPort sessionTokens,
+      OpaqueTokenPort invitationTokens,
       AccessAuthorizationService authorization,
       RoleAssignmentPolicy rolePolicy) {
     this.outbox = outbox;
     this.roleRepository = roleRepository;
     this.invitationRepository = invitationRepository;
     this.tenants = tenants;
-    this.sessionTokens = sessionTokens;
+    this.invitationTokens = invitationTokens;
     this.authorization = authorization;
     this.rolePolicy = rolePolicy;
   }
@@ -56,14 +56,14 @@ public class InviteMemberCommandHandler
     Membership manager =
         authorization.access(actor.userId(), tenant, CommonPermissions.Tenant.MEMBER_INVITE);
     rolePolicy.canAssign(manager, roleRepository.role(tenant, role));
-    String raw = sessionTokens.generate();
+    String raw = invitationTokens.generate();
     var invitation =
         invitationRepository.invite(
             tenant,
             email.trim().toLowerCase(Locale.ROOT),
             role,
             actor.userId(),
-            sessionTokens.hash(raw));
+            invitationTokens.hash(raw));
     outbox.append(
         "MemberInvited",
         "Tenant",
