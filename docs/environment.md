@@ -41,6 +41,33 @@ Mỗi service sử dụng một Database riêng biệt:
 
 ---
 
+## Thời gian sống JWT (IAM)
+
+| Biến môi trường | Mặc định | Thuộc tính Spring |
+| --- | --- | --- |
+| `JWT_ACCESS_EXPIRATION_MS` | `900000` (15 phút) | `vishop.security.jwt.access-expiration-ms` |
+| `JWT_REFRESH_EXPIRATION_MS` | `604800000` (7 ngày) | `vishop.security.jwt.refresh-expiration-ms` |
+
+Đơn vị là **milliseconds**. Refresh TTL phải lớn hơn access TTL. IAM đọc các giá trị
+này khi khởi động và dùng để cấp token; thời điểm hết hạn nằm trong claim `exp` của JWT.
+Refresh giữ thời điểm hết hạn tuyệt đối của refresh token ban đầu.
+
+Có thể đặt trực tiếp trong môi trường chạy IAM hoặc file env truyền cho Docker Compose:
+
+```dotenv
+JWT_ACCESS_EXPIRATION_MS=900000
+JWT_REFRESH_EXPIRATION_MS=604800000
+```
+
+Compose dev/prod đã truyền hai biến vào IAM. Ví dụ chạy từ root repo:
+
+```powershell
+docker compose --env-file infra/.env.prod -f infra/compose/docker-compose.prod.yml up -d iam-service
+```
+
+Khởi động lại IAM khi thay TTL. Cấu hình mới áp dụng cho token cấp sau đó; JWT đã cấp
+giữ thời điểm hết hạn trong claim `exp`.
+
 ## 4. Cổng HTTP & Logging
 
 | Biến môi trường | Mặc định | Mô tả |

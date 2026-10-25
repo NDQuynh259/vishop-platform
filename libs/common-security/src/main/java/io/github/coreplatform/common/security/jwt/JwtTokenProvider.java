@@ -36,7 +36,7 @@ public class JwtTokenProvider {
 
   public JwtTokenProvider(
       @Value("${vishop.security.jwt.secret:${JWT_SECRET:}}") String secret,
-      @Value("${vishop.security.jwt.expiration-ms:86400000}") long expirationMs) {
+      @Value("${vishop.security.jwt.access-expiration-ms:900000}") long expirationMs) {
     byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
     if (keyBytes.length < 32) {
       throw new IllegalArgumentException("JWT_SECRET must contain at least 32 bytes");

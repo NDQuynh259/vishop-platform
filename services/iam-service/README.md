@@ -95,7 +95,7 @@ preserved. Controllers dispatch through `CommandBus`/`QueryBus`.
 
 Shared components have no dependency on business features, frameworks or infrastructure.
 They retain IAM-specific ports and the domain-event interface; reusable domain/CQRS
-primitives continue to come from `libs/common-*`. `IamActor` holds only request
+primitives continue to come from `libs/common-*`. `AuthenticatedUser` holds only request
 identity/context, never a User entity or identity response DTO. Password hashing, JWTs and
 the authentication filter/configuration remain under `modules/identity/infrastructure/security`.
 Generic opaque tokens and the Spring Security principal live under
@@ -154,9 +154,20 @@ microservices' databases. Cross-service aggregation requires APIs or an event-fe
 ## Authentication
 
 Login and registration return JWT `accessToken` and `refreshToken` in the JSON body,
-plus `tokenType`, `expiresIn`, user and tenant grants. No session cookie or server-side
+plus user and tenant grants. No session cookie or server-side
 session is created. Access lifetime defaults to 15 minutes (`JWT_ACCESS_EXPIRATION_MS`),
 refresh lifetime to seven days (`JWT_REFRESH_EXPIRATION_MS`).
+
+Both settings use milliseconds and are passed through the dev/prod Compose configuration.
+Set them in the deployment env file or the IAM process environment, then restart IAM:
+
+```dotenv
+JWT_ACCESS_EXPIRATION_MS=900000
+JWT_REFRESH_EXPIRATION_MS=604800000
+```
+
+Refresh lifetime must exceed access lifetime. New settings affect subsequently issued
+tokens; existing JWTs retain their signed expiry. Clients use Bearer authentication and read JWT expiry from the `exp` claim.
 
 Protected routes accept only `Authorization: Bearer <accessToken>`. Gateway and services
 verify signature, issuer, audience, token use and expiry locally. JWTs have no `sid`,

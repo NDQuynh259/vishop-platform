@@ -13,7 +13,7 @@ Xác thực và tenant bootstrap bám code Java IAM hiện tại. Những quy ư
 ### 0.1 Đường dẫn và xác thực
 
 - **Base path:** `/api/v1/...`; auth được triển khai bởi `AuthController` trong `iam-service`.
-- **JWT stateless:** login/register trả `accessToken`, `refreshToken`, `tokenType`, `expiresIn`, `user`, `tenantId`, `roles`, `permissions` trong body. API được bảo vệ nhận Bearer access token. Không dùng Better Auth hoặc cookie đăng nhập.
+- **JWT stateless:** login/register trả `accessToken`, `refreshToken`, `user`, `tenantId`, `roles`, `permissions` trong body. API được bảo vệ nhận Bearer access token. Không dùng Better Auth hoặc cookie đăng nhập.
 - **Refresh:** `POST /api/v1/auth/refresh` nhận `{refreshToken}`, không cần access token còn hạn. Access mặc định 15 phút, refresh 7 ngày. Refresh không kéo dài hạn tuyệt đối ban đầu; token refresh cũ vẫn hợp lệ đến hết hạn.
 - **Logout:** `POST /api/v1/auth/logout` với Bearer access token trả 204; client xoá cả hai JWT. Server không lưu trạng thái thu hồi token.
 - **Tenant context:** lấy từ access JWT đã xác minh. Đổi tenant bằng `POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`; hai token phải cùng user và user phải có membership hoạt động. Client thay cặp token sau khi đổi tenant. `X-Tenant-Id` không override tenant đã ký trong JWT.
@@ -2844,8 +2844,6 @@ Content-Type: application/json
 {
   "accessToken": "<newAccessToken>",
   "refreshToken": "<newRefreshToken>",
-  "tokenType": "Bearer",
-  "expiresIn": 900,
   "user": {
     "id": "0199a111-1111-7000-8000-000000000001",
     "email": "owner@example.com",

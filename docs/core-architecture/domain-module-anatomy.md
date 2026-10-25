@@ -73,7 +73,7 @@ services/iam-service/src/main/java/com/vishop/iam/
 └── shared/
     ├── domain/event/IamDomainEvent.java
     └── application/
-        ├── dto/IamActor.java
+        ├── dto/AuthenticatedUser.java
         └── port/                           # IamEventPublisherPort, OpaqueTokenPort
 ```
 
@@ -220,7 +220,7 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 
 Interface công khai nằm trong `modules/<tên>/application/api`, DTO công khai nằm trong `application/dto` của chính module: `UserView`, `TenantResponseDto`, `TenantMemberResponseDto`. Các kiểu công khai này không phụ thuộc framework, infra hay nội bộ module. Implementation cùng nằm trong `application/api` nhưng chỉ được dùng nội bộ; việc map domain sang DTO nằm trong `application/mapper`. Phân hệ khác và composition chỉ dùng interface công khai và ba DTO được phép, không gọi implementation, repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc các module, composition, hạ tầng hay framework.
 
-`IamActor` chỉ chứa user ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
+`AuthenticatedUser` chỉ chứa user ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
 
 JWT issuance uses `TokenService` and verification uses `AccessTokenPort`.
 Authentication has no session persistence or Redis security projection.

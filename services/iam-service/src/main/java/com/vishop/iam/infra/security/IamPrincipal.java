@@ -1,6 +1,6 @@
 package com.vishop.iam.infra.security;
 
-import com.vishop.iam.shared.application.dto.IamActor;
+import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Set;
@@ -9,7 +9,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-public record IamPrincipal(IamActor actor) implements UserDetails {
+public record IamPrincipal(AuthenticatedUser actor) implements UserDetails {
 
   public UUID tenantId() {
     return actor.tenantId();

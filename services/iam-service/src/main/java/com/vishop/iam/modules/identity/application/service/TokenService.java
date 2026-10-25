@@ -5,7 +5,7 @@ import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.port.AccessTokenPort;
 import com.vishop.iam.modules.identity.domain.entity.User;
-import com.vishop.iam.shared.application.dto.IamActor;
+import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -37,7 +37,7 @@ public class TokenService {
         identities.activeUser(refresh.userId()), refresh.tenantId(), refresh.expiresAt());
   }
 
-  public AuthResponse switchTenant(IamActor actor, UUID tenant, String credential) {
+  public AuthResponse switchTenant(AuthenticatedUser actor, UUID tenant, String credential) {
     var refresh = tokens.verifyRefresh(credential);
     if (!refresh.userId().equals(actor.userId()))
       throw new io.github.coreplatform.common.domain.exception.UnauthorizedException(
@@ -50,15 +50,13 @@ public class TokenService {
     return new AuthResponse(
         tokens.issue(actor),
         tokens.issueRefresh(user.id(), selected, refreshExpiry),
-        "Bearer",
-        tokens.expirationMs() / 1000,
         UserViewMapper.from(user),
         selected,
         actor.roles(),
         actor.permissions());
   }
 
-  private IamActor principal(User user, UUID tenant) {
+  private AuthenticatedUser principal(User user, UUID tenant) {
     if (tenant != null) {
       access.requireAccess(user.id(), tenant, null);
       var grant =
@@ -68,13 +66,13 @@ public class TokenService {
                   () ->
                       new io.github.coreplatform.common.domain.exception.ForbiddenException(
                           "Active tenant membership is required"));
-      return new IamActor(
+      return new AuthenticatedUser(
           user.id(),
           tenant,
           user.systemRole().name(),
           List.of(grant.roleKey()),
           grant.permissions());
     }
-    return new IamActor(user.id(), null, user.systemRole().name(), List.of(), Set.of());
+    return new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
   }
 }

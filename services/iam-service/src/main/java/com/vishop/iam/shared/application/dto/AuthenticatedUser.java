@@ -5,9 +5,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-public record IamActor(
+public record AuthenticatedUser(
     UUID userId, UUID tenantId, String systemRole, List<String> roles, Set<String> permissions) {
-  public IamActor {
+  public AuthenticatedUser {
     Objects.requireNonNull(userId);
     Objects.requireNonNull(systemRole);
     roles = List.copyOf(roles);

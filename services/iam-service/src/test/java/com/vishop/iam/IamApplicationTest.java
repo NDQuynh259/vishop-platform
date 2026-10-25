@@ -11,7 +11,7 @@ import com.vishop.iam.composition.onboarding.application.command.CreateTenantCom
 import com.vishop.iam.database.JpaDatabaseFixture;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort;
-import com.vishop.iam.shared.application.dto.IamActor;
+import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.persistence.EntityManager;
@@ -860,7 +860,8 @@ class IamApplicationTest {
     Account owner = register("rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
-    var actor = new IamActor(user.id(), null, user.systemRole().name(), List.of(), Set.of());
+    var actor =
+        new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
     var events = org.mockito.Mockito.mock(IamEventPublisherPort.class);
     org.mockito.Mockito.doAnswer(
             invocation -> {
@@ -902,7 +903,8 @@ class IamApplicationTest {
     Account owner = register("owner-init-rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
-    var actor = new IamActor(user.id(), null, user.systemRole().name(), List.of(), Set.of());
+    var actor =
+        new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
     var access = context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class);
     var failingAccess =
         org.mockito.Mockito.mock(com.vishop.iam.modules.access.application.api.AccessApi.class);

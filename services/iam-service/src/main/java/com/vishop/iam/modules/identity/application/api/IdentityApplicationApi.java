@@ -4,7 +4,7 @@ import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
-import com.vishop.iam.shared.application.dto.IamActor;
+import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -23,7 +23,7 @@ public class IdentityApplicationApi implements IdentityApi {
     return UserViewMapper.from(authorization.activeUser(userId));
   }
 
-  public void requireCms(IamActor actor) {
+  public void requireCms(AuthenticatedUser actor) {
     authorization.cms(actor);
   }
 

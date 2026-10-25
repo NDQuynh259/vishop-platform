@@ -1,7 +1,7 @@
 package com.vishop.iam.modules.identity.infrastructure.security;
 
 import com.vishop.iam.modules.identity.application.port.AccessTokenPort;
-import com.vishop.iam.shared.application.dto.IamActor;
+import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
@@ -24,10 +24,11 @@ public class JwtAccessTokenAdapter implements AccessTokenPort {
     this.refreshExpirationMs = refreshExpirationMs;
   }
 
-  public IamActor verify(String credential) {
+  public AuthenticatedUser verify(String credential) {
     try {
       var c = VerifiedAccessToken.verify(tokens, credential);
-      return new IamActor(c.userId(), c.tenantId(), c.systemRole(), c.roles(), c.permissions());
+      return new AuthenticatedUser(
+          c.userId(), c.tenantId(), c.systemRole(), c.roles(), c.permissions());
     } catch (RuntimeException invalid) {
       throw new UnauthorizedException("Invalid access token");
     }
@@ -53,7 +54,7 @@ public class JwtAccessTokenAdapter implements AccessTokenPort {
     }
   }
 
-  public String issue(IamActor actor) {
+  public String issue(AuthenticatedUser actor) {
     return tokens.generateIamAccessToken(
         actor.userId(), actor.tenantId(), actor.systemRole(), actor.roles(), actor.permissions());
   }

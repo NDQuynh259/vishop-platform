@@ -11,6 +11,25 @@ import org.junit.jupiter.api.Test;
 class JwtTokenProviderTest {
 
   @Test
+  void accessExpirationPropertyControlsIssuedJwtLifetime() {
+    new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+        .withUserConfiguration(JwtAutoConfiguration.class)
+        .withPropertyValues(
+            "vishop.security.jwt.secret=" + secret,
+            "vishop.security.jwt.access-expiration-ms=123000")
+        .run(
+            context -> {
+              var provider = context.getBean(JwtTokenProvider.class);
+              String token =
+                  provider.generateIamAccessToken(
+                      UUID.randomUUID(), null, "USER", List.of(), java.util.Set.of());
+              var claims = provider.parseClaims(token);
+              assertThat(claims.getExpiration().getTime() - claims.getIssuedAt().getTime())
+                  .isEqualTo(123000);
+            });
+  }
+
+  @Test
   void rejectsMissingSecret() {
     org.assertj.core.api.Assertions.assertThatThrownBy(() -> new JwtTokenProvider("", 3600000))
         .isInstanceOf(IllegalArgumentException.class);
