@@ -1,9 +1,9 @@
 package com.vishop.iam.composition.onboarding.application.command;
 
-import com.vishop.iam.contracts.access.AccessApi;
-import com.vishop.iam.contracts.identity.IdentityApi;
-import com.vishop.iam.contracts.tenant.TenantApi;
-import com.vishop.iam.contracts.tenant.TenantResponseDto;
+import com.vishop.iam.modules.access.application.api.AccessApi;
+import com.vishop.iam.modules.identity.application.api.IdentityApi;
+import com.vishop.iam.modules.tenant.application.api.TenantApi;
+import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;

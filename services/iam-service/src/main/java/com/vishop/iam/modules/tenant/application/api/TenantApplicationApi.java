@@ -1,7 +1,6 @@
 package com.vishop.iam.modules.tenant.application.api;
 
-import com.vishop.iam.contracts.tenant.TenantApi;
-import com.vishop.iam.contracts.tenant.TenantResponseDto;
+import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import com.vishop.iam.modules.tenant.application.mapper.TenantResponseMapper;
 import com.vishop.iam.modules.tenant.domain.entity.Tenant;
 import com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort;

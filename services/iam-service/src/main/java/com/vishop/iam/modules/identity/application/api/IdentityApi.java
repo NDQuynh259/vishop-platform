@@ -1,5 +1,6 @@
-package com.vishop.iam.contracts.identity;
+package com.vishop.iam.modules.identity.application.api;
 
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.shared.application.dto.IamActor;
 import java.util.UUID;
 

@@ -1,4 +1,4 @@
-package com.vishop.iam.contracts.access;
+package com.vishop.iam.modules.access.application.api;
 
 import java.util.List;
 import java.util.Optional;

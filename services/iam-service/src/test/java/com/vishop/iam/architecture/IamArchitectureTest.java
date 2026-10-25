@@ -83,7 +83,6 @@ class IamArchitectureTest {
               "com.vishop.iam.modules.identity..",
               "com.vishop.iam.modules.tenant..",
               "com.vishop.iam.modules.access..",
-              "com.vishop.iam.contracts..",
               "com.vishop.iam.composition..");
 
   @ArchTest
@@ -127,21 +126,20 @@ class IamArchitectureTest {
       publicContractsOnly("access", "identity", "tenant");
 
   @ArchTest
-  static final ArchRule contracts_are_independent =
-      noClasses()
-          .that()
-          .resideInAPackage("com.vishop.iam.contracts..")
+  static final ArchRule public_api_types_are_independent =
+      classes()
+          .that(publicApiTypes())
           .should()
-          .dependOnClassesThat()
-          .resideInAnyPackage(
-              "com.vishop.iam.modules..",
-              "com.vishop.iam.infra..",
-              "com.vishop.iam..domain..",
-              "com.vishop.iam..infrastructure..",
-              "com.vishop.iam..presentation..",
-              "com.vishop.iam.composition..",
-              "org.springframework..",
-              "jakarta..");
+          .onlyDependOnClassesThat(
+              new DescribedPredicate<JavaClass>("be JDK, shared, or public module API/DTO types") {
+                @Override
+                public boolean test(JavaClass type) {
+                  return type.isPrimitive()
+                      || type.getPackageName().startsWith("java.")
+                      || type.getPackageName().startsWith("com.vishop.iam.shared.")
+                      || isPublicApiType(type);
+                }
+              });
 
   @ArchTest
   static final ArchRule modules_do_not_depend_on_composition =
@@ -183,10 +181,37 @@ class IamArchitectureTest {
         String name = type.getPackageName();
         for (String module : modules) {
           String prefix = "com.vishop.iam.modules." + module;
-          if (name.equals(prefix) || name.startsWith(prefix + ".")) return true;
+          if ((name.equals(prefix) || name.startsWith(prefix + ".")) && !isPublicApiType(type))
+            return true;
         }
         return false;
       }
     };
+  }
+
+  private static DescribedPredicate<JavaClass> publicApiTypes() {
+    return new DescribedPredicate<JavaClass>("be a public module API or DTO") {
+      @Override
+      public boolean test(JavaClass type) {
+        return isPublicApiType(type);
+      }
+    };
+  }
+
+  private static boolean isPublicApiType(JavaClass type) {
+    String name = type.getName();
+    for (String module : new String[] {"identity", "tenant", "access"}) {
+      String api =
+          "com.vishop.iam.modules."
+              + module
+              + ".application.api."
+              + Character.toUpperCase(module.charAt(0))
+              + module.substring(1)
+              + "Api";
+      if (name.equals(api) || name.startsWith(api + "$")) return true;
+    }
+    return name.equals("com.vishop.iam.modules.identity.application.dto.UserView")
+        || name.equals("com.vishop.iam.modules.tenant.application.dto.TenantResponseDto")
+        || name.equals("com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto");
   }
 }

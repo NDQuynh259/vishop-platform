@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.application.mapper;
 
-import com.vishop.iam.contracts.identity.UserView;
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.domain.entity.User;
 
 public final class UserViewMapper {

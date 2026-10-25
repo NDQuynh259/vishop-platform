@@ -1,6 +1,6 @@
 package com.vishop.iam.composition.members.application.port;
 
-import com.vishop.iam.contracts.access.TenantMemberResponseDto;
+import com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto;
 import java.util.Optional;
 import java.util.UUID;
 

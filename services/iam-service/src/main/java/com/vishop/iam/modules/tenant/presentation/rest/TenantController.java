@@ -1,8 +1,8 @@
 package com.vishop.iam.modules.tenant.presentation.rest;
 
-import com.vishop.iam.contracts.tenant.TenantResponseDto;
 import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.tenant.application.command.RenameTenantCommand;
+import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import com.vishop.iam.modules.tenant.application.query.GetTenantByIdQuery;
 import com.vishop.iam.modules.tenant.presentation.rest.dto.RenameTenantRequest;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;

@@ -1,8 +1,8 @@
 package com.vishop.iam.modules.access.application.query;
 
-import com.vishop.iam.contracts.identity.IdentityApi;
 import com.vishop.iam.modules.access.application.dto.MyTenant;
 import com.vishop.iam.modules.access.application.port.AccessReadPort;
+import com.vishop.iam.modules.identity.application.api.IdentityApi;
 import io.github.coreplatform.common.domain.cqrs.QueryHandler;
 import java.util.List;
 import org.springframework.stereotype.Component;

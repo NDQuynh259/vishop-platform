@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.application.query;
 
-import com.vishop.iam.contracts.identity.UserView;
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.port.UserReadPort;
 import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import io.github.coreplatform.common.domain.cqrs.QueryHandler;

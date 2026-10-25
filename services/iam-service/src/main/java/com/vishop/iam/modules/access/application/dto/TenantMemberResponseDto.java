@@ -1,4 +1,4 @@
-package com.vishop.iam.contracts.access;
+package com.vishop.iam.modules.access.application.dto;
 
 import java.util.Set;
 import java.util.UUID;

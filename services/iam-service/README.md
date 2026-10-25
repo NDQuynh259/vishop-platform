@@ -31,10 +31,6 @@ com/vishop/iam/
 ├── composition/
 │   ├── onboarding/ # Cross-module tenant creation workflow and its REST entry point
 │   └── members/    # Cross-module user/tenant/role/permission read projection
-├── contracts/
-│   ├── identity/    # IdentityApi, UserView
-│   ├── tenant/      # TenantApi, TenantResponseDto
-│   └── access/      # AccessApi, AccessApi.Grant
 ├── modules/
 │   ├── identity/    # Global users, authentication, sessions, system roles, user CMS
 │   ├── tenant/      # Tenant information/lifecycle, tenant CMS
@@ -52,20 +48,24 @@ in `presentation/rest/dto`. Domain packages use singular names: `entity`, `value
 `port`, `service` and `event`.
 Domain models remain independent of frameworks and are mapped to HTTP response DTOs.
 
-Feature interactions use interfaces and immutable DTOs in `contracts/<feature>`.
-`contracts`, `modules`, `composition`, `infra` and `shared` are sibling packages under `iam`.
-Contracts have no dependency on module internals or frameworks. Implementations live in
-`application/api`; DTO mapping lives in `application/mapper`. These dependencies can be
+Feature interactions use interfaces in `modules/<feature>/application/api` and public
+immutable DTOs in that module's `application/dto`. Public interfaces and DTOs have no
+dependency on module internals or frameworks. Implementations also live in
+`application/api`, but remain internal to the owning module; DTO mapping lives in
+`application/mapper`. These dependencies can be
 bidirectional at the feature level; API methods must not introduce circular bean
 dependencies or recursive calls across features.
 
-Public contracts:
+Public module interfaces and DTOs:
 
 * `IdentityApi` exposes current account data/status and system administration checks.
 * `TenantApi` exposes tenant creation, status, a public tenant view and locking inside an existing
   transaction. Access never imports tenant entities or its repository.
 * `AccessApi` exposes resolved grants, active tenant IDs and OWNER initialization inside
   an existing transaction. Identity never imports membership/role repositories.
+* The exported DTOs are `UserView`, `TenantResponseDto` and `TenantMemberResponseDto`.
+  Architecture tests permit these types and the API interfaces across module boundaries;
+  implementation classes, other DTOs, entities and repositories remain internal.
 
 `composition/onboarding/application/command/CreateTenantCommandHandler` checks `IdentityApi`, calls
 `TenantApi.create` to persist the aggregate and its outbox events, then calls

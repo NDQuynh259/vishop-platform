@@ -1,6 +1,5 @@
 package com.vishop.iam.modules.identity.presentation.rest;
 
-import com.vishop.iam.contracts.identity.UserView;
 import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.identity.application.command.LoginCommand;
 import com.vishop.iam.modules.identity.application.command.LogoutCommand;
@@ -8,6 +7,7 @@ import com.vishop.iam.modules.identity.application.command.RegisterUserCommand;
 import com.vishop.iam.modules.identity.application.command.SwitchTenantCommand;
 import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import com.vishop.iam.modules.identity.application.dto.AuthenticationResult;
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.query.GetUserProfileQuery;
 import com.vishop.iam.modules.identity.application.query.RefreshAccessTokenQuery;
 import com.vishop.iam.modules.identity.infrastructure.security.IamAuthenticationFilter;

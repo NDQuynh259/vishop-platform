@@ -1,7 +1,7 @@
 package com.vishop.iam.composition.members.infrastructure.persistence;
 
 import com.vishop.iam.composition.members.application.port.TenantMemberReadPort;
-import com.vishop.iam.contracts.access.TenantMemberResponseDto;
+import com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Tuple;
 import java.util.Arrays;

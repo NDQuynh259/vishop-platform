@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.application.port;
 
-import com.vishop.iam.contracts.identity.UserView;
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import java.util.List;
 
 public interface UserReadPort {

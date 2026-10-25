@@ -1,7 +1,6 @@
 package com.vishop.iam.modules.identity.application.api;
 
-import com.vishop.iam.contracts.identity.IdentityApi;
-import com.vishop.iam.contracts.identity.UserView;
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;

@@ -1,8 +1,8 @@
 package com.vishop.iam.composition.members.presentation.rest;
 
 import com.vishop.iam.composition.members.application.query.GetTenantMemberQuery;
-import com.vishop.iam.contracts.access.TenantMemberResponseDto;
 import com.vishop.iam.infra.security.IamPrincipal;
+import com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import java.util.UUID;
 import org.springframework.http.CacheControl;

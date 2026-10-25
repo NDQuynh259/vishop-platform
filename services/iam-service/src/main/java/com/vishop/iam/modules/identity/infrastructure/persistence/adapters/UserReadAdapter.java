@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.infrastructure.persistence.adapters;
 
-import com.vishop.iam.contracts.identity.UserView;
+import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.port.UserReadPort;
 import com.vishop.iam.modules.identity.infrastructure.persistence.entities.UserJpaEntity;

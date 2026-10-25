@@ -11,10 +11,6 @@ IAM chia theo phân hệ trước, chia tầng bên trong mỗi phân hệ. Use 
 ```text
 services/iam-service/src/main/java/com/vishop/iam/
 ├── IamApplication.java
-├── contracts/
-│   ├── tenant/                              # TenantApi, TenantResponseDto
-│   ├── identity/                            # IdentityApi, UserView
-│   └── access/                              # AccessApi, AccessApi.Grant
 ├── composition/
 │   ├── onboarding/
 │   │   ├── application/command/              # CreateTenantCommand, CreateTenantCommandHandler
@@ -32,7 +28,8 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   │   │   ├── port/TenantRepositoryPort.java
 │   │   │   └── event/                          # TenantCreated/Renamed/StatusChangedEvent
 │   │   ├── application/
-│   │   │   ├── api/TenantApplicationApi.java
+│   │   │   ├── api/                           # TenantApi, TenantApplicationApi
+│   │   │   ├── dto/TenantResponseDto.java
 │   │   │   ├── mapper/TenantResponseMapper.java
 │   │   │   ├── command/                        # RenameTenant, ChangeTenantStatus
 │   │   │   └── query/                          # GetTenantById, ListCmsTenants
@@ -41,7 +38,7 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   ├── identity/
 │   │   ├── domain/                             # User, Session, SystemRole, PasswordPolicy, ports
 │   │   ├── application/
-│   │   │   ├── api/IdentityApplicationApi.java
+│   │   │   ├── api/                           # IdentityApi, IdentityApplicationApi
 │   │   │   ├── mapper/UserViewMapper.java
 │   │   │   ├── command/                        # RegisterUser, Login, Logout, SwitchTenant, CMS user
 │   │   │   ├── query/                          # Authenticate, Introspect, RefreshAccessToken, profile
@@ -53,7 +50,7 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   └── access/
 │       ├── domain/                             # Membership, Role, Invitation, RoleAssignmentPolicy, ports
 │       ├── application/
-│       │   ├── api/AccessApplicationApi.java
+│       │   ├── api/                           # AccessApi, AccessApplicationApi
 │       │   ├── command/                        # Role, member và invitation use cases
 │       │   ├── query/                          # ListMyTenants, ListTenantMembers/Roles
 │       │   ├── service/AccessAuthorizationService.java
@@ -206,10 +203,10 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 - `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để phân giải session; composition dùng để hoàn tất onboarding.
 - `UserActivityPort` thuộc access domain; `IdentityUserActivityAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
 
-Các interface và DTO công khai nằm trong `contracts/<tên>`, cùng cấp với `modules`, `composition`, `infra` và `shared` dưới `iam`. Contracts không phụ thuộc framework, infra hay nội bộ module. Implementation nằm trong `modules/<tên>/application/api`; việc map domain sang DTO nằm trong `application/mapper` của module. Phân hệ khác và composition chỉ dùng `contracts`, không gọi repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc contracts nghiệp vụ, các module, composition, hạ tầng hay framework.
+Interface công khai nằm trong `modules/<tên>/application/api`, DTO công khai nằm trong `application/dto` của chính module: `UserView`, `TenantResponseDto`, `TenantMemberResponseDto`. Các kiểu công khai này không phụ thuộc framework, infra hay nội bộ module. Implementation cùng nằm trong `application/api` nhưng chỉ được dùng nội bộ; việc map domain sang DTO nằm trong `application/mapper`. Phân hệ khác và composition chỉ dùng interface công khai và ba DTO được phép, không gọi implementation, repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc các module, composition, hạ tầng hay framework.
 
 `IamActor` chỉ chứa user ID, session ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
 
 ## 4. Kiểm tra ranh giới kiến trúc
 
-`IamArchitectureTest` bảo vệ chiều phụ thuộc: domain độc lập framework và outer layers, application dùng port, controller không gọi repository/domain entity; phân hệ và composition chỉ dùng contracts công khai của module khác. Contracts không phụ thuộc nội bộ module; module không phụ thuộc composition; shared không phụ thuộc nghiệp vụ. `TenantTest` kiểm tra invariant và domain event. `IamApplicationTest` kiểm tra API/phân quyền, transaction bắt buộc của API thay đổi dữ liệu, cập nhật version, các request đồng thời và rollback JPA giữa tenant, role mặc định, membership và outbox. `PersistenceArchitectureTest` ở root chặn JDBC runtime và kiểm tra cấu hình schema/migration toàn dự án.
+`IamArchitectureTest` bảo vệ chiều phụ thuộc: domain độc lập framework và outer layers, application dùng port, controller không gọi repository/domain entity; phân hệ và composition chỉ dùng interface/DTO công khai của module khác. Các kiểu công khai không phụ thuộc implementation hoặc framework; module không phụ thuộc composition; shared không phụ thuộc nghiệp vụ. `TenantTest` kiểm tra invariant và domain event. `IamApplicationTest` kiểm tra API/phân quyền, transaction bắt buộc của API thay đổi dữ liệu, cập nhật version, các request đồng thời và rollback JPA giữa tenant, role mặc định, membership và outbox. `PersistenceArchitectureTest` ở root chặn JDBC runtime và kiểm tra cấu hình schema/migration toàn dự án.

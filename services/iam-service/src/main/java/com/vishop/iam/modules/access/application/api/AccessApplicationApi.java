@@ -1,11 +1,10 @@
 package com.vishop.iam.modules.access.application.api;
 
-import com.vishop.iam.contracts.access.AccessApi;
-import com.vishop.iam.contracts.tenant.TenantApi;
 import com.vishop.iam.modules.access.application.port.AccessReadPort;
 import com.vishop.iam.modules.access.application.service.AccessAuthorizationService;
 import com.vishop.iam.modules.access.domain.port.MembershipRepositoryPort;
 import com.vishop.iam.modules.access.domain.port.RoleRepositoryPort;
+import com.vishop.iam.modules.tenant.application.api.TenantApi;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

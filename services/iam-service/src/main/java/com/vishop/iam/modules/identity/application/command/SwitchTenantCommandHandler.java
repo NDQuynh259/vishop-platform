@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.application.command;
 
-import com.vishop.iam.contracts.access.AccessApi;
+import com.vishop.iam.modules.access.application.api.AccessApi;
 import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.application.service.SessionService;

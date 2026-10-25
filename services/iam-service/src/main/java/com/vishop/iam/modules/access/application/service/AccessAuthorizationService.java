@@ -1,9 +1,9 @@
 package com.vishop.iam.modules.access.application.service;
 
-import com.vishop.iam.contracts.identity.IdentityApi;
-import com.vishop.iam.contracts.tenant.TenantApi;
 import com.vishop.iam.modules.access.domain.entity.Membership;
 import com.vishop.iam.modules.access.domain.port.MembershipRepositoryPort;
+import com.vishop.iam.modules.identity.application.api.IdentityApi;
+import com.vishop.iam.modules.tenant.application.api.TenantApi;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import java.util.UUID;
 import org.springframework.stereotype.Component;

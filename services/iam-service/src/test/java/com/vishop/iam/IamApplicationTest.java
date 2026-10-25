@@ -833,19 +833,19 @@ class IamApplicationTest {
     assertThatThrownBy(
             () ->
                 context
-                    .getBean(com.vishop.iam.contracts.tenant.TenantApi.class)
+                    .getBean(com.vishop.iam.modules.tenant.application.api.TenantApi.class)
                     .create(UUID.randomUUID(), "transaction-required", "Shop"))
         .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
     assertThatThrownBy(
             () ->
                 context
-                    .getBean(com.vishop.iam.contracts.access.AccessApi.class)
+                    .getBean(com.vishop.iam.modules.access.application.api.AccessApi.class)
                     .initializeOwner(UUID.randomUUID(), UUID.randomUUID()))
         .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
     assertThatThrownBy(
             () ->
                 context
-                    .getBean(com.vishop.iam.contracts.tenant.TenantApi.class)
+                    .getBean(com.vishop.iam.modules.tenant.application.api.TenantApi.class)
                     .lockTenant(UUID.randomUUID()))
         .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
   }
@@ -873,10 +873,10 @@ class IamApplicationTest {
         .publish(org.mockito.ArgumentMatchers.any());
     var handler =
         new CreateTenantCommandHandler(
-            context.getBean(com.vishop.iam.contracts.identity.IdentityApi.class),
+            context.getBean(com.vishop.iam.modules.identity.application.api.IdentityApi.class),
             new com.vishop.iam.modules.tenant.application.api.TenantApplicationApi(
                 context.getBean(TenantRepositoryPort.class), events),
-            context.getBean(com.vishop.iam.contracts.access.AccessApi.class));
+            context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class));
     var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     assertThatThrownBy(
             () ->
@@ -902,8 +902,9 @@ class IamApplicationTest {
     var actor =
         new IamActor(
             user.id(), UUID.randomUUID(), null, user.systemRole().name(), List.of(), Set.of());
-    var access = context.getBean(com.vishop.iam.contracts.access.AccessApi.class);
-    var failingAccess = org.mockito.Mockito.mock(com.vishop.iam.contracts.access.AccessApi.class);
+    var access = context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class);
+    var failingAccess =
+        org.mockito.Mockito.mock(com.vishop.iam.modules.access.application.api.AccessApi.class);
     org.mockito.Mockito.doAnswer(
             invocation -> {
               access.initializeOwner(invocation.getArgument(0), invocation.getArgument(1));
@@ -920,8 +921,8 @@ class IamApplicationTest {
         .initializeOwner(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     var handler =
         new CreateTenantCommandHandler(
-            context.getBean(com.vishop.iam.contracts.identity.IdentityApi.class),
-            context.getBean(com.vishop.iam.contracts.tenant.TenantApi.class),
+            context.getBean(com.vishop.iam.modules.identity.application.api.IdentityApi.class),
+            context.getBean(com.vishop.iam.modules.tenant.application.api.TenantApi.class),
             failingAccess);
     var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     assertThatThrownBy(

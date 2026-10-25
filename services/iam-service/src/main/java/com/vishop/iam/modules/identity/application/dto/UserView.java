@@ -1,4 +1,4 @@
-package com.vishop.iam.contracts.identity;
+package com.vishop.iam.modules.identity.application.dto;
 
 import java.time.Instant;
 import java.util.UUID;

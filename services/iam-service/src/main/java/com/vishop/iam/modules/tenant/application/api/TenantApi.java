@@ -1,5 +1,6 @@
-package com.vishop.iam.contracts.tenant;
+package com.vishop.iam.modules.tenant.application.api;
 
+import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import java.util.UUID;
 
 public interface TenantApi {

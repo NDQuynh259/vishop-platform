@@ -1,15 +1,15 @@
 package com.vishop.iam.modules.access.application.command;
 
-import com.vishop.iam.contracts.identity.IdentityApi;
-import com.vishop.iam.contracts.identity.UserView;
-import com.vishop.iam.contracts.tenant.TenantApi;
-import com.vishop.iam.contracts.tenant.TenantResponseDto;
 import com.vishop.iam.modules.access.application.service.AccessAuthorizationService;
 import com.vishop.iam.modules.access.domain.entity.Membership;
 import com.vishop.iam.modules.access.domain.port.InvitationRepositoryPort;
 import com.vishop.iam.modules.access.domain.port.MembershipRepositoryPort;
 import com.vishop.iam.modules.access.domain.port.RoleRepositoryPort;
 import com.vishop.iam.modules.access.domain.service.RoleAssignmentPolicy;
+import com.vishop.iam.modules.identity.application.api.IdentityApi;
+import com.vishop.iam.modules.identity.application.dto.UserView;
+import com.vishop.iam.modules.tenant.application.api.TenantApi;
+import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import com.vishop.iam.shared.application.port.OpaqueTokenPort;
 import io.github.coreplatform.common.domain.cqrs.CommandHandler;
