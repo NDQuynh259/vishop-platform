@@ -9,12 +9,13 @@ import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.query.GetUserProfileQuery;
 import com.vishop.iam.modules.identity.application.query.RefreshAccessTokenQuery;
+import com.vishop.iam.modules.identity.presentation.rest.dto.AuthenticationView;
 import com.vishop.iam.modules.identity.presentation.rest.dto.LoginRequest;
-import com.vishop.iam.modules.identity.presentation.rest.dto.RefreshTokenRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.RegisterUserRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.SwitchTenantRequest;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import io.github.coreplatform.common.security.constants.AuthCookies;
 import jakarta.validation.Valid;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,33 +26,32 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
   private final CommandBus commands;
   private final QueryBus queries;
+  private final AuthenticationCookies cookies;
 
-  public AuthController(CommandBus commands, QueryBus queries) {
+  public AuthController(CommandBus commands, QueryBus queries, AuthenticationCookies cookies) {
     this.commands = commands;
     this.queries = queries;
+    this.cookies = cookies;
   }
 
   @PostMapping("/register")
-  public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterUserRequest request) {
-    var result =
-        commands.dispatch(
-            new RegisterUserCommand(
-                request.email(),
-                request.password(),
-                request.fullName(),
-                request.tenantId(),
-                request.role()));
+  public ResponseEntity<AuthenticationView> register(
+      @Valid @RequestBody RegisterUserRequest request) {
+    var result = commands.dispatch(new RegisterUserCommand(request.email(), request.password()));
     return authenticated(result, HttpStatus.CREATED);
   }
 
   @PostMapping("/login")
-  public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+  public ResponseEntity<AuthenticationView> login(@Valid @RequestBody LoginRequest request) {
     return authenticated(
         commands.dispatch(new LoginCommand(request.email(), request.password())), HttpStatus.OK);
   }
 
-  private ResponseEntity<AuthResponse> authenticated(AuthResponse result, HttpStatus status) {
-    return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(result);
+  private ResponseEntity<AuthenticationView> authenticated(AuthResponse result, HttpStatus status) {
+    return ResponseEntity.status(status)
+        .headers(cookies.issue(result))
+        .cacheControl(CacheControl.noStore())
+        .body(AuthenticationView.from(result));
   }
 
   @GetMapping("/me")
@@ -60,27 +60,31 @@ public class AuthController {
   }
 
   @PostMapping("/switch-tenant")
-  public ResponseEntity<AuthResponse> switchTenant(
+  public ResponseEntity<AuthenticationView> switchTenant(
       @AuthenticationPrincipal IamPrincipal actor,
-      @Valid @RequestBody SwitchTenantRequest request) {
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .body(
-            commands.dispatch(
-                new SwitchTenantCommand(
-                    actor.actor(), request.tenantId(), request.refreshToken())));
+      @Valid @RequestBody SwitchTenantRequest request,
+      @CookieValue(name = AuthCookies.REFRESH_TOKEN, required = false) String refreshToken) {
+    return authenticated(
+        commands.dispatch(
+            new SwitchTenantCommand(
+                actor.actor(), request.tenantId(), cookies.requireRefresh(refreshToken))),
+        HttpStatus.OK);
   }
 
   @PostMapping("/refresh")
-  public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .body(queries.dispatch(new RefreshAccessTokenQuery(request.refreshToken())));
+  public ResponseEntity<AuthenticationView> refresh(
+      @CookieValue(name = AuthCookies.REFRESH_TOKEN, required = false) String refreshToken) {
+    return authenticated(
+        queries.dispatch(new RefreshAccessTokenQuery(cookies.requireRefresh(refreshToken))),
+        HttpStatus.OK);
   }
 
   @PostMapping("/logout")
   public ResponseEntity<Void> logout(@AuthenticationPrincipal IamPrincipal actor) {
-    commands.dispatch(new LogoutCommand(actor.actor()));
-    return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    if (actor != null) commands.dispatch(new LogoutCommand(actor.actor()));
+    return ResponseEntity.noContent()
+        .headers(cookies.clear())
+        .cacheControl(CacheControl.noStore())
+        .build();
   }
 }

@@ -3,6 +3,8 @@ plugins {
 }
 
 dependencies {
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
     implementation(project(":libs:common-web"))
     implementation(project(":libs:common-security"))
     implementation(project(":libs:common-events"))

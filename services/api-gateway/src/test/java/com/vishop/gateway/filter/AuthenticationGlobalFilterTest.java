@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.vishop.gateway.security.AuthenticationFailure;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
 import com.vishop.gateway.security.LocalAuthenticationVerifier.Identity;
+import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import java.util.*;
 import org.junit.jupiter.api.*;
@@ -54,6 +55,7 @@ class AuthenticationGlobalFilterTest {
   void publicRoutesStripSpoofedIdentityAndInternalSecret() {
     run(
         MockServerHttpRequest.post("/api/v1/auth/login")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
             .header("X-User-Id", user.toString())
             .header("X-Tenant-Id", tenant.toString())
             .header("X-Iam-Internal-Key", "spoofed")
@@ -109,7 +111,7 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void cookiesNeverAuthenticateBusinessRequests() {
+  void unrelatedCookiesNeverAuthenticateBusinessRequests() {
     var exchange =
         run(
             MockServerHttpRequest.get("/api/v1/tenants")
@@ -124,6 +126,7 @@ class AuthenticationGlobalFilterTest {
   void refreshReachesIamEvenWithExpiredAccessToken() {
     run(
         MockServerHttpRequest.post("/api/v1/auth/refresh")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
             .header("Authorization", "Bearer expired")
             .build());
     verify(chain).filter(any());
@@ -168,9 +171,59 @@ class AuthenticationGlobalFilterTest {
         run(
             MockServerHttpRequest.get("/api/v1/tenants")
                 .header("Authorization", "Basic bad")
-                .cookie(new HttpCookie("vishop_session", "opaque-cookie"))
+                .cookie(new HttpCookie(AuthCookies.ACCESS_TOKEN, "valid-token"))
                 .build());
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     verifyNoInteractions(authentication);
+  }
+
+  @Test
+  void accessCookieAuthenticatesWithoutForwardingBrowserCookiesToBusinessServices() {
+    run(
+        MockServerHttpRequest.get("/api/v1/audit/probe")
+            .cookie(
+                new HttpCookie(AuthCookies.ACCESS_TOKEN, "valid-token"),
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh"),
+                new HttpCookie("other", "private"))
+            .build());
+    verify(authentication).authenticate("valid-token", true);
+    assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+        .isEqualTo("Bearer trusted-jwt");
+    assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE)).isNull();
+  }
+
+  @Test
+  void switchTenantForwardsOnlyRefreshCookieToIam() {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/switch-tenant")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+            .cookie(
+                new HttpCookie(AuthCookies.ACCESS_TOKEN, "valid-token"),
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh"),
+                new HttpCookie("other", "private"))
+            .build());
+    assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE))
+        .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
+  }
+
+  @Test
+  void refreshForwardsCookieWithoutVerifyingExpiredAccessCookie() {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/refresh")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+            .cookie(
+                new HttpCookie(AuthCookies.ACCESS_TOKEN, "expired"),
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh"))
+            .build());
+    verifyNoInteractions(authentication);
+    assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE))
+        .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
+  }
+
+  @Test
+  void cookieWritesWithoutCsrfHeaderAreRejectedBeforeForwarding() {
+    var exchange = run(MockServerHttpRequest.post("/api/v1/auth/login").build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    verify(chain, never()).filter(any());
   }
 }

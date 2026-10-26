@@ -5,9 +5,4 @@ import java.util.Set;
 import java.util.UUID;
 
 public record ResolvedIdentity(
-    UUID userId,
-    UUID tenantId,
-    String systemRole,
-    List<String> roles,
-    Set<String> permissions,
-    String accessToken) {}
+    UUID userId, UUID tenantId, String systemRole, List<String> roles, Set<String> permissions) {}

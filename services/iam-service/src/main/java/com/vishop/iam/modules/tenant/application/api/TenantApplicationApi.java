@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-public class TenantApplicationApi implements TenantApi {
+class TenantApplicationApi implements TenantApi {
   private final TenantRepositoryPort tenants;
   private final IamEventPublisherPort outbox;
 

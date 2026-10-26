@@ -224,7 +224,7 @@ sequenceDiagram
 
 * Mỗi request HTTP phải kèm header `X-Tenant-Id` (UUID).
 * `TenantContextFilter` trích xuất `X-Tenant-Id` và lưu vào `TenantContext` (`ThreadLocal<UUID>`).
-* Toàn bộ các bảng nghiệp vụ kế thừa `BaseTenantJpaEntity` chứa cột `tenant_id`.
+* Entity tự khai báo các cột cần dùng và dùng Lombok cho getter/setter, constructor; entity thuộc tenant khai báo `tenant_id` và repository giới hạn truy vấn theo tenant. Nhóm IAM dùng callback `@PrePersist`/`@PreUpdate` trong từng entity để cập nhật timestamp, giữ `createdAt` do domain cấp.
 * Khi gửi event qua Kafka, `KafkaEventPublisher` tự động đính kèm header `X-Tenant-Id`.
 * `TenantRecordInterceptor` giải mã header `X-Tenant-Id` và thiết lập `TenantContext` trong thread xử lý event.
 
@@ -245,7 +245,7 @@ sequenceDiagram
 `services/api-gateway` hoạt động trên cổng `8000` đóng vai trò là Reverse Proxy và Gateway trung tâm:
 * **Dynamic Routing**: Chuyển tiếp request tới `iam-service:8080` và `audit-service:8082`.
 * **Distributed Tracing**: Tự động sinh hoặc kế thừa `X-Correlation-Id` qua `CorrelationIdGlobalFilter`.
-* **Multi-Tenancy**: Kiểm tra và chuyển tiếp `X-Tenant-Id` qua `TenantResolutionGlobalFilter`.
+* **Multi-Tenancy**: `AuthenticationGlobalFilter` xác thực JWT, lấy `tenantId` từ claims và gắn `X-Tenant-Id` để chuyển tiếp; header tenant do client gửi bị xóa.
 * **Error Normalization**: Bắt các lỗi hạ tầng (503 Service Unavailable, timeout) và chuẩn hóa về **RFC 9457 Problem Details**.
 * Chi tiết xem thêm tại [api-gateway.md](./api-gateway.md).
 

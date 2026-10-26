@@ -55,13 +55,14 @@ docker compose -f infra/compose/docker-compose.dev.yml up -d --build
 
 Gửi request qua gateway tại `http://localhost:8000`:
 
-1. `POST /api/v1/auth/register` với email, password và fullName để tạo tài khoản toàn cục.
-2. Dùng accessToken trả về trong `Authorization: Bearer ...`.
+1. `POST /api/v1/auth/register` với email/password để tạo tài khoản toàn cục.
+2. IAM đặt access/refresh vào cookie HttpOnly; JSON không chứa token. Frontend dùng
+   `credentials: 'include'` và header `X-Requested-With: XMLHttpRequest` cho các request ghi.
 3. `POST /api/v1/tenants` với code/name: IAM tạo tenant, bốn role và OWNER membership
    trong cùng transaction, đồng thời ghi event vào outbox.
-4. `POST /api/v1/auth/switch-tenant` with `{tenantId,refreshToken}` and Bearer access
-   token returns a new pair carrying the selected tenant.
-5. After access expiry, call `POST /api/v1/auth/refresh` with `{refreshToken}` and use the new pair.
+4. `POST /api/v1/auth/switch-tenant` với `{tenantId}` và cookie tự gửi từ trình duyệt;
+   IAM thay cookie theo tổ chức được chọn.
+5. Khi access hết hạn, gọi `POST /api/v1/auth/refresh` không body; IAM đọc refresh cookie.
 6. Inspect `vishop.tenant.events` and `vishop.user.events` in Kafka UI (:8088).
    Audit service nhận cả event user và tenant, xử lý chống trùng rồi lưu audit log.
 

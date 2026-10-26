@@ -43,6 +43,7 @@ public class AuditKafkaListener {
   @KafkaListener(
       topics = {"vishop.tenant.events", "vishop.user.events"},
       groupId = CONSUMER_GROUP,
+      autoStartup = "${spring.kafka.listener.auto-startup:true}",
       containerFactory = "kafkaListenerContainerFactory")
   public void onEvent(ConsumerRecord<String, String> record) {
     try {

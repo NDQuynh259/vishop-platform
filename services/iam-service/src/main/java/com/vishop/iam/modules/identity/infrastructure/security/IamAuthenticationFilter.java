@@ -6,6 +6,7 @@ import com.vishop.iam.modules.identity.application.query.AuthenticateQuery;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.DomainException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
+import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.context.TenantContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -36,7 +37,6 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
                 "/internal/auth/introspect")
             .contains(path)
         || path.startsWith("/actuator/")
-        || path.startsWith("/swagger-ui")
         || path.startsWith("/v3/api-docs");
   }
 
@@ -50,24 +50,31 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         error(response, 403, "Origin is not allowed");
         return;
       }
+      if (!request.getRequestURI().equals("/internal/auth/introspect")
+          && AuthCookies.requiresRequestHeader(request.getMethod())
+          && !AuthCookies.REQUEST_HEADER_VALUE.equals(
+              request.getHeader(AuthCookies.REQUEST_HEADER))) {
+        error(response, 403, "X-Requested-With: XMLHttpRequest is required");
+        return;
+      }
       if (request.getMethod().equals("OPTIONS") || publicPath(request.getRequestURI())) {
         chain.doFilter(request, response);
         return;
       }
-      String authorization = request.getHeader("Authorization");
-      String credential =
-          authorization != null && authorization.startsWith("Bearer ")
-              ? authorization.substring(7).trim()
-              : null;
+      boolean logout = request.getRequestURI().equals("/api/v1/auth/logout");
+      String credential = accessCredential(request);
       if (credential == null || credential.isBlank()) {
-        error(response, 401, "Bearer access token is required");
+        if (logout) chain.doFilter(request, response);
+        else error(response, 401, "Access cookie is required");
         return;
       }
       IamPrincipal actor;
       try {
         actor = new IamPrincipal(queries.dispatch(new AuthenticateQuery(credential, true)));
       } catch (DomainException failure) {
-        error(response, failure instanceof ForbiddenException ? 403 : 401, failure.getMessage());
+        if (logout) chain.doFilter(request, response);
+        else
+          error(response, failure instanceof ForbiddenException ? 403 : 401, failure.getMessage());
         return;
       }
       SecurityContextHolder.getContext()
@@ -79,6 +86,23 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
       TenantContext.clear();
       SecurityContextHolder.clearContext();
     }
+  }
+
+  private String accessCredential(HttpServletRequest request) {
+    String authorization = request.getHeader("Authorization");
+    // Gateway-to-service requests carry the verified JWT as Bearer; browsers use HttpOnly cookies.
+    if (authorization != null)
+      return authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : null;
+    String value = null;
+    if (request.getCookies() != null) {
+      for (var cookie : request.getCookies()) {
+        if (AuthCookies.ACCESS_TOKEN.equals(cookie.getName())) {
+          if (value != null) return null; // Ambiguous cookies do not authenticate.
+          value = cookie.getValue();
+        }
+      }
+    }
+    return value;
   }
 
   private void error(HttpServletResponse response, int status, String detail) throws IOException {

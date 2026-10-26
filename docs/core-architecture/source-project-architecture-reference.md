@@ -234,7 +234,7 @@ Dưới đây là bảng đối chiếu trực tiếp giữa giải pháp trong 
 2. **Kế thừa 4 Role chuẩn (`OWNER`, `OPERATIONS`, `WAREHOUSE`, `ACCOUNTING`)**:
    * Khi khởi tạo Tenant mới, hệ thống tự động sinh 4 vai trò này để người dùng có thể sử dụng ngay mà không cần cấu hình thủ công.
 3. **Tenant context trong JWT thay cho state đăng nhập của nguồn**:
-   * Token phản ánh **tổ chức đang chọn**. `POST /api/v1/auth/switch-tenant` nhận Bearer access và `{tenantId,refreshToken}`, kiểm tra membership rồi trả cặp JWT mang tenant đã chọn. Đổi gian hàng trong cùng tổ chức không nhất thiết đổi tenant/token.
+   * Token phản ánh **tổ chức đang chọn**. `POST /api/v1/auth/switch-tenant` nhận `{tenantId}` cùng cookie HttpOnly, kiểm tra membership rồi thay cookie JWT cho tenant đã chọn; JSON chỉ chứa user/tenant grants. Đổi gian hàng trong cùng tổ chức không nhất thiết đổi tenant/token.
 
 ## 7. Hành vi bảo mật hiện tại
 

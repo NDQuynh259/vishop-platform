@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 
-/** Auto-configuration for OpenAPI / Swagger documentation. */
+/** Auto-configuration for the OpenAPI specification served by springdoc. */
 @AutoConfiguration
 @ConditionalOnClass(OpenAPI.class)
 public class OpenApiAutoConfiguration {

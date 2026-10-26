@@ -79,6 +79,13 @@ services/iam-service/src/main/java/com/vishop/iam/
 
 Các HTTP request DTO (`*Request`) và annotation validation đặt trong `presentation/rest/dto` của từng phân hệ. `application/dto` chứa kết quả use case và các contract dùng chung ở tầng application. Package domain dùng tên số ít: `entity`, `valueobject`, `port`, `service`, `event`.
 
+Các interface `AccessApi`, `IdentityApi`, `TenantApi` là contract công khai để Spring inject
+giữa các phân hệ. Các lớp triển khai `*ApplicationApi` là `@Component` có mức truy cập
+package-private, nên phân hệ khác không thể import trực tiếp. `AccessReadPort` và
+`MembershipRepositoryPort` chỉ phục vụ nội bộ access; `TokenService` dùng `AccessApi`
+để lấy tenant và grants. ArchUnit kiểm tra cả ranh giới phụ thuộc lẫn mức truy cập này.
+Lời gọi giữa các phân hệ chạy trong cùng JVM, không phát sinh HTTP request.
+
 Cách tổ chức tham khảo `api-vishop/libs` được áp dụng trong phạm vi microservice IAM: `infra` chứa kỹ thuật dùng chung của IAM, còn adapter riêng vẫn ở `modules/<tên>/infrastructure`. `shared` giữ kiểu dữ liệu và abstraction không phụ thuộc framework; các primitive domain/CQRS dùng lại `libs/common-*` của platform. `composition/onboarding` chỉ phối hợp các contract trong transaction, không giữ domain model hay quy tắc nghiệp vụ riêng.
 
 `resources/application.yml` và `resources/db/migration` vẫn ở cấp service. Đây là các package trong cùng một deployment và database, không phải ba service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.

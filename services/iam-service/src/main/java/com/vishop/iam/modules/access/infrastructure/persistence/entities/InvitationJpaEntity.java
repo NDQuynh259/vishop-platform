@@ -4,13 +4,22 @@ import com.vishop.iam.modules.access.domain.entity.Invitation;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "tenant_invitations")
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class InvitationJpaEntity {
-  @Id private UUID id;
+  @Id
+  @Column(name = "id", nullable = false, updatable = false)
+  private UUID id;
 
-  @Column(name = "tenant_id", nullable = false)
+  @Column(name = "tenant_id", nullable = false, updatable = false)
   private UUID tenantId;
 
   @Column(nullable = false)
@@ -37,17 +46,31 @@ public class InvitationJpaEntity {
   @Column(name = "accepted_at")
   private Instant acceptedAt;
 
-  @Column(name = "created_at", nullable = false)
+  @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
 
-  @Version private Long version;
+  @Column(name = "deleted_at")
+  private Instant deletedAt;
 
-  protected InvitationJpaEntity() {}
+  @Version
+  @Column(name = "version")
+  private Long version;
+
+  @PrePersist
+  private void beforeInsert() {
+    if (createdAt == null) createdAt = Instant.now();
+    if (updatedAt == null) updatedAt = createdAt;
+  }
+
+  @PreUpdate
+  private void beforeUpdate() {
+    updatedAt = Instant.now();
+  }
 
   public Invitation toDomain() {
-    return new Invitation(id, tenantId, email, roleId, invitedBy, status, expiresAt);
+    return new Invitation(getId(), tenantId, email, roleId, invitedBy, status, expiresAt);
   }
 }

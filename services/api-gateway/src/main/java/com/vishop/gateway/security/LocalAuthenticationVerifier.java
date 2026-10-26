@@ -6,7 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-/** Verifies access JWTs locally without database, cookie, or Redis lookups. */
+/** Verifies access JWTs locally without database, session, or Redis lookups. */
 @Component
 public class LocalAuthenticationVerifier {
   public record Identity(UUID userId, UUID tenantId, String accessToken) {}

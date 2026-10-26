@@ -6,11 +6,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "audit_logs")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
 public class AuditLogEntity {
 
   @Id
@@ -44,95 +51,4 @@ public class AuditLogEntity {
 
   @Column(name = "recorded_at", nullable = false)
   private Instant recordedAt;
-
-  // #region AuditLogEntity
-  protected AuditLogEntity() {}
-
-  // #endregion
-
-  // #region AuditLogEntity
-  public AuditLogEntity(
-      UUID id,
-      UUID eventId,
-      String eventType,
-      UUID tenantId,
-      String aggregateType,
-      UUID aggregateId,
-      String producer,
-      String payload,
-      Instant occurredAt,
-      Instant recordedAt) {
-    this.id = id;
-    this.eventId = eventId;
-    this.eventType = eventType;
-    this.tenantId = tenantId;
-    this.aggregateType = aggregateType;
-    this.aggregateId = aggregateId;
-    this.producer = producer;
-    this.payload = payload;
-    this.occurredAt = occurredAt;
-    this.recordedAt = recordedAt;
-  }
-
-  // #endregion
-
-  // #region getId
-  public UUID getId() {
-    return id;
-  }
-
-  // #endregion
-  // #region getEventId
-  public UUID getEventId() {
-    return eventId;
-  }
-
-  // #endregion
-  // #region getEventType
-  public String getEventType() {
-    return eventType;
-  }
-
-  // #endregion
-  // #region getTenantId
-  public UUID getTenantId() {
-    return tenantId;
-  }
-
-  // #endregion
-  // #region getAggregateType
-  public String getAggregateType() {
-    return aggregateType;
-  }
-
-  // #endregion
-  // #region getAggregateId
-  public UUID getAggregateId() {
-    return aggregateId;
-  }
-
-  // #endregion
-  // #region getProducer
-  public String getProducer() {
-    return producer;
-  }
-
-  // #endregion
-  // #region getPayload
-  public String getPayload() {
-    return payload;
-  }
-
-  // #endregion
-  // #region getOccurredAt
-  public Instant getOccurredAt() {
-    return occurredAt;
-  }
-
-  // #endregion
-  // #region getRecordedAt
-  public Instant getRecordedAt() {
-    return recordedAt;
-  }
-  // #endregion
 }

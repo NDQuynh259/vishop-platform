@@ -55,7 +55,9 @@ erDiagram
 ```
 
 * `users`: global identity, email, password hash, system role và trạng thái tài khoản.
-  Không có `tenant_id` hoặc tenant role. Email unique không phân biệt hoa thường.
+  Đăng ký chỉ nhận email/password; `full_name` là dữ liệu hồ sơ tùy chọn, ban đầu null.
+  Không có `tenant_id` hoặc tenant role. `last_tenant_id` nullable chỉ ghi nhớ lựa chọn
+  đăng nhập; không thay thế membership hay tenant trong JWT. Email unique không phân biệt hoa thường.
 * `tenants`: định danh, code, tên và trạng thái `ACTIVE`, `SUSPENDED`, `ARCHIVED`.
 * `roles`: role thuộc một tenant; tên và built-in key unique trong tenant đó.
 * `role_permissions`: danh sách permission tĩnh của tenant role. Hiện code có **34**
@@ -76,20 +78,30 @@ và kiểm tra status/MFA/permission. Foreign key không thay thế các kiểm 
 
 ## 5. Luồng HTTP và chọn tenant
 
-Gateway and downstream verify Bearer access JWTs locally. Authentication does not read
+Gateway reads the access cookie and verifies JWTs locally; downstream uses verified Bearer access.
+Authentication does not read
 session state, Redis or IAM introspection. Client-supplied tenant headers confer no authority.
 
-1. Login/register return JWT access and refresh tokens; tenant can be null.
+1. Login/register set HttpOnly access/refresh cookies and return grants without tokens;
+   tenant can be null. Login prefers
+   `users.last_tenant_id` if its membership and tenant are ACTIVE, otherwise auto-selects
+   the only active membership or returns null when zero/multiple memberships remain.
+   The selected tenant is authorized before tokens are issued and the preference is saved;
+   stale preferences are replaced or cleared. Null tenant plus an empty/nonempty tenant
+   list lets the frontend choose `/no-tenant` or `/select-tenant`.
 2. List active memberships, create a tenant or accept an invitation.
-3. Switch tenant with Bearer access plus `{tenantId,refreshToken}`. IAM checks active
-   membership and grants before returning a pair carrying the selected tenant.
+3. Switch tenant with auth cookies plus `{tenantId}`. IAM checks active
+   membership and grants before setting cookies carrying the selected tenant and saving
+   `last_tenant_id` for future logins. Rejected switches leave the preference unchanged.
 4. Business APIs require tenant context and permission; CMS checks system role separately.
-5. Refresh with `{refreshToken}` even after access expiry. IAM reads current account/grants.
+5. Refresh with the refresh cookie and no body even after access expiry. IAM reads current account/grants.
 
-Each tab can retain its own JWT pair and tenant context. Tenant selection is carried in
-signed claims, with no mutable session selection. Access defaults to 15 minutes and refresh
+Browser tabs share auth cookies and the selected tenant. Tenant selection is carried in
+signed claims, with no mutable session selection. The remembered tenant is a login
+preference, not authorization state; refresh does not read or overwrite it. Access defaults to 15 minutes and refresh
 to seven days. Refresh preserves the absolute refresh expiry. Logout records audit and the
-client discards tokens; existing JWTs remain valid until expiry. MFA is not implemented;
+browser clears cookies; existing JWTs remain valid until expiry. Unsafe requests require
+`X-Requested-With: XMLHttpRequest`, and frontend fetch uses `credentials: 'include'`. MFA is not implemented;
 roles requiring MFA remain blocked until the appropriate verification flow exists.
 See [security architecture](security-architecture.md).
 

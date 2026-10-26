@@ -74,21 +74,22 @@ A download URL is returned only after the file reaches `READY`.
 
 ### Authentication hiện tại (Java IAM)
 
-Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
-API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
+Xác thực dùng JWT stateless với access token và refresh token trong cookie HttpOnly; JSON chỉ trả user/tenant grants.
+Browser gửi cookie; gateway chuyển JWT đã xác minh qua Bearer tới downstream. Hai bên xác minh
 chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
-không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
+không dùng Redis projection. Gateway không gọi IAM introspection
 trên mỗi request.
 
-`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
+`POST /api/v1/auth/refresh` đọc refresh cookie, không nhận body, hoạt động cả khi access token
 đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
 mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
 Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
 
-Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
+Logout xóa cả hai cookie, ghi audit khi có danh tính hợp lệ và trả 204. JWT đã cấp vẫn hợp lệ đến hết hạn;
 không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
-`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
-rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
+`POST /api/v1/auth/switch-tenant` với cookie và `{tenantId}`, rồi nhận cookie mới.
+Frontend dùng `credentials: 'include'` và `X-Requested-With: XMLHttpRequest` cho các request ghi.
+Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
 
 ```text
 POST /api/v1/auth/register

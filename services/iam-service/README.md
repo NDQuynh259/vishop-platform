@@ -51,7 +51,8 @@ Domain models remain independent of frameworks and are mapped to HTTP response D
 Feature interactions use interfaces in `modules/<feature>/application/api` and public
 immutable DTOs in that module's `application/dto`. Public interfaces and DTOs have no
 dependency on module internals or frameworks. Implementations also live in
-`application/api`, but remain internal to the owning module; DTO mapping lives in
+`application/api` as package-private Spring components, so other packages cannot import
+or inject their concrete classes. Spring injects the public API interfaces instead. DTO mapping lives in
 `application/mapper`. These dependencies can be
 bidirectional at the feature level; API methods must not introduce circular bean
 dependencies or recursive calls across features.
@@ -67,6 +68,11 @@ Public module interfaces and DTOs:
   Architecture tests permit these types and the API interfaces across module boundaries;
   implementation classes, other DTOs, entities and repositories remain internal.
 
+`IamArchitectureTest` enforces these boundaries for all three modules and composition:
+foreign repository/read ports, entities and implementation classes are forbidden. It also
+requires public API interfaces and package-private `@Component` implementations.
+These are local Java calls using the same transaction manager, not HTTP calls to IAM.
+
 `composition/onboarding/application/command/CreateTenantCommandHandler` checks `IdentityApi`, calls
 `TenantApi.create` to persist the aggregate and its outbox events, then calls
 `AccessApi.initializeOwner`, all in one transaction. The composition layer uses only module
@@ -78,6 +84,15 @@ The domain owner policy uses its own `UserActivityPort`; an integration adapter 
 All business persistence uses Spring Data JPA entities/repositories with versioning and
 explicit locks. Identity/access own their entity mappings, permission collections and
 repositories. Database-clock invitation checks use native Spring Data queries.
+All five IAM entities declare UUID ID, audit/soft-delete timestamps and optimistic
+version mappings directly, without entity inheritance. Membership, role and invitation
+also declare immutable `tenantId`. Lombok generates getters/setters and protected JPA
+constructors. Each entity defines its own `@PrePersist`/`@PreUpdate` callbacks: inserts
+preserve domain-provided `createdAt` and fill missing timestamps; updates refresh `updatedAt`.
+There is no shared audit interface/listener. Native bulk updates still maintain
+timestamps/version in SQL.
+`deleted_at` is nullable metadata added by V6 to all five IAM entity tables. Adding this
+column does not enable automatic query filtering or change deletion endpoints.
 Each feature owns its mappings and
 read port. Access read projections may join user/tenant tables in the shared database;
 mutations go through the owning feature. JPA/native queries share the same datasource and transaction.
@@ -153,8 +168,9 @@ microservices' databases. Cross-service aggregation requires APIs or an event-fe
 
 ## Authentication
 
-Login and registration return JWT `accessToken` and `refreshToken` in the JSON body,
-plus user and tenant grants. No session cookie or server-side
+Login, registration, refresh and tenant switching set HttpOnly cookies
+`vishop_access_token` (Path `/`) and `vishop_refresh_token` (Path `/api/v1/auth`). JSON
+contains only `user`, `tenantId`, `roles`, and `permissions`, never tokens. No server-side
 session is created. Access lifetime defaults to 15 minutes (`JWT_ACCESS_EXPIRATION_MS`),
 refresh lifetime to seven days (`JWT_REFRESH_EXPIRATION_MS`).
 
@@ -167,40 +183,72 @@ JWT_REFRESH_EXPIRATION_MS=604800000
 ```
 
 Refresh lifetime must exceed access lifetime. New settings affect subsequently issued
-tokens; existing JWTs retain their signed expiry. Clients use Bearer authentication and read JWT expiry from the `exp` claim.
+tokens; existing JWTs retain their signed expiry. Cookie lifetimes follow the access lifetime
+and remaining absolute refresh expiry. JavaScript does not read either token.
 
-Protected routes accept only `Authorization: Bearer <accessToken>`. Gateway and services
+Browsers authenticate with the access cookie. Gateway converts verified access to
+`Authorization: Bearer <accessToken>` for downstream services and strips browser cookies
+from business requests; only IAM auth routes receive refresh cookies. Gateway and services
 verify signature, issuer, audience, token use and expiry locally. JWTs have no `sid`,
 session version or Redis projection. Identity routes allow a null tenant; business APIs
 require a tenant context. Domain use cases still check current user/membership permissions.
 
-`POST /api/v1/auth/refresh` accepts `{ "refreshToken": "..." }` without requiring an
-access token. It validates the refresh JWT and current account/tenant grants, then returns
-a new pair. The refreshed token retains the original absolute refresh expiry, so refreshing
+`POST /api/v1/auth/refresh` has no body and reads the HttpOnly refresh cookie, without requiring
+a valid access token. It validates the refresh JWT and current account/tenant grants, then sets
+new cookies. The refreshed token retains the original absolute refresh expiry, so refreshing
 does not extend login indefinitely. The previous refresh JWT remains valid until expiry;
 there is no server-side rotation/reuse tracking in this fully stateless model.
 
-`POST /api/v1/auth/switch-tenant` requires an access Bearer token and
-`{ "tenantId": "...", "refreshToken": "..." }`. Both tokens must belong to the same user.
-The returned pair carries the selected tenant; another tab's tokens retain their context.
+`POST /api/v1/auth/switch-tenant` accepts only `{ "tenantId": "..." }` and reads access/refresh
+cookies. Both tokens must belong to the same user. New cookies carry the selected tenant.
+Tabs in the same browser share these cookies and the current tenant context.
 
-Logout writes an audit event and returns 204. Clients must discard both tokens. Without a
+Login prefers `users.last_tenant_id` when the user still has ACTIVE membership in an
+ACTIVE tenant. Otherwise, exactly one active membership is selected automatically;
+zero or multiple memberships return `tenantId: null`. The frontend can use
+`GET /api/v1/tenants` to distinguish `/no-tenant` from `/select-tenant`.
+Successful login selection and tenant switching persist the preference; stale preferences
+are replaced or cleared on login. Token issuance still validates current access and MFA
+requirements before saving a selection. Refresh keeps the tenant in its own token and
+does not change the remembered preference. Other browser/device cookie jars remain independent.
+This adds no IAM lookup to gateway authentication on business requests.
+
+Logout clears both cookie paths and returns 204, even when access has expired. A valid
+authenticated identity also produces an audit event. Without a
 revocation store, already issued JWTs remain usable until expiry. User/role/tenant changes
 are reflected when tokens are issued again; IAM domain authorization also checks live data.
 No Redis or Kafka security projection is required to authenticate requests.
+
+Browser clients must send `credentials: 'include'`. All unsafe API methods require
+`X-Requested-With: XMLHttpRequest`, including login/register/refresh/logout; requests with
+an Origin outside exact `ALLOWED_ORIGINS` are rejected. CORS allows credentials for that
+allowlist only. Cookies are host-only with SameSite=Lax by default. Local HTTP uses
+`AUTH_COOKIE_SECURE=false`; production Compose defaults to true. `AUTH_COOKIE_SAME_SITE=None`
+is supported only with Secure cookies. Scalar `/docs` supplies credentials and the header.
+
+```javascript
+await fetch('http://localhost:8000/api/v1/auth/login', {
+  method: 'POST', credentials: 'include',
+  headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+  body: JSON.stringify({email: 'user@example.com', password: 'StrongPass123!'})
+});
+```
 
 ## APIs
 
 All public endpoints below have prefix `/api/v1`.
 
+The OpenAPI 3 JSON specification is available at `/v3/api-docs`, or through gateway at
+`/v3/api-docs/iam-service`. The runtime uses the springdoc API-only starter without Swagger UI.
+
 | Method/path | Behavior |
 | --- | --- |
-| `POST /auth/register` | `{email,password,fullName}` → global account + access/refresh JWTs; rejects tenantId/role |
-| `POST /auth/login` | `{email,password}` → access/refresh JWTs |
+| `POST /auth/register` | `{email,password}` → global USER account + HttpOnly cookies and user/grants JSON; other fields return 400; fullName starts null |
+| `POST /auth/login` | `{email,password}` → HttpOnly cookies and user/grants JSON |
 | `GET /auth/me` | Global profile including systemRole; never returns a password hash |
-| `POST /auth/refresh` | `{refreshToken}` -> access/refresh JWTs with current grants |
-| `POST /auth/switch-tenant` | `{tenantId,refreshToken}` -> selected tenant access/refresh JWTs |
-| `POST /auth/logout` | Audit logout; client discards both JWTs |
+| `POST /auth/refresh` | No body; refresh cookie → new HttpOnly cookies and current grants |
+| `POST /auth/switch-tenant` | `{tenantId}` + auth cookies → new HttpOnly cookies and selected tenant grants |
+| `POST /auth/logout` | Clear both cookies; audit authenticated logout |
 | `GET /tenants` | Active tenants the caller belongs to |
 | `POST /tenants` | `{code,name}` → tenant + four roles + OWNER membership |
 | `GET /tenants/{id}` | Member with tenant.view reads the tenant |
@@ -219,6 +267,12 @@ All public endpoints below have prefix `/api/v1`.
 | `PATCH /cms/users/{id}/status` | `{status}`; locks/suspends global accounts |
 
 CMS tenant status management has moved from the old `/tenants/{id}/status` endpoint.
+
+Registration accepts exactly `email` and `password`. Email normalization, uniqueness and
+password policy still apply. `fullName` is optional profile data and starts as null;
+V7 makes `users.full_name` nullable while preserving existing names. Extra registration
+fields are rejected with 400, and missing/invalid required fields follow the existing
+validation response (422).
 Responses expose `systemRole` on the user; tenantId, roles and permissions are separate
 fields of the auth response. The old per-user tenantId/role contract is retired.
 

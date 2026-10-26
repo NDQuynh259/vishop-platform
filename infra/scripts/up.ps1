@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $infraDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
-$buildFlag = if ($Build) { "--build" } else { "" }
+$buildArgs = if ($Build) { @("--build") } else { @() }
 
 Set-Location $infraDir
 
@@ -22,7 +22,7 @@ if ($Env -eq "infra") {
     Write-Host " Compose: compose/docker-compose.infra.yml" -ForegroundColor Cyan
     Write-Host "==========================================================" -ForegroundColor Cyan
 
-    docker compose -f compose/docker-compose.infra.yml up -d $buildFlag
+    & docker compose -f compose/docker-compose.infra.yml up -d @buildArgs
 }
 elseif ($Env -eq "dev") {
     Write-Host "==========================================================" -ForegroundColor Cyan
@@ -31,8 +31,8 @@ elseif ($Env -eq "dev") {
     Write-Host " Compose: compose/docker-compose.dev.yml" -ForegroundColor Cyan
     Write-Host "==========================================================" -ForegroundColor Cyan
 
-    $envFile = if (Test-Path ".env.dev") { "--env-file .env.dev" } else { "" }
-    docker compose $envFile -f compose/docker-compose.dev.yml up -d $buildFlag
+    $envArgs = if (Test-Path ".env.dev") { @("--env-file", ".env.dev") } else { @() }
+    & docker compose @envArgs -f compose/docker-compose.dev.yml up -d @buildArgs
 }
 elseif ($Env -eq "prod") {
     Write-Host "==========================================================" -ForegroundColor Yellow
@@ -47,7 +47,7 @@ elseif ($Env -eq "prod") {
         exit 1
     }
 
-    docker compose --env-file .env.prod -f compose/docker-compose.prod.yml up -d $buildFlag
+    & docker compose --env-file .env.prod -f compose/docker-compose.prod.yml up -d @buildArgs
 }
 
-Write-Host "`n✓ ViShop Platform started successfully in [$Env] mode." -ForegroundColor Green
+Write-Host "`n[OK] ViShop Platform started successfully in [$Env] mode." -ForegroundColor Green

@@ -2828,22 +2828,21 @@ Contract bootstrap hiện tại của Java IAM:
 
 | Method | Path | Quyền/ngữ cảnh | Request / response |
 | --- | --- | --- | --- |
-| GET | `/api/v1/tenants` | Bearer access token; cho phép tenant null | Mảng tenant đang hoạt động mà user có membership; hiện chưa phân trang |
-| POST | `/api/v1/auth/switch-tenant` | Bearer access token và membership đích | `{tenantId,refreshToken}` → `AuthResponse` chứa cặp JWT mới và tenant grants |
-| POST | `/api/v1/tenants` | Bearer access token; cho phép tenant null | `{code,name}` → tenant mới; user trở thành OWNER |
+| GET | `/api/v1/tenants` | Access cookie; cho phép tenant null | Mảng tenant đang hoạt động mà user có membership; hiện chưa phân trang |
+| POST | `/api/v1/auth/switch-tenant` | Auth cookies và membership đích | `{tenantId}` → thay cookie HttpOnly, JSON chỉ chứa user/tenant grants |
+| POST | `/api/v1/tenants` | Access cookie; cho phép tenant null | `{code,name}` → tenant mới; user trở thành OWNER |
 
 ```http
 POST /api/v1/auth/switch-tenant
-Authorization: Bearer <accessToken>
+Cookie: vishop_access_token=<HttpOnly>; vishop_refresh_token=<HttpOnly>
+X-Requested-With: XMLHttpRequest
 Content-Type: application/json
 
-{ "tenantId": "0199a222-2222-7000-8000-000000000002", "refreshToken": "<refreshToken>" }
+{ "tenantId": "0199a222-2222-7000-8000-000000000002" }
 ```
 
 ```json
 {
-  "accessToken": "<newAccessToken>",
-  "refreshToken": "<newRefreshToken>",
   "user": {
     "id": "0199a111-1111-7000-8000-000000000001",
     "email": "owner@example.com",
@@ -2858,15 +2857,16 @@ Content-Type: application/json
 }
 ```
 
-`permissions` trong ví dụ được rút gọn. Client dùng access token mới cho request tenant-scoped,
-và refresh token tương ứng để cấp lại token trong context đó. Các tab có thể giữ cặp token
-riêng. Chọn lại cùng tenant vẫn cấp cặp JWT; đây không phải cập nhật state trên server.
+`permissions` trong ví dụ được rút gọn. JWT chỉ được ghi qua `Set-Cookie` với HttpOnly,
+không trả trong JSON. Frontend dùng `credentials: 'include'` và `X-Requested-With: XMLHttpRequest`
+cho request ghi. Các tab cùng trình duyệt dùng chung cookie và tenant hiện tại.
 Membership/tenant không hoạt động trả 403 theo kiểm tra quyền IAM; token không hợp lệ hoặc
 hai token khác user trả 401. Không dùng lỗi `tenant_ambiguous` hay contract switch session cũ.
 
-Login chọn tenant tự động khi user có đúng một active membership; còn lại trả tenant null.
+Login ưu tiên tenant ghi nhớ còn hợp lệ, sau đó tự chọn nếu chỉ có một active membership;
+còn lại trả tenant null.
 Gateway cho phép các API identity/bootstrap với tenant null, nhưng chặn business API thiếu
-tenant bằng 403. FE hiển thị picker, gọi switch và chỉ chuyển màn sau khi nhận cặp token mới.
+tenant bằng 403. FE hiển thị picker, gọi switch và chuyển màn sau khi cookie được thay thành công.
 Tạo tenant và đổi tenant là hai thao tác riêng; tạo tenant không đổi JWT đang giữ.
 
 Danh sách tenant hiện trả các field `id`, `code`, `name`, `status`, `createdAt` theo

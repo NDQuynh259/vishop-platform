@@ -17,8 +17,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 /**
- * Handles exceptions occurring at the API Gateway level (such as downstream
- * service down, route not
+ * Handles exceptions occurring at the API Gateway level (such as downstream service down, route not
  * found), formatting them consistently into RFC 9457 Problem Details JSON.
  */
 @Component
@@ -48,8 +47,7 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
       detail = "The requested path could not be routed to any downstream service.";
     } else if (ex instanceof ResponseStatusException rse) {
       status = HttpStatus.resolve(rse.getStatusCode().value());
-      if (status == null)
-        status = HttpStatus.INTERNAL_SERVER_ERROR;
+      if (status == null) status = HttpStatus.INTERNAL_SERVER_ERROR;
       title = status.getReasonPhrase();
       detail = rse.getReason() != null ? rse.getReason() : detail;
     } else if (ex.getMessage() != null && ex.getMessage().contains("Connection refused")) {
@@ -70,11 +68,11 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
     response.getHeaders().setContentType(MediaType.APPLICATION_PROBLEM_JSON);
 
     String requestId = exchange.getRequest().getHeaders().getFirst("X-Request-Id");
-    if (requestId == null)
-      requestId = "none";
+    if (requestId == null) requestId = "none";
 
-    String json = String.format(
-        """
+    String json =
+        String.format(
+            """
             {
               "type": "/errors/%s",
               "title": "%s",
@@ -85,13 +83,13 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
               "requestId": "%s"
             }
             """,
-        code.replace('_', '-'),
-        title,
-        status.value(),
-        detail,
-        code,
-        Instant.now().toString(),
-        requestId);
+            code.replace('_', '-'),
+            title,
+            status.value(),
+            detail,
+            code,
+            Instant.now().toString(),
+            requestId);
 
     DataBuffer buffer = response.bufferFactory().wrap(json.getBytes(StandardCharsets.UTF_8));
     return response.writeWith(Mono.just(buffer));

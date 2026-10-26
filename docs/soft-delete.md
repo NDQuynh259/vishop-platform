@@ -26,7 +26,15 @@ Trong Spring Boot 3.3 (Hibernate 6.4+), ta sử dụng annotation `@SQLRestricti
 @Entity
 @Table(name = "merchants_skus")
 @SQLRestriction("deleted_at IS NULL")
-public class MerchantSkuJpaEntity extends BaseTenantJpaEntity {
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class MerchantSkuJpaEntity {
+
+    @Id
+    private UUID id;
+
+    @Column(name = "tenant_id", nullable = false, updatable = false)
+    private UUID tenantId;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;

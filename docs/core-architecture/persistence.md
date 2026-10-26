@@ -26,6 +26,32 @@ modules/<feature>/
 
 `composition/members` sở hữu read port và JPA native adapter để JOIN các bảng trong database IAM. Quyền truy cập vẫn kiểm tra qua contract; SQL luôn giới hạn tenant. Không JOIN database của microservice khác.
 
+## Khai báo entity và timestamp
+
+Mỗi entity tự khai báo các cột cần thiết, không kế thừa base JPA. Năm entity IAM khai báo
+trực tiếp `UUID id`, `createdAt`, `updatedAt`, `deletedAt` nullable và `Long version` với
+`@Version`. ID do domain/application cấp theo luồng hiện có, không dùng `@GeneratedValue`.
+Membership, role và invitation tự khai báo `tenantId` không đổi sau insert; repository
+và authorization vẫn phải kiểm tra tenant scope. Domain model độc lập với mapping JPA.
+
+Getter/setter dùng Lombok `@Getter`/`@Setter`; constructor JPA dùng
+`@NoArgsConstructor(access = AccessLevel.PROTECTED)`. Entity log, outbox và consumed
+message dùng getter và constructor phù hợp, không thêm setter cho dữ liệu bất biến.
+Lombok được cấu hình bằng `compileOnly` và `annotationProcessor`, theo version do
+Spring Boot BOM quản lý. Factory có logic khởi tạo và mapping domain giữ code tường minh.
+
+Entity cần audit timestamp tự khai báo callback `@PrePersist` và `@PreUpdate` ngay trong
+entity, không dùng interface/listener chung. `@PrePersist` chỉ bổ sung `createdAt` khi
+còn null, giữ nguyên thời gian domain đã cấp; `updatedAt` ban đầu lấy từ `createdAt` nếu
+chưa có. `@PreUpdate` cập nhật `updatedAt`. `createdAt` không được cập nhật sau insert.
+Thời điểm nghiệp vụ như `acceptedAt` do domain/use case quản lý. Khi map aggregate đã
+tồn tại, phải giữ nguyên ID, `createdAt` và version để optimistic locking phát hiện cập nhật cũ.
+
+Bulk/native SQL không chạy các callback này; câu lệnh ghi vẫn phải tự cập nhật timestamp
+và version. `deleted_at` chỉ lưu dấu xóa mềm; use case/repository quy định thao tác xóa và
+lọc dữ liệu. Audit log giữ `occurredAt`/`recordedAt`; outbox giữ metadata gửi/retry;
+consumed message giữ khóa kép và `processedAt`, không cần callback `updatedAt`.
+
 ## Entity không tạo hay sửa schema
 
 Entity chỉ mô tả ánh xạ persistence. Thêm `@Entity`, `@Column`, `@Version`, `@ElementCollection` hoặc quan hệ không tự tạo bảng/cột. Entity có thể khai báo metadata nhưng Hibernate không được thực thi schema DDL.

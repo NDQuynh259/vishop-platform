@@ -2,38 +2,18 @@ package io.github.coreplatform.common.persistence.idempotency;
 
 import java.io.Serializable;
 import java.util.Objects;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 /** Composite primary key for idempotent consumed message tracking. */
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
 public class ConsumedMessageId implements Serializable {
 
   private String messageId;
   private String consumerGroup;
-
-  // #region ConsumedMessageId
-  public ConsumedMessageId() {}
-
-  // #endregion
-
-  // #region ConsumedMessageId
-  public ConsumedMessageId(String messageId, String consumerGroup) {
-    this.messageId = messageId;
-    this.consumerGroup = consumerGroup;
-  }
-
-  // #endregion
-
-  // #region getMessageId
-  public String getMessageId() {
-    return messageId;
-  }
-
-  // #endregion
-  // #region getConsumerGroup
-  public String getConsumerGroup() {
-    return consumerGroup;
-  }
-
-  // #endregion
 
   // #region equals
   @Override

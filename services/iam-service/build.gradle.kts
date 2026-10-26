@@ -9,6 +9,8 @@ springBoot {
 tasks.jar { enabled = false }
 
 dependencies {
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
     implementation(project(":libs:common-domain"))
     implementation(project(":libs:common-web"))
     implementation(project(":libs:common-security"))

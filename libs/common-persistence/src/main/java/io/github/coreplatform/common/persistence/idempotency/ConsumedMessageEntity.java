@@ -6,11 +6,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 /** Tracks consumed Kafka messages to guarantee idempotent processing in consumers. */
 @Entity
 @Table(name = "consumed_messages")
 @IdClass(ConsumedMessageId.class)
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
 public class ConsumedMessageEntity {
 
   @Id
@@ -26,44 +33,4 @@ public class ConsumedMessageEntity {
 
   @Column(name = "processed_at", nullable = false)
   private Instant processedAt;
-
-  // #region ConsumedMessageEntity
-  protected ConsumedMessageEntity() {}
-
-  // #endregion
-
-  // #region ConsumedMessageEntity
-  public ConsumedMessageEntity(
-      String messageId, String consumerGroup, String eventType, Instant processedAt) {
-    this.messageId = messageId;
-    this.consumerGroup = consumerGroup;
-    this.eventType = eventType;
-    this.processedAt = processedAt;
-  }
-
-  // #endregion
-
-  // #region getMessageId
-  public String getMessageId() {
-    return messageId;
-  }
-
-  // #endregion
-  // #region getConsumerGroup
-  public String getConsumerGroup() {
-    return consumerGroup;
-  }
-
-  // #endregion
-  // #region getEventType
-  public String getEventType() {
-    return eventType;
-  }
-
-  // #endregion
-  // #region getProcessedAt
-  public Instant getProcessedAt() {
-    return processedAt;
-  }
-  // #endregion
 }

@@ -10,9 +10,9 @@ import com.vishop.iam.composition.onboarding.application.command.CreateTenantCom
 import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommandHandler;
 import com.vishop.iam.database.JpaDatabaseFixture;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
-import com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
+import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -34,6 +34,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "vishop.outbox.enabled=false",
       "spring.kafka.listener.auto-startup=false",
       "management.tracing.enabled=false",
+      "vishop.security.cookies.secure=true",
       "vishop.security.jwt.secret=test-jwt-secret-with-at-least-thirty-two-bytes",
       "vishop.security.internal-secret=test-internal-secret-with-at-least-thirty-two-bytes"
     })
@@ -79,7 +80,7 @@ class IamApplicationTest {
   @Autowired org.springframework.context.ApplicationContext context;
 
   @org.springframework.boot.test.mock.mockito.SpyBean(proxyTargetAware = true)
-  com.vishop.iam.modules.access.application.api.AccessApplicationApi accessApiSpy;
+  IamEventPublisherPort eventsSpy;
 
   @BeforeEach
   void reset() {
@@ -89,18 +90,69 @@ class IamApplicationTest {
 
   record Account(String email, String id, String token, String refreshToken) {}
 
+  record CookieAuth(JsonNode json, String accessToken, String refreshToken) {
+    JsonNode path(String name) {
+      return json.path(name);
+    }
+  }
+
+  private CookieAuth cookieAuth(MvcResult result) throws Exception {
+    JsonNode response = body(result);
+    assertThat(response.has("accessToken")).isFalse();
+    assertThat(response.has("refreshToken")).isFalse();
+    var cookies =
+        result.getResponse().getHeaders("Set-Cookie").stream()
+            .map(org.springframework.mock.web.MockCookie::parse)
+            .toList();
+    assertThat(cookies)
+        .hasSize(2)
+        .allSatisfy(
+            cookie -> {
+              assertThat(cookie.isHttpOnly()).isTrue();
+              assertThat(cookie.getSecure()).isTrue();
+              assertThat(cookie.getSameSite()).isEqualTo("Lax");
+              assertThat(cookie.getMaxAge()).isPositive();
+              assertThat(cookie.getDomain()).isNull();
+            });
+    var access =
+        cookies.stream()
+            .filter(c -> c.getName().equals(AuthCookies.ACCESS_TOKEN))
+            .findFirst()
+            .orElseThrow();
+    var refresh =
+        cookies.stream()
+            .filter(c -> c.getName().equals(AuthCookies.REFRESH_TOKEN))
+            .findFirst()
+            .orElseThrow();
+    assertThat(access.getPath()).isEqualTo(AuthCookies.ACCESS_PATH);
+    assertThat(refresh.getPath()).isEqualTo(AuthCookies.REFRESH_PATH);
+    assertThat(result.getResponse().getHeader("Cache-Control")).isEqualTo("no-store");
+    return new CookieAuth(response, access.getValue(), refresh.getValue());
+  }
+
+  private MockHttpServletRequestBuilder refreshRequest(String refreshToken) {
+    return post("/api/v1/auth/refresh")
+        .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+        .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, refreshToken));
+  }
+
   private JsonNode body(MvcResult result) throws Exception {
     return json.readTree(result.getResponse().getContentAsString());
   }
 
   private MockHttpServletRequestBuilder authorized(
       MockHttpServletRequestBuilder request, String token) {
-    return request.header("Authorization", "Bearer " + token);
+    return request
+        .header("Authorization", "Bearer " + token)
+        .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE);
   }
 
   private MockHttpServletRequestBuilder payload(MockHttpServletRequestBuilder request, Object data)
       throws Exception {
-    return request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(data));
+    return request
+        .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(json.writeValueAsBytes(data));
   }
 
   private Account register(String email) throws Exception {
@@ -108,17 +160,15 @@ class IamApplicationTest {
         http.perform(
                 payload(
                     post("/api/v1/auth/register"),
-                    Map.of("email", email, "password", "StrongPass123!", "fullName", "Test User")))
+                    Map.of("email", email, "password", "StrongPass123!")))
             .andExpect(status().isCreated())
             .andReturn();
-    JsonNode response = body(result);
-    assertThat(result.getResponse().getHeader("Set-Cookie")).isNull();
-    assertThat(response.path("refreshToken").asText()).isNotBlank();
+    var response = cookieAuth(result);
     return new Account(
         email,
         response.path("user").path("id").asText(),
-        response.path("accessToken").asText(),
-        response.path("refreshToken").asText());
+        response.accessToken(),
+        response.refreshToken());
   }
 
   private JsonNode createTenant(Account account, String code) throws Exception {
@@ -158,14 +208,166 @@ class IamApplicationTest {
         .andExpect(status().isOk());
   }
 
-  private JsonNode select(Account account, String tenant) throws Exception {
-    return body(
+  private CookieAuth select(Account account, String tenant) throws Exception {
+    return cookieAuth(
         http.perform(
                 payload(
-                    authorized(post("/api/v1/auth/switch-tenant"), account.token()),
-                    Map.of("tenantId", tenant, "refreshToken", account.refreshToken())))
+                    post("/api/v1/auth/switch-tenant")
+                        .cookie(
+                            new Cookie(AuthCookies.ACCESS_TOKEN, account.token()),
+                            new Cookie(AuthCookies.REFRESH_TOKEN, account.refreshToken())),
+                    Map.of("tenantId", tenant)))
             .andExpect(status().isOk())
             .andReturn());
+  }
+
+  @Test
+  void openApiSpecificationIsPublicAndDocumentsAuthenticationRoutes() throws Exception {
+    http.perform(get("/v3/api-docs"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.openapi").value(org.hamcrest.Matchers.startsWith("3.")))
+        .andExpect(jsonPath("$.info.title").value("ViShop Platform REST API"))
+        .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post").exists())
+        .andExpect(jsonPath("$.paths['/api/v1/auth/switch-tenant'].post").exists())
+        .andExpect(jsonPath("$.components.schemas.AuthResponse").doesNotExist())
+        .andExpect(
+            jsonPath("$.components.schemas.AuthenticationView.properties")
+                .value(org.hamcrest.Matchers.aMapWithSize(4)))
+        .andExpect(jsonPath("$.paths['/api/v1/auth/refresh'].post.requestBody").doesNotExist())
+        .andExpect(
+            jsonPath("$.components.schemas.SwitchTenantRequest.properties")
+                .value(org.hamcrest.Matchers.aMapWithSize(1)))
+        .andExpect(
+            jsonPath("$.components.securitySchemes.accessCookie.name")
+                .value(AuthCookies.ACCESS_TOKEN))
+        .andExpect(
+            jsonPath("$.components.schemas.RegisterUserRequest.properties")
+                .value(org.hamcrest.Matchers.aMapWithSize(2)))
+        .andExpect(
+            jsonPath("$.components.schemas.RegisterUserRequest.required")
+                .value(org.hamcrest.Matchers.containsInAnyOrder("email", "password")));
+  }
+
+  @Test
+  void loginSelectsAndRemembersOnlyTenantButLeavesAccountsWithoutTenantsUnselected()
+      throws Exception {
+    Account owner = register("initial-tenant@example.com");
+    assertThat(login(owner).path("tenantId").isNull()).isTrue();
+    assertThat(lastTenant(owner)).isNull();
+
+    String tenant = createTenant(owner, "initial-tenant").path("id").asText();
+    var selected = login(owner);
+    assertThat(selected.path("tenantId").asText()).isEqualTo(tenant);
+    assertThat(lastTenant(owner)).isEqualTo(tenant);
+    http.perform(
+            authorized(get("/api/v1/tenants/" + tenant + "/members/me"), selected.accessToken()))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void loginRequiresFirstSelectionThenRemembersSuccessfulSwitchAcrossLogins() throws Exception {
+    Account owner = register("remember-tenant@example.com");
+    String first = createTenant(owner, "remember-first").path("id").asText();
+    String second = createTenant(owner, "remember-second").path("id").asText();
+    assertThat(login(owner).path("tenantId").isNull()).isTrue();
+    assertThat(lastTenant(owner)).isNull();
+
+    var firstSelection = select(owner, first);
+    assertThat(lastTenant(owner)).isEqualTo(first);
+    assertThat(login(owner).path("tenantId").asText()).isEqualTo(first);
+    select(owner, second);
+    assertThat(lastTenant(owner)).isEqualTo(second);
+    assertThat(login(owner).path("tenantId").asText()).isEqualTo(second);
+
+    // Refresh preserves the token's tenant and must not overwrite the shared preference.
+    var refreshed =
+        cookieAuth(
+            http.perform(refreshRequest(firstSelection.refreshToken()))
+                .andExpect(status().isOk())
+                .andReturn());
+    assertThat(refreshed.path("tenantId").asText()).isEqualTo(first);
+    assertThat(lastTenant(owner)).isEqualTo(second);
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"membership", "tenant", "removed"})
+  void loginDiscardsUnavailableRememberedTenantAndFallsBackToOnlyActiveTenant(String unavailable)
+      throws Exception {
+    Account owner = register("stale-tenant@example.com");
+    String first = createTenant(owner, "stale-first").path("id").asText();
+    String second = createTenant(owner, "stale-second").path("id").asText();
+    select(owner, first);
+    if (unavailable.equals("membership")) {
+      db.update(
+          "UPDATE tenant_members SET status='INACTIVE' WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+          first,
+          owner.id());
+    } else if (unavailable.equals("removed")) {
+      db.update(
+          "DELETE FROM tenant_members WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+          first,
+          owner.id());
+    } else {
+      db.update("UPDATE tenants SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", first);
+    }
+    assertThat(login(owner).path("tenantId").asText()).isEqualTo(second);
+    assertThat(lastTenant(owner)).isEqualTo(second);
+  }
+
+  @Test
+  void stalePreferenceIsClearedWhenMultipleOrNoActiveTenantsRemain() throws Exception {
+    Account owner = register("clear-tenant@example.com");
+    String first = createTenant(owner, "clear-first").path("id").asText();
+    createTenant(owner, "clear-second");
+    createTenant(owner, "clear-third");
+    select(owner, first);
+    db.update("UPDATE tenant_members SET status='INACTIVE' WHERE tenant_id=CAST(? AS uuid)", first);
+    assertThat(login(owner).path("tenantId").isNull()).isTrue();
+    assertThat(lastTenant(owner)).isNull();
+
+    db.update(
+        "UPDATE users SET last_tenant_id=CAST(? AS uuid) WHERE id=CAST(? AS uuid)",
+        first,
+        owner.id());
+    db.update(
+        "UPDATE tenant_members SET status='INACTIVE' WHERE user_id=CAST(? AS uuid)", owner.id());
+    assertThat(login(owner).path("tenantId").isNull()).isTrue();
+    assertThat(lastTenant(owner)).isNull();
+  }
+
+  @Test
+  void rejectedTenantSwitchDoesNotOverwriteRememberedTenant() throws Exception {
+    Account owner = register("reject-switch@example.com");
+    Account stranger = register("foreign-tenant@example.com");
+    String own = createTenant(owner, "reject-own").path("id").asText();
+    String foreign = createTenant(stranger, "reject-foreign").path("id").asText();
+    select(owner, own);
+    http.perform(
+            payload(
+                authorized(
+                    post("/api/v1/auth/switch-tenant")
+                        .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, owner.refreshToken())),
+                    owner.token()),
+                Map.of("tenantId", foreign)))
+        .andExpect(status().isForbidden());
+    assertThat(lastTenant(owner)).isEqualTo(own);
+  }
+
+  private CookieAuth login(Account account) throws Exception {
+    return cookieAuth(
+        http.perform(
+                payload(
+                    post("/api/v1/auth/login"),
+                    Map.of("email", account.email(), "password", "StrongPass123!")))
+            .andExpect(status().isOk())
+            .andReturn());
+  }
+
+  private String lastTenant(Account account) {
+    return db.queryForObject(
+        "SELECT last_tenant_id::text FROM users WHERE id=CAST(? AS uuid)",
+        String.class,
+        account.id());
   }
 
   @Test
@@ -187,7 +389,7 @@ class IamApplicationTest {
                 .andExpect(jsonPath("$.tenantId").value(first))
                 .andExpect(jsonPath("$.userId").value(member.id()))
                 .andExpect(jsonPath("$.email").value(member.email()))
-                .andExpect(jsonPath("$.fullName").value("Test User"))
+                .andExpect(jsonPath("$.fullName").isEmpty())
                 .andExpect(jsonPath("$.roleId").value(operations))
                 .andExpect(jsonPath("$.role").value("OPERATIONS"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
@@ -368,10 +570,82 @@ class IamApplicationTest {
   }
 
   @Test
+  void accessCookieAuthenticatesAndRefreshRequiresCookieInsteadOfJson() throws Exception {
+    Account user = register("cookie-auth@example.com");
+    http.perform(
+            get("/api/v1/auth/me")
+                .cookie(new Cookie(AuthCookies.ACCESS_TOKEN, user.token()))
+                .header("Origin", "http://localhost:3000"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(user.id()))
+        .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    http.perform(
+            get("/api/v1/auth/me")
+                .cookie(new Cookie(AuthCookies.ACCESS_TOKEN, user.refreshToken())))
+        .andExpect(status().isUnauthorized());
+    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", user.refreshToken())))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void cookieWritesRequireCustomHeaderAndTrustedOrigin() throws Exception {
+    Account user = register("csrf@example.com");
+    http.perform(
+            post("/api/v1/auth/logout").cookie(new Cookie(AuthCookies.ACCESS_TOKEN, user.token())))
+        .andExpect(status().isForbidden());
+    http.perform(
+            post("/api/v1/auth/refresh")
+                .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, user.refreshToken())))
+        .andExpect(status().isForbidden());
+    http.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    json.writeValueAsBytes(
+                        Map.of("email", user.email(), "password", "StrongPass123!"))))
+        .andExpect(status().isForbidden());
+    http.perform(refreshRequest(user.refreshToken()).header("Origin", "https://evil.example"))
+        .andExpect(status().isForbidden());
+    http.perform(
+            options("/api/v1/auth/login")
+                .header("Origin", "http://localhost:3000")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type,x-requested-with"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+  }
+
+  @Test
+  void logoutClearsCookiesEvenWhenAccessExpiredOrMissing() throws Exception {
+    Account user = register("expired-logout@example.com");
+    var expiredProvider =
+        new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
+            "test-jwt-secret-with-at-least-thirty-two-bytes", -1000);
+    String expired =
+        expiredProvider.generateIamAccessToken(
+            UUID.fromString(user.id()), null, "USER", List.of(), Set.of());
+    for (var access : List.of(expired, "")) {
+      var result =
+          http.perform(
+                  post("/api/v1/auth/logout")
+                      .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+                      .cookie(
+                          new Cookie(AuthCookies.ACCESS_TOKEN, access),
+                          new Cookie(AuthCookies.REFRESH_TOKEN, user.refreshToken())))
+              .andExpect(status().isNoContent())
+              .andReturn();
+      assertThat(result.getResponse().getHeaders("Set-Cookie"))
+          .hasSize(2)
+          .allSatisfy(cookie -> assertThat(cookie).contains("Max-Age=0", "HttpOnly"));
+    }
+  }
+
+  @Test
   void registrationIsGlobalAndDoesNotPersistTokens() throws Exception {
     Account user = register("User@example.com");
     assertThat(db.queryForObject("SELECT count(*) FROM tenants", Integer.class)).isZero();
     assertThat(db.queryForObject("SELECT system_role FROM users", String.class)).isEqualTo("USER");
+    assertThat(db.queryForObject("SELECT full_name FROM users", String.class)).isNull();
     assertThat(db.queryForObject("SELECT password_hash FROM users", String.class))
         .startsWith("$2a$")
         .isNotEqualTo("StrongPass123!");
@@ -384,18 +658,13 @@ class IamApplicationTest {
     http.perform(authorized(get("/api/v1/auth/me"), user.token()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.systemRole").value("USER"))
+        .andExpect(jsonPath("$.fullName").isEmpty())
         .andExpect(jsonPath("$.passwordHash").doesNotExist())
         .andExpect(jsonPath("$.tenantId").doesNotExist());
     http.perform(
             payload(
                 post("/api/v1/auth/register"),
-                Map.of(
-                    "email",
-                    "user@EXAMPLE.com",
-                    "password",
-                    "StrongPass123!",
-                    "fullName",
-                    "Other")))
+                Map.of("email", "user@EXAMPLE.com", "password", "StrongPass123!")))
         .andExpect(status().isConflict());
     http.perform(
             payload(
@@ -409,23 +678,35 @@ class IamApplicationTest {
         .doesNotContain("StrongPass123!", user.refreshToken());
   }
 
-  @Test
-  void registrationRejectsClientAssignedPrivileges() throws Exception {
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {"fullName", "tenantId", "role", "systemRole"})
+  void registrationRejectsFieldsOutsideEmailAndPassword(String field) throws Exception {
     http.perform(
             payload(
                 post("/api/v1/auth/register"),
                 Map.of(
-                    "email",
-                    "evil@example.com",
-                    "password",
-                    "StrongPass123!",
-                    "fullName",
-                    "Evil",
-                    "tenantId",
-                    UUID.randomUUID(),
-                    "role",
-                    "PLATFORM_ADMIN")))
-        .andExpect(status().isForbidden());
+                    "email", "evil@example.com", "password", "StrongPass123!", field, "injected")))
+        .andExpect(status().isBadRequest());
+    assertThat(db.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
+  }
+
+  @Test
+  void registrationStillRequiresValidEmailAndPassword() throws Exception {
+    for (var request :
+        List.of(
+            Map.of("email", "invalid-email", "password", "StrongPass123!"),
+            Map.of("email", "invalid@example.com", "password", "short"),
+            Map.of("email", "invalid@example.com"),
+            Map.of("password", "StrongPass123!"))) {
+      http.perform(payload(post("/api/v1/auth/register"), request))
+          .andExpect(status().isUnprocessableEntity());
+    }
+    http.perform(
+            payload(
+                post("/api/v1/auth/register"),
+                Map.of("email", "invalid@example.com", "password", "alllowercase")))
+        .andExpect(status().isBadRequest());
     assertThat(db.queryForObject("SELECT count(*) FROM users", Integer.class)).isZero();
   }
 
@@ -456,8 +737,11 @@ class IamApplicationTest {
         .andExpect(status().isForbidden());
     http.perform(
             payload(
-                authorized(post("/api/v1/auth/switch-tenant"), other.token()),
-                Map.of("tenantId", tenant, "refreshToken", other.refreshToken())))
+                authorized(
+                    post("/api/v1/auth/switch-tenant")
+                        .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, other.refreshToken())),
+                    other.token()),
+                Map.of("tenantId", tenant)))
         .andExpect(status().isForbidden());
   }
 
@@ -480,19 +764,16 @@ class IamApplicationTest {
     http.perform(authorized(get("/api/v1/tenants"), member.token()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(2));
-    // Each tab retains the tenant context in its own refresh token.
+    // Previously issued refresh JWTs retain their signed tenant after cookies are replaced.
     var result =
-        http.perform(
-                payload(
-                    post("/api/v1/auth/refresh"),
-                    Map.of("refreshToken", operations.path("refreshToken").asText())))
+        http.perform(refreshRequest(operations.refreshToken()))
             .andExpect(status().isOk())
             .andReturn();
     assertThat(body(result).path("tenantId").asText()).isEqualTo(first);
   }
 
   @Test
-  void cookiesAndUntrustedHeadersNeverAuthenticate() throws Exception {
+  void unrelatedCookiesAndUntrustedHeadersNeverAuthenticate() throws Exception {
     Account user = register("user@example.com");
     http.perform(
             get("/api/v1/auth/me")
@@ -543,14 +824,17 @@ class IamApplicationTest {
   }
 
   @Test
-  void statelessLogoutAuditsAndClientMustDiscardTokens() throws Exception {
+  void statelessLogoutClearsBothCookiesAndAudits() throws Exception {
     Account user = register("logout@example.com");
-    http.perform(authorized(post("/api/v1/auth/logout"), user.token()))
-        .andExpect(status().isNoContent())
-        .andExpect(header().doesNotExist("Set-Cookie"));
+    var loggedOut =
+        http.perform(authorized(post("/api/v1/auth/logout"), user.token()))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    assertThat(loggedOut.getResponse().getHeaders("Set-Cookie"))
+        .hasSize(2)
+        .allSatisfy(cookie -> assertThat(cookie).contains("Max-Age=0", "HttpOnly", "SameSite=Lax"));
     http.perform(authorized(get("/api/v1/auth/me"), user.token())).andExpect(status().isOk());
-    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", user.refreshToken())))
-        .andExpect(status().isOk());
+    http.perform(refreshRequest(user.refreshToken())).andExpect(status().isOk());
     assertThat(
             db.queryForObject(
                 "SELECT count(*) FROM outbox_events WHERE event_type='UserLoggedOut'",
@@ -563,7 +847,7 @@ class IamApplicationTest {
     Account admin = register("admin@example.com");
     Account owner = register("owner@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
-    String selected = select(owner, tenant).path("accessToken").asText();
+    String selected = select(owner, tenant).accessToken();
     db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", admin.id());
     http.perform(
             payload(
@@ -572,8 +856,11 @@ class IamApplicationTest {
         .andExpect(status().isOk());
     http.perform(
             payload(
-                authorized(post("/api/v1/auth/switch-tenant"), selected),
-                Map.of("tenantId", tenant, "refreshToken", owner.refreshToken())))
+                authorized(
+                    post("/api/v1/auth/switch-tenant")
+                        .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, owner.refreshToken())),
+                    selected),
+                Map.of("tenantId", tenant)))
         .andExpect(status().isForbidden());
     var resolved =
         body(
@@ -611,8 +898,8 @@ class IamApplicationTest {
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
     accept(member, invite(owner, tenant, member.email(), role(tenant, "OPERATIONS")));
     var selectedTokens = select(member, tenant);
-    String old = selectedTokens.path("accessToken").asText();
-    String refresh = selectedTokens.path("refreshToken").asText();
+    String old = selectedTokens.accessToken();
+    String refresh = selectedTokens.refreshToken();
     http.perform(
             payload(
                 authorized(
@@ -621,10 +908,7 @@ class IamApplicationTest {
                 Map.of("roleId", role(tenant, "ACCOUNTING"))))
         .andExpect(status().isNoContent());
     var refreshed =
-        body(
-            http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", refresh)))
-                .andExpect(status().isOk())
-                .andReturn());
+        cookieAuth(http.perform(refreshRequest(refresh)).andExpect(status().isOk()).andReturn());
     assertThat(refreshed.path("permissions").toString())
         .doesNotContain("order.create")
         .contains("finance.reconciliation");
@@ -634,8 +918,7 @@ class IamApplicationTest {
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/tenants/" + tenant), old))
         .andExpect(status().isForbidden());
-    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", refresh)))
-        .andExpect(status().isForbidden());
+    http.perform(refreshRequest(refresh)).andExpect(status().isForbidden());
   }
 
   @Test
@@ -686,7 +969,7 @@ class IamApplicationTest {
                 .andExpect(status().isCreated())
                 .andReturn());
     accept(member, invite(owner, tenant, member.email(), limited.path("id").asText()));
-    String token = select(member, tenant).path("accessToken").asText();
+    String token = select(member, tenant).accessToken();
     http.perform(authorized(get("/api/v1/cms/users"), token)).andExpect(status().isForbidden());
     http.perform(
             payload(
@@ -768,33 +1051,33 @@ class IamApplicationTest {
   @Test
   void refreshRequiresRefreshJwtAndPreservesAbsoluteExpiry() throws Exception {
     Account user = register("refresh@example.com");
-    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", user.token())))
+    http.perform(refreshRequest(user.token())).andExpect(status().isUnauthorized());
+    http.perform(
+            post("/api/v1/auth/refresh")
+                .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE))
         .andExpect(status().isUnauthorized());
-    http.perform(post("/api/v1/auth/refresh")).andExpect(status().isBadRequest());
     var refreshed =
-        body(
-            http.perform(
-                    payload(
-                        post("/api/v1/auth/refresh"), Map.of("refreshToken", user.refreshToken())))
+        cookieAuth(
+            http.perform(refreshRequest(user.refreshToken()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andReturn());
-    assertThat(tokens.parseClaims(refreshed.path("refreshToken").asText()).getExpiration())
+    assertThat(tokens.parseClaims(refreshed.refreshToken()).getExpiration())
         .isEqualTo(tokens.parseClaims(user.refreshToken()).getExpiration());
-    assertThat(refreshed.path("refreshToken").asText()).isNotEqualTo(user.refreshToken());
+    assertThat(refreshed.refreshToken()).isNotEqualTo(user.refreshToken());
     String expired =
         tokens.generateRefreshToken(
             UUID.fromString(user.id()), null, java.time.Instant.now().minusSeconds(1));
-    http.perform(payload(post("/api/v1/auth/refresh"), Map.of("refreshToken", expired)))
-        .andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(expired)).andExpect(status().isUnauthorized());
     String foreign =
         tokens.generateRefreshToken(
             UUID.randomUUID(), null, java.time.Instant.now().plusSeconds(100));
     http.perform(
             payload(
                 post("/api/v1/auth/switch-tenant")
-                    .header("Authorization", "Bearer " + user.token()),
-                Map.of("tenantId", UUID.randomUUID(), "refreshToken", foreign)))
+                    .header("Authorization", "Bearer " + user.token())
+                    .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, foreign)),
+                Map.of("tenantId", UUID.randomUUID())))
         .andExpect(status().isUnauthorized());
   }
 
@@ -808,12 +1091,13 @@ class IamApplicationTest {
         expiredProvider.generateIamAccessToken(
             UUID.fromString(user.id()), null, "USER", List.of(), Set.of());
     http.perform(authorized(get("/api/v1/auth/me"), expired)).andExpect(status().isUnauthorized());
-    http.perform(
-            payload(
-                authorized(post("/api/v1/auth/refresh"), expired),
-                Map.of("refreshToken", user.refreshToken())))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    var result =
+        http.perform(
+                refreshRequest(user.refreshToken())
+                    .cookie(new Cookie(AuthCookies.ACCESS_TOKEN, expired)))
+            .andExpect(status().isOk())
+            .andReturn();
+    assertThat(cookieAuth(result).accessToken()).isNotBlank();
   }
 
   @Test
@@ -862,7 +1146,9 @@ class IamApplicationTest {
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
     var actor =
         new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
-    var events = org.mockito.Mockito.mock(IamEventPublisherPort.class);
+    // Stub the spy target so MANDATORY transaction advice does not run while configuring it.
+    IamEventPublisherPort events =
+        org.springframework.test.util.AopTestUtils.getUltimateTargetObject(eventsSpy);
     org.mockito.Mockito.doAnswer(
             invocation -> {
               assertThat(db.queryForObject("SELECT count(*) FROM tenants", Integer.class))
@@ -875,12 +1161,7 @@ class IamApplicationTest {
             })
         .when(events)
         .publish(org.mockito.ArgumentMatchers.any());
-    var handler =
-        new CreateTenantCommandHandler(
-            context.getBean(com.vishop.iam.modules.identity.application.api.IdentityApi.class),
-            new com.vishop.iam.modules.tenant.application.api.TenantApplicationApi(
-                context.getBean(TenantRepositoryPort.class), events),
-            context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class));
+    var handler = context.getBean(CreateTenantCommandHandler.class);
     var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     assertThatThrownBy(
             () ->
@@ -952,6 +1233,17 @@ class IamApplicationTest {
     tenant.fieldNames().forEachRemaining(fields::add);
     assertThat(fields).containsExactlyInAnyOrder("id", "code", "name", "status", "createdAt");
     String id = tenant.path("id").asText();
+    String createdAt =
+        db.queryForObject(
+            "SELECT created_at::text FROM tenants WHERE id=CAST(? AS uuid)", String.class, id);
+    assertThat(
+            db.queryForObject(
+                "SELECT created_at=updated_at AND version=0 FROM tenants WHERE id=CAST(? AS uuid)",
+                Boolean.class,
+                id))
+        .isTrue();
+    // A fixed old value makes the lifecycle update check independent of clock resolution.
+    db.update("UPDATE tenants SET updated_at='2000-01-01T00:00:00Z' WHERE id=CAST(? AS uuid)", id);
     for (int i = 1; i <= 2; i++) {
       http.perform(
               payload(
@@ -963,6 +1255,18 @@ class IamApplicationTest {
               db.queryForObject(
                   "SELECT version FROM tenants WHERE id=CAST(? AS uuid)", Long.class, id))
           .isEqualTo((long) i);
+      assertThat(
+              db.queryForObject(
+                  "SELECT created_at::text FROM tenants WHERE id=CAST(? AS uuid)",
+                  String.class,
+                  id))
+          .isEqualTo(createdAt);
+      assertThat(
+              db.queryForObject(
+                  "SELECT updated_at>=created_at FROM tenants WHERE id=CAST(? AS uuid)",
+                  Boolean.class,
+                  id))
+          .isTrue();
     }
     assertThat(
             db.queryForObject(
@@ -979,6 +1283,23 @@ class IamApplicationTest {
                 "SELECT count(*) FROM outbox_events WHERE id::text <> payload->>'eventId'",
                 Integer.class))
         .isZero();
+  }
+
+  @Test
+  void versionRejectsStaleTenantUpdates() throws Exception {
+    Account owner = register("stale-version@example.com");
+    UUID id = UUID.fromString(createTenant(owner, "stale-version").path("id").asText());
+    var repository =
+        context.getBean(com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort.class);
+    var first = repository.tenant(id);
+    var stale = repository.tenant(id);
+    first.rename("First update", UUID.fromString(owner.id()));
+    stale.rename("Stale update", UUID.fromString(owner.id()));
+    var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
+    tx.executeWithoutResult(status -> repository.save(first));
+    assertThatThrownBy(() -> tx.executeWithoutResult(status -> repository.save(stale)))
+        .isInstanceOf(org.springframework.orm.ObjectOptimisticLockingFailureException.class);
+    assertThat(repository.tenant(id).name()).isEqualTo("First update");
   }
 
   @Test

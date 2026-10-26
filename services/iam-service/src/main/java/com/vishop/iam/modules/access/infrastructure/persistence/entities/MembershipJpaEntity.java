@@ -5,13 +5,22 @@ import com.vishop.iam.modules.access.domain.entity.Role;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "tenant_members")
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class MembershipJpaEntity {
-  @Id private UUID id;
+  @Id
+  @Column(name = "id", nullable = false, updatable = false)
+  private UUID id;
 
-  @Column(name = "tenant_id", nullable = false)
+  @Column(name = "tenant_id", nullable = false, updatable = false)
   private UUID tenantId;
 
   @Column(name = "user_id", nullable = false)
@@ -29,35 +38,42 @@ public class MembershipJpaEntity {
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
 
-  @Version private Long version;
+  @Column(name = "deleted_at")
+  private Instant deletedAt;
 
-  protected MembershipJpaEntity() {}
+  @Version
+  @Column(name = "version")
+  private Long version;
+
+  @PrePersist
+  private void beforeInsert() {
+    if (createdAt == null) createdAt = Instant.now();
+    if (updatedAt == null) updatedAt = createdAt;
+  }
+
+  @PreUpdate
+  private void beforeUpdate() {
+    updatedAt = Instant.now();
+  }
 
   public static MembershipJpaEntity create(UUID id, UUID tenant, UUID user, UUID role) {
     var entity = new MembershipJpaEntity();
-    entity.id = id;
+    entity.setId(id);
     entity.tenantId = tenant;
     entity.userId = user;
     entity.roleId = role;
     entity.status = "ACTIVE";
-    entity.createdAt = Instant.now();
-    entity.updatedAt = entity.createdAt;
     return entity;
-  }
-
-  public UUID roleId() {
-    return roleId;
   }
 
   public void update(UUID role, String status) {
     this.roleId = role;
     this.status = status;
-    updatedAt = Instant.now();
   }
 
   public Membership toDomain(Role role) {
     return new Membership(
-        id,
+        getId(),
         tenantId,
         userId,
         roleId,

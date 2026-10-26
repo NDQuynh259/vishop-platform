@@ -4,6 +4,7 @@ import com.vishop.iam.modules.access.domain.entity.Membership;
 import java.util.Optional;
 import java.util.UUID;
 
+/** Membership persistence owned by access; this port is not a cross-module contract. */
 public interface MembershipRepositoryPort {
   Optional<Membership> membership(UUID user, UUID tenant);
 

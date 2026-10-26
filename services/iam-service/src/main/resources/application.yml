@@ -31,12 +31,15 @@ spring:
         enable.idempotence: true
 vishop:
   security:
+    cookies:
+      secure: ${AUTH_COOKIE_SECURE:false}
+      same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
     jwt:
-      secret: ${JWT_SECRET:}
+      secret: ${JWT_SECRET:vishop_platform_dev_jwt_secret_key_at_least_32_bytes_long!}
       access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
       refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
-    internal-secret: ${IAM_INTERNAL_SECRET:}
-    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+    internal-secret: ${IAM_INTERNAL_SECRET:vishop_platform_dev_internal_secret_at_least_32_bytes!}
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:3000}
 management:
   endpoints:
     web:

@@ -28,12 +28,16 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     return users.byEmail(email).map(UserJpaEntity::toDomain);
   }
 
-  public User createUser(String email, String hash, String name) {
-    return users.saveAndFlush(UserJpaEntity.create(UuidV7.nextId(), email, hash, name)).toDomain();
+  public User createUser(String email, String hash) {
+    return users.saveAndFlush(UserJpaEntity.create(UuidV7.nextId(), email, hash)).toDomain();
   }
 
   public void updateUserStatus(UUID user, String status) {
     users.updateStatus(user, status);
+  }
+
+  public void updateLastTenant(UUID user, UUID tenant) {
+    users.updateLastTenant(user, tenant);
   }
 
   public void lockSystemRoles() {

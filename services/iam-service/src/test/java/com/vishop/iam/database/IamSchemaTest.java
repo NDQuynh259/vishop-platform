@@ -27,7 +27,7 @@ class IamSchemaTest {
             .dataSource(postgres.getPostgresDatabase())
             .locations("classpath:db/migration")
             .load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7);
   }
 
   @AfterAll
@@ -103,6 +103,67 @@ class IamSchemaTest {
   void flywayValidatesAndDoesNotReapplyMigrations() {
     flyway.validate();
     assertThat(flyway.migrate().migrationsExecuted).isZero();
+  }
+
+  @Test
+  void profileAndSoftDeleteMigrationsPreserveExistingAccountsAndAllowEmailOnlyProfiles()
+      throws Exception {
+    try (var upgradePostgres = EmbeddedPostgres.builder().setPort(0).start()) {
+      var database = upgradePostgres.getPostgresDatabase();
+      var previous =
+          Flyway.configure()
+              .dataSource(database)
+              .locations("classpath:db/migration")
+              .target("5")
+              .load();
+      assertThat(previous.migrate().migrationsExecuted).isEqualTo(5);
+      try (var upgradeConnection = database.getConnection();
+          var statement = upgradeConnection.createStatement()) {
+        statement.execute(
+            "INSERT INTO users(email,password_hash,full_name) VALUES ('upgrade@example.com','hash','Existing User')");
+        statement.execute(
+            "INSERT INTO tenants(code,name) VALUES ('upgrade-tenant','Existing Tenant')");
+        statement.execute(
+            "UPDATE users SET last_tenant_id=(SELECT id FROM tenants WHERE code='upgrade-tenant')");
+      }
+
+      var upgraded =
+          Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(2);
+      upgraded.validate();
+      try (var upgradeConnection = database.getConnection();
+          var statement = upgradeConnection.createStatement()) {
+        try (var rows =
+            statement.executeQuery(
+                """
+            SELECT count(*) FROM information_schema.columns
+            WHERE table_schema='public' AND column_name='deleted_at'
+              AND table_name IN ('users','tenants','tenant_members','roles','tenant_invitations')
+              AND is_nullable='YES' AND data_type='timestamp with time zone'
+            """)) {
+          assertThat(rows.next()).isTrue();
+          assertThat(rows.getInt(1)).isEqualTo(5);
+        }
+        try (var rows =
+            statement.executeQuery(
+                """
+            SELECT u.deleted_at IS NULL AND t.deleted_at IS NULL
+              AND u.last_tenant_id=t.id AND u.version=0 AND t.version=0
+              AND u.full_name='Existing User'
+            FROM users u JOIN tenants t ON t.code='upgrade-tenant'
+            WHERE u.email='upgrade@example.com'
+            """)) {
+          assertThat(rows.next()).isTrue();
+          assertThat(rows.getBoolean(1)).isTrue();
+        }
+        try (var rows =
+            statement.executeQuery(
+                "INSERT INTO users(email,password_hash) VALUES ('email-only@example.com','hash') RETURNING full_name")) {
+          assertThat(rows.next()).isTrue();
+          assertThat(rows.getString(1)).isNull();
+        }
+      }
+    }
   }
 
   @Test

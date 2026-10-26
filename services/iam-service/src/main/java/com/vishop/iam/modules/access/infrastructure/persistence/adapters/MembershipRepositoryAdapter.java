@@ -26,7 +26,7 @@ public class MembershipRepositoryAdapter implements MembershipRepositoryPort {
         .flatMap(
             member ->
                 roles
-                    .findByTenantIdAndId(tenant, member.roleId())
+                    .findByTenantIdAndId(tenant, member.getRoleId())
                     .map(role -> member.toDomain(role.toDomain())));
   }
 

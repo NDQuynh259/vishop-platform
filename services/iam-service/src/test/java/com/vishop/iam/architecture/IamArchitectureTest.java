@@ -130,6 +130,32 @@ class IamArchitectureTest {
       publicContractsOnly("access", "identity", "tenant");
 
   @ArchTest
+  static final ArchRule module_api_implementations_are_not_public =
+      classes()
+          .that()
+          .resideInAPackage("com.vishop.iam.modules..application.api")
+          .and()
+          .haveSimpleNameEndingWith("ApplicationApi")
+          .should()
+          .bePackagePrivate()
+          .andShould()
+          .beAnnotatedWith(org.springframework.stereotype.Component.class);
+
+  @ArchTest
+  static final ArchRule module_api_contracts_are_public_interfaces =
+      classes()
+          .that()
+          .resideInAPackage("com.vishop.iam.modules..application.api")
+          .and()
+          .haveSimpleNameEndingWith("Api")
+          .and()
+          .haveSimpleNameNotEndingWith("ApplicationApi")
+          .should()
+          .bePublic()
+          .andShould()
+          .beInterfaces();
+
+  @ArchTest
   static final ArchRule public_api_types_are_independent =
       classes()
           .that(publicApiTypes())

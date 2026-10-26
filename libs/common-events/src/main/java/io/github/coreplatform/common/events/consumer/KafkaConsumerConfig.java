@@ -3,7 +3,6 @@ package io.github.coreplatform.common.events.consumer;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,7 +27,8 @@ public class KafkaConsumerConfig {
 
   // #region kafkaErrorHandler
   @Bean
-  @ConditionalOnBean(KafkaTemplate.class)
+  // This is scanned user configuration: KafkaTemplate may be registered later by Boot.
+  // Resolve it through injection instead of evaluating an early bean condition.
   public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<Object, Object> kafkaTemplate) {
     DeadLetterPublishingRecoverer recoverer =
         new DeadLetterPublishingRecoverer(

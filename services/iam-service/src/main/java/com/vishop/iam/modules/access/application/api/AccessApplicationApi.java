@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-public class AccessApplicationApi implements AccessApi {
+class AccessApplicationApi implements AccessApi {
   private final MembershipRepositoryPort memberships;
   private final RoleRepositoryPort roles;
   private final AccessReadPort reads;

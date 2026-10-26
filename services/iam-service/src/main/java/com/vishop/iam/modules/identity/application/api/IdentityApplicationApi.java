@@ -9,7 +9,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
-public class IdentityApplicationApi implements IdentityApi {
+class IdentityApplicationApi implements IdentityApi {
   private final IdentityAuthorizationService authorization;
   private final UserRepositoryPort users;
 

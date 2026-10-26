@@ -2,6 +2,7 @@ package com.vishop.iam.modules.identity.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import io.github.coreplatform.common.security.constants.AuthCookies;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -10,6 +11,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -17,6 +19,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration(proxyBeanMethods = false)
 public class IamSecurityConfiguration {
@@ -29,13 +34,37 @@ public class IamSecurityConfiguration {
   IamAuthenticationFilter authenticationFilter(
       QueryBus queries,
       ObjectMapper json,
-      @Value("${vishop.security.allowed-origins:http://localhost:3000}") String origins) {
+      @Value("${vishop.security.allowed-origins:http://localhost:3000,http://localhost:8000}")
+          String origins) {
     Set<String> allowed =
         Arrays.stream(origins.split(","))
             .map(String::trim)
             .filter(s -> !s.isEmpty())
             .collect(Collectors.toSet());
     return new IamAuthenticationFilter(queries, json, allowed);
+  }
+
+  @Bean
+  CorsConfigurationSource corsConfigurationSource(
+      @Value("${vishop.security.allowed-origins:http://localhost:3000,http://localhost:8000}")
+          String origins) {
+    var config = new CorsConfiguration();
+    config.setAllowedOrigins(
+        Arrays.stream(origins.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList());
+    config.setAllowedMethods(
+        java.util.List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+    config.setAllowedHeaders(
+        java.util.List.of(
+            "Content-Type",
+            "Authorization",
+            AuthCookies.REQUEST_HEADER,
+            "X-Correlation-Id",
+            "X-Request-Id",
+            "Idempotency-Key"));
+    config.setAllowCredentials(true);
+    var source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
   }
 
   @Bean
@@ -48,7 +77,9 @@ public class IamSecurityConfiguration {
 
   @Bean
   SecurityFilterChain security(HttpSecurity http, IamAuthenticationFilter filter) throws Exception {
+    // Cookie requests are guarded by the non-simple header and exact Origin checks in the filter.
     return http.csrf(AbstractHttpConfigurer::disable)
+        .cors(Customizer.withDefaults())
         .formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)
         .logout(AbstractHttpConfigurer::disable)
@@ -62,12 +93,12 @@ public class IamSecurityConfiguration {
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
                         "/api/v1/auth/refresh",
+                        "/api/v1/auth/logout",
                         "/internal/auth/introspect",
                         "/actuator/health",
                         "/actuator/health/**",
                         "/actuator/info",
                         "/actuator/prometheus",
-                        "/swagger-ui/**",
                         "/v3/api-docs/**",
                         "/error")
                     .permitAll()

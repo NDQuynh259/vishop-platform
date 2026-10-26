@@ -12,7 +12,7 @@ Không sử dụng một giao thức duy nhất cho toàn bộ hệ thống. Vi�
 flowchart TD
     Start["Giao tiếp giữa các thành phần"] --> Direction{"Hướng giao tiếp?"}
 
-    Direction -- "North - South\n(Client -> API Gateway)" --> NorthSouth["HTTPS / REST (JSON)\n- Chuẩn hóa Web, Mobile, POS, TikTok Webhook\n- Tích hợp OpenAPI 3 / Swagger UI\n- Chuẩn lỗi RFC 7807 Problem Details"]
+    Direction -- "North - South\n(Client -> API Gateway)" --> NorthSouth["HTTPS / REST (JSON)\n- Chuẩn hóa Web, Mobile, POS, TikTok Webhook\n- Tài liệu OpenAPI 3 JSON\n- Chuẩn lỗi RFC 7807 Problem Details"]
 
     Direction -- "East - West\n(Service <-> Service)" --> Nature{"Bản chất nghiệp vụ?"}
 
@@ -47,7 +47,7 @@ flowchart TD
 | **Mức độ phụ thuộc (Coupling)** | **Rất lỏng (Loose)**: Producer không cần biết Consumer có đang chạy hay không | **Chặt (Tight)**: Caller bị khóa luồng chờ Callee phản hồi | **Chặt (Tight)**: Caller bị khóa luồng chờ Callee phản hồi |
 | **Khả năng chịu lỗi (Resilience)** | **Tuyệt đối**: Nếu service nhận gặp sự cố, message lưu trên broker chờ xử lý lại | **Kém**: Dễ gây lỗi dây chuyền (Cascading Failure) nếu callee chậm/sập | **Kém**: Dễ gây lỗi dây chuyền nếu callee chậm/sập |
 | **Cơ chế chống lỗi** | `Transactional Outbox` + `IdempotentConsumer` | `Circuit Breaker` (Resilience4j) + Timeout | Deadlines, Circuit Breaker, Retries |
-| **Khả năng gỡ lỗi (Debugging)** | Cần Kafka UI, log tracking qua `correlationId` | Dễ dàng bằng Swagger UI, cURL, Postman | Cần file `.proto` và tool chuyên dụng (`grpcurl`) |
+| **Khả năng gỡ lỗi (Debugging)** | Cần Kafka UI, log tracking qua `correlationId` | Dùng OpenAPI contract, cURL, Postman | Cần file `.proto` và tool chuyên dụng (`grpcurl`) |
 
 ---
 

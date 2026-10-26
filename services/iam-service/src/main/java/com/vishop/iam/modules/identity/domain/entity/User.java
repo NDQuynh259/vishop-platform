@@ -11,7 +11,8 @@ public record User(
     String fullName,
     SystemRole systemRole,
     String status,
-    Instant createdAt) {
+    Instant createdAt,
+    UUID lastTenantId) {
 
   public void requireActive() {
     if (!"ACTIVE".equals(status))

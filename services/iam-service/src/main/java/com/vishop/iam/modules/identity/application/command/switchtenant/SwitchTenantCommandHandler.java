@@ -15,9 +15,7 @@ public class SwitchTenantCommandHandler
     this.tokens = tokens;
   }
 
-  @Transactional(
-      readOnly = true,
-      isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+  @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
   public AuthResponse handle(SwitchTenantCommand command) {
     return tokens.switchTenant(command.actor(), command.tenant(), command.refreshToken());
   }

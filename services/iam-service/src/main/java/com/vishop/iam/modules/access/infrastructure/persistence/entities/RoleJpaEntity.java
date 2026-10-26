@@ -6,13 +6,22 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "roles")
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RoleJpaEntity {
-  @Id private UUID id;
+  @Id
+  @Column(name = "id", nullable = false, updatable = false)
+  private UUID id;
 
-  @Column(name = "tenant_id", nullable = false)
+  @Column(name = "tenant_id", nullable = false, updatable = false)
   private UUID tenantId;
 
   @Column(nullable = false, length = 100)
@@ -35,18 +44,30 @@ public class RoleJpaEntity {
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
 
-  @Version private Long version;
+  @Column(name = "deleted_at")
+  private Instant deletedAt;
 
-  protected RoleJpaEntity() {}
+  @Version
+  @Column(name = "version")
+  private Long version;
+
+  @PrePersist
+  private void beforeInsert() {
+    if (createdAt == null) createdAt = Instant.now();
+    if (updatedAt == null) updatedAt = createdAt;
+  }
+
+  @PreUpdate
+  private void beforeUpdate() {
+    updatedAt = Instant.now();
+  }
 
   public static RoleJpaEntity create(UUID id, UUID tenant, String name, Set<String> permissions) {
     var entity = new RoleJpaEntity();
-    entity.id = id;
+    entity.setId(id);
     entity.tenantId = tenant;
     entity.name = name;
     entity.permissions.addAll(permissions);
-    entity.createdAt = Instant.now();
-    entity.updatedAt = entity.createdAt;
     return entity;
   }
 
@@ -54,10 +75,9 @@ public class RoleJpaEntity {
     this.name = name;
     permissions.clear();
     permissions.addAll(grants);
-    updatedAt = Instant.now();
   }
 
   public Role toDomain() {
-    return new Role(id, tenantId, name, builtinKey, requireTwoFactor, permissions);
+    return new Role(getId(), tenantId, name, builtinKey, requireTwoFactor, permissions);
   }
 }

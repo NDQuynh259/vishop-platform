@@ -1,4 +1,6 @@
 dependencies {
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
     api(project(":libs:common-domain"))
     api(project(":libs:common-events"))
     api("org.springframework.boot:spring-boot-starter-data-jpa")

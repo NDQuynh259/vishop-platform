@@ -16,6 +16,13 @@ public interface SpringDataUserRepository extends JpaRepository<UserJpaEntity, U
       nativeQuery = true)
   void updateStatus(@Param("id") UUID id, @Param("status") String status);
 
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query(
+      value =
+          "UPDATE users SET last_tenant_id=:tenant,updated_at=now(),version=version+1 WHERE id=:id",
+      nativeQuery = true)
+  void updateLastTenant(@Param("id") UUID id, @Param("tenant") UUID tenant);
+
   @Query(
       value = "SELECT count(*) FROM users WHERE system_role='PLATFORM_ADMIN' AND status='ACTIVE'",
       nativeQuery = true)

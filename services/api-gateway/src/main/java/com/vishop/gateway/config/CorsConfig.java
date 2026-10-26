@@ -14,7 +14,7 @@ public class CorsConfig {
   @Bean
   public CorsWebFilter corsWebFilter(
       @org.springframework.beans.factory.annotation.Value(
-              "${vishop.security.allowed-origins:http://localhost:3000}")
+              "${vishop.security.allowed-origins:http://localhost:3000,http://localhost:8000}")
           String origins) {
     CorsConfiguration config = new CorsConfiguration();
     config.setAllowCredentials(true);
@@ -26,6 +26,7 @@ public class CorsConfig {
             "Content-Type",
             "Accept",
             "Authorization",
+            "X-Requested-With",
             "X-Tenant-Id",
             "X-Correlation-Id",
             "X-Request-Id",

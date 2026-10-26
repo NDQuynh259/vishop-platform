@@ -338,7 +338,7 @@ Ký hiệu: **P0** không có thì không ship · **P1** fast follow · **P2** c
 
 Một user có thể thuộc nhiều tenant, và một tenant có nhiều user. Quan hệ N–N được lưu bằng `TenantMember`, duy nhất theo cặp `(tenantId, userId)`; role và quyền theo tenant gắn với membership, không gắn trực tiếp lên `User`. Trong giao diện seller-facing, tenant được gọi là **tổ chức** và chứa nhiều gian hàng.
 
-**Contract hiện tại (FR-01-13):** tổ chức hiện hành nằm trong JWT. Browser gọi `POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`, rồi dùng cặp token mới. Không lưu lựa chọn đăng nhập trên server; `X-Tenant-Id` không override tenant đã ký.
+**Contract hiện tại (FR-01-13):** tổ chức hiện hành nằm trong JWT được lưu ở cookie HttpOnly. Browser gọi `POST /api/v1/auth/switch-tenant` với `{tenantId}`, `credentials: 'include'` và `X-Requested-With: XMLHttpRequest`; IAM thay cookie và trả user/tenant grants, không trả JWT trong JSON. `last_tenant_id` chỉ ghi nhớ lựa chọn cho lần đăng nhập sau; `X-Tenant-Id` không override tenant đã ký.
 
 **Quyết định sản phẩm 14/08/2026 (FR-01-14):** mọi user đã đăng nhập được tạo thêm tổ chức và trở thành `OWNER` của tổ chức đó. Tạo mới không chuyển hay sao chép gian hàng, thành viên hoặc dữ liệu từ tổ chức đang dùng.
 

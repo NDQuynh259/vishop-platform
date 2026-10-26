@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.identity.application.dto;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -10,4 +11,5 @@ public record AuthResponse(
     UserView user,
     UUID tenantId,
     List<String> roles,
-    Set<String> permissions) {}
+    Set<String> permissions,
+    Instant refreshExpiresAt) {}

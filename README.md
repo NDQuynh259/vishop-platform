@@ -40,10 +40,13 @@ accounts, system roles, tenants, memberships, tenant roles and permissions in `v
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
 
-IAM uses stateless JWT access and refresh tokens, returned in the response body. Gateway
-and downstream services verify access tokens locally without session storage, Redis state
-or IAM introspection. Refresh accepts `{ "refreshToken": "..." }`; logout records an audit
-event and clients discard both tokens. Issued JWTs remain valid until expiry.
+IAM uses stateless JWT access and refresh tokens stored only in HttpOnly cookies; JSON
+responses contain user/tenant grants, never credentials. Browser requests use
+`credentials: 'include'` and `X-Requested-With: XMLHttpRequest` for POST/PUT/PATCH/DELETE.
+Gateway verifies the access cookie locally and forwards Bearer access internally, without
+session storage, Redis or IAM introspection. Refresh reads its cookie with no body;
+switch-tenant accepts only `{tenantId}`. Logout clears both cookies. Issued JWTs remain
+valid until expiry. Production cookies use `AUTH_COOKIE_SECURE=true` and HTTPS.
 CMS requires PLATFORM_ADMIN; tenant OWNER does not grant CMS access.
 
 Configure independent JWT_SECRET and IAM_INTERNAL_SECRET secrets (at least 32 bytes each),

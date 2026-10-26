@@ -7,6 +7,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -16,6 +19,8 @@ import org.hibernate.type.SqlTypes;
  */
 @Entity
 @Table(name = "outbox_events")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class OutboxEventEntity {
 
   @Id private UUID id;
@@ -52,11 +57,6 @@ public class OutboxEventEntity {
   private Instant publishedAt;
 
   // #region OutboxEventEntity
-  protected OutboxEventEntity() {}
-
-  // #endregion
-
-  // #region OutboxEventEntity
   public OutboxEventEntity(
       UUID id,
       UUID tenantId,
@@ -88,73 +88,6 @@ public class OutboxEventEntity {
         envelope.aggregateId(),
         jsonPayload,
         envelope.occurredAt());
-  }
-
-  // #endregion
-
-  // #region getId
-  public UUID getId() {
-    return id;
-  }
-
-  // #endregion
-  // #region getTenantId
-  public UUID getTenantId() {
-    return tenantId;
-  }
-
-  // #endregion
-  // #region getEventType
-  public String getEventType() {
-    return eventType;
-  }
-
-  // #endregion
-  // #region getAggregateType
-  public String getAggregateType() {
-    return aggregateType;
-  }
-
-  // #endregion
-  // #region getAggregateId
-  public UUID getAggregateId() {
-    return aggregateId;
-  }
-
-  // #endregion
-  // #region getPayload
-  public String getPayload() {
-    return payload;
-  }
-
-  // #endregion
-  // #region getStatus
-  public String getStatus() {
-    return status;
-  }
-
-  // #endregion
-  // #region getRetryCount
-  public int getRetryCount() {
-    return retryCount;
-  }
-
-  // #endregion
-  // #region getErrorMessage
-  public String getErrorMessage() {
-    return errorMessage;
-  }
-
-  // #endregion
-  // #region getOccurredAt
-  public Instant getOccurredAt() {
-    return occurredAt;
-  }
-
-  // #endregion
-  // #region getPublishedAt
-  public Instant getPublishedAt() {
-    return publishedAt;
   }
 
   // #endregion
