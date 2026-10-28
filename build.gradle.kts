@@ -100,23 +100,28 @@ tasks.test {
     })
 }
 
+apply(from = rootProject.file("gradle/jvm-tools.gradle.kts"))
+
 // Project commands: the Gradle equivalent of package.json scripts.
 fun projectTaskPaths(task: String) = allprojects.map {
     if (it == rootProject) ":$task" else "${it.path}:$task"
 }
 
 val projectCommands = linkedMapOf(
-    "runIam" to ("Start IAM service (:8080)." to listOf(":services:iam-service:bootRun")),
-    "runGateway" to ("Start API gateway (:8000)." to listOf(":services:api-gateway:bootRun")),
-    "runAudit" to ("Start audit service (:8082)." to listOf(":services:audit-service:bootRun")),
-    "migrateIam" to ("Run IAM migrations; requires IAM_DB_URL/USER/PASSWORD." to listOf(":services:iam-service:migrateIamDb")),
-    "migrateAudit" to ("Run audit migrations; requires AUDIT_DB_URL/USER/PASSWORD." to listOf(":services:audit-service:dbMigrate")),
+    "runIam" to ("Start IAM service (:8080)." to listOf(":services:iam-service:dev")),
+    "runGateway" to ("Start API gateway (:8000)." to listOf(":services:api-gateway:dev")),
+    "runAudit" to ("Start audit service (:8082)." to listOf(":services:audit-service:dev")),
+    "migrateIam" to ("Run IAM migrations; requires IAM_DB_URL/USER/PASSWORD." to listOf(":services:iam-service:migrate")),
+    "migrateAudit" to ("Run audit migrations; requires AUDIT_DB_URL/USER/PASSWORD." to listOf(":services:audit-service:migrate")),
     "packageAll" to ("Package all three service boot JARs." to listOf(
         ":services:iam-service:bootJar",
         ":services:api-gateway:bootJar",
         ":services:audit-service:bootJar",
     )),
     "buildAll" to ("Build and check every project." to projectTaskPaths("build")),
+    "compileAll" to ("Compile Java sources across all projects." to projectTaskPaths("compileJava")),
+    "classesAll" to ("Compile and process resources across all projects." to projectTaskPaths("classes")),
+    "dependenciesAll" to ("Show dependency trees across all projects." to projectTaskPaths("dependencies")),
     "testAll" to ("Run all module tests and root architecture tests." to projectTaskPaths("test")),
     "checkAll" to ("Run all project checks." to projectTaskPaths("check")),
     "formatAll" to ("Format Java sources in every project." to projectTaskPaths("spotlessApply")),
@@ -140,5 +145,13 @@ tasks.register("commands") {
         projectCommands.forEach { (name, command) ->
             println("  .\\gradlew.bat ${name.padEnd(15)} ${command.first}")
         }
+        println("JDK commands:")
+        println("  .\\gradlew.bat :javaVersion")
+        println("  .\\gradlew.bat :javaProcesses")
+        println("  .\\gradlew.bat :threadDump -Ppid=<PID>")
+        println("  .\\gradlew.bat :heapInfo -Ppid=<PID>")
+        println("  .\\gradlew.bat :runJar -Pjar=<path> [-Pprofile=prod]")
+        println("Full Gradle task list: .\\gradlew.bat tasks --all")
+        println("Service command lists: .\\gradlew.bat :services:<service-name>:commands")
     }
 }
