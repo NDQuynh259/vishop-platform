@@ -34,8 +34,7 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
     return Set.of(
                 ApiPaths.V1 + "/auth/login",
                 ApiPaths.V1 + "/auth/register",
-                ApiPaths.V1 + "/auth/refresh",
-                "/internal/auth/introspect")
+                ApiPaths.V1 + "/auth/refresh")
             .contains(path)
         || path.startsWith("/actuator/")
         || path.startsWith("/v3/api-docs");
@@ -51,8 +50,7 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         error(response, 403, "Origin is not allowed");
         return;
       }
-      if (!request.getRequestURI().equals("/internal/auth/introspect")
-          && AuthCookies.requiresRequestHeader(request.getMethod())
+      if (AuthCookies.requiresRequestHeader(request.getMethod())
           && !AuthCookies.REQUEST_HEADER_VALUE.equals(
               request.getHeader(AuthCookies.REQUEST_HEADER))) {
         error(response, 403, "X-Requested-With: XMLHttpRequest is required");

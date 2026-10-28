@@ -97,7 +97,7 @@ Each feature owns its mappings and
 read port. Access read projections may join user/tenant tables in the shared database;
 mutations go through the owning feature. JPA/native queries share the same datasource and transaction.
 Flyway SQL owns all schema changes; Hibernate only validates mappings with `generate-ddl: false`
-and `ddl-auto: validate`. Spring SQL initialization is disabled. See the platform
+and `ddl-auto: validate`. Spring SQL initialization and automatic Flyway startup are disabled. Run `:services:iam-service:migrate` before starting the application. See the platform
 [persistence standard](../../docs/core-architecture/persistence.md).
 
 `TenantOnboardingController` and `CreateTenantRequest` live in `composition/onboarding` and handle
@@ -276,15 +276,14 @@ validation response (422).
 Responses expose `systemRole` on the user; tenantId, tenantRole and permissions are separate
 fields of the auth response. The old per-user tenantId/role contract is retired.
 
-`POST /internal/auth/introspect` remains private for compatibility. It requires
-`X-Iam-Internal-Key` and `{credential,type: 'BEARER'}`. Gateway no longer uses
-this endpoint or its internal secret.
+The internal introspection endpoint has been removed. Gateway and downstream services
+verify access JWTs locally; no separate IAM internal secret is required.
 
 ## Run and verify
 
-Set independent random `JWT_SECRET` and `IAM_INTERNAL_SECRET` values (at least 32 bytes),
+Set a random `JWT_SECRET` (at least 32 bytes),
 database credentials, and `ALLOWED_ORIGINS` (comma-separated exact origins). IAM signs JWTs;
-downstream services verify with the same JWT secret. Gateway verifies with JWT_SECRET and does not use the internal secret.
+downstream services and gateway verify with the same JWT secret.
 
 ```powershell
 .\gradlew.bat :services:iam-service:bootRun

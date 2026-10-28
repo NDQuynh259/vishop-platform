@@ -28,7 +28,7 @@ spring:
         format_sql: false
 
   flyway:
-    enabled: true
+    enabled: false
     baseline-on-migrate: false
     clean-disabled: true
 

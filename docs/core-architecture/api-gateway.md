@@ -157,6 +157,6 @@ Trong hệ thống **ViShop Platform**, cả hai công nghệ được phối h�
 .\gradlew.bat :services:api-gateway:bootRun
 ```
 
-Gateway does not use `IAM_INTERNAL_SECRET` or Redis for authentication. Issued JWTs
+Gateway verifies JWTs locally without Redis or an IAM introspection endpoint. Issued JWTs
 remain valid until expiry; there is no session/projection revocation mechanism.
 See [security architecture](security-architecture.md) and [IAM README](../../services/iam-service/README.md).

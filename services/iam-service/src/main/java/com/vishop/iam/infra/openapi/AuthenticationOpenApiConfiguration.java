@@ -1,4 +1,4 @@
-package com.vishop.iam.modules.identity.presentation.rest;
+package com.vishop.iam.infra.openapi;
 
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.security.constants.AuthCookies;

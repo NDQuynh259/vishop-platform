@@ -175,12 +175,17 @@ services:
     image: vishop/iam-service:dev
     container_name: vishop-dev-iam-service
     restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     ports:
       - "${IAM_PORT:-8080}:8080"
       - "${IAM_DEBUG_PORT:-5001}:5001"
     environment:
       SERVER_PORT: 8080
-      IAM_INTERNAL_SECRET: ${IAM_INTERNAL_SECRET:?Set IAM_INTERNAL_SECRET to a random value of at least 32 bytes}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-900000}
@@ -214,6 +219,12 @@ services:
     image: vishop/audit-service:dev
     container_name: vishop-dev-audit-service
     restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     ports:
       - "${AUDIT_PORT:-8082}:8082"
       - "${AUDIT_DEBUG_PORT:-5003}:5003"
@@ -247,6 +258,12 @@ services:
     image: vishop/api-gateway:dev
     container_name: vishop-dev-api-gateway
     restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     ports:
       - "${GATEWAY_PORT:-8000}:8000"
       - "${GATEWAY_DEBUG_PORT:-5000}:5000"

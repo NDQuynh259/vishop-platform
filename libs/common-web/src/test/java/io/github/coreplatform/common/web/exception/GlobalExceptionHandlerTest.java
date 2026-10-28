@@ -21,6 +21,10 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
@@ -273,6 +277,25 @@ class GlobalExceptionHandlerTest {
 
   // #endregion
 
+  @ParameterizedTest
+  @ValueSource(strings = {"general", "lock"})
+  void shouldHandleConcurrencyFailureWith409WithoutLeakingDetails(String kind) throws Exception {
+    mockMvc
+        .perform(get("/test/concurrency/" + kind).header("X-Request-Id", "req-concurrency"))
+        .andExpect(status().isConflict())
+        .andExpect(header().string("Content-Type", containsString("application/problem+json")))
+        .andExpect(jsonPath("$.type").value("/errors/conflict"))
+        .andExpect(jsonPath("$.title").value("Conflict"))
+        .andExpect(jsonPath("$.status").value(409))
+        .andExpect(jsonPath("$.code").value("concurrency_conflict"))
+        .andExpect(
+            jsonPath("$.detail")
+                .value("The operation conflicted with another transaction. Please retry."))
+        .andExpect(jsonPath("$.instance").value("/test/concurrency/" + kind))
+        .andExpect(jsonPath("$.requestId").value("req-concurrency"))
+        .andExpect(jsonPath("$.timestamp").isNotEmpty());
+  }
+
   // #region shouldHandleGeneralExceptionWith500WithoutLeakingDetails
   @Test
   void shouldHandleGeneralExceptionWith500WithoutLeakingDetails() throws Exception {
@@ -412,6 +435,14 @@ class GlobalExceptionHandlerTest {
     }
 
     // #endregion
+
+    @GetMapping("/concurrency/{kind}")
+    public String concurrencyEndpoint(@PathVariable("kind") String kind) {
+      if (kind.equals("lock")) {
+        throw new CannotAcquireLockException("Sensitive SQL lock details");
+      }
+      throw new ConcurrencyFailureException("Sensitive SQL transaction details");
+    }
 
     // #region unhandledEndpoint
     @GetMapping("/unhandled")

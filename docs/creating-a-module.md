@@ -135,9 +135,15 @@ management:
 ```
 
 ### File `src/main/resources/db/migration/V1__init_catalog_schema.sql`
-Mỗi service cần khởi tạo bảng nghiệp vụ và luôn đi kèm 2 bảng nền tảng của microservice:
-1. `outbox_events`: Để lưu trữ sự kiện cần gửi sang Kafka.
-2. `consumed_messages`: Để bảo đảm tính idempotent khi consume sự kiện từ Kafka.
+Mỗi service khởi tạo bảng nghiệp vụ và chỉ thêm các bảng hạ tầng cần dùng:
+
+1. `outbox_events`: Khi cần ghi sự kiện sẽ phát sang Kafka cùng transaction nghiệp vụ.
+2. `consumed_messages`: Khi chọn bảng riêng để chống xử lý trùng ở consumer. Có thể
+   thay bằng khóa unique phù hợp trên dữ liệu đích; không bắt buộc mọi service đều có bảng này.
+
+Ví dụ bên dưới minh họa service dùng cả hai bảng. Xem [quy tắc chọn cơ chế chống trùng
+và gọi API bên ngoài](core-architecture/idempotency-and-tracing.md#24-chọn-bảng-riêng-hay-khóa-unique-trên-dữ-liệu-đích)
+trước khi áp dụng; transaction DB không bảo vệ tác động ở hệ thống bên ngoài.
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

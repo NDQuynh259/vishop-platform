@@ -46,12 +46,12 @@ services/iam-service/src/main/java/com/vishop/iam/
 │   │   │   │   ├── logout/                     # LogoutCommand, LogoutCommandHandler
 │   │   │   │   ├── switchtenant/               # SwitchTenantCommand, SwitchTenantCommandHandler
 │   │   │   │   └── cms/                        # ChangeSystemRole/Status Commands & Handlers
-│   │   │   ├── query/                          # Authenticate, Introspect, RefreshAccessToken, profile
+│   │   │   ├── query/                          # Authenticate, RefreshAccessToken, profile
 │   │   │   ├── service/                        # TokenService, IdentityAuthorizationService
 │   │   │   ├── port/                           # Password/token/UserRead ports
 │   │   │   └── dto/
 │   │   ├── infrastructure/                     # JPA entities/repositories, JWT/password/authentication adapters
-│   │   └── presentation/rest/                  # AuthController, InternalAuthController, UserCmsController
+│   │   └── presentation/rest/                  # AuthController, UserCmsController
 │   └── access/
 │       ├── domain/                             # Membership, Role, Invitation, RoleAssignmentPolicy, ports
 │       ├── application/

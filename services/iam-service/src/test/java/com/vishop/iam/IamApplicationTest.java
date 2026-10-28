@@ -9,10 +9,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommand;
 import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommandHandler;
 import com.vishop.iam.database.JpaDatabaseFixture;
+import com.vishop.iam.modules.identity.application.query.AuthenticateQuery;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.persistence.EntityManager;
@@ -36,17 +38,28 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "spring.kafka.listener.auto-startup=false",
       "management.tracing.enabled=false",
       "vishop.security.cookies.secure=true",
-      "vishop.security.jwt.secret=test-jwt-secret-with-at-least-thirty-two-bytes",
-      "vishop.security.internal-secret=test-internal-secret-with-at-least-thirty-two-bytes"
+      "vishop.security.jwt.secret=test-jwt-secret-with-at-least-thirty-two-bytes"
     })
 @AutoConfigureMockMvc
 class IamApplicationTest {
-  private static final String INTERNAL = "test-internal-secret-with-at-least-thirty-two-bytes";
   private static final EmbeddedPostgres POSTGRES = start();
 
   private static EmbeddedPostgres start() {
     try {
-      return EmbeddedPostgres.builder().setPort(0).start();
+      var postgres = EmbeddedPostgres.builder().setPort(0).start();
+      try {
+        org.flywaydb.core.Flyway.configure()
+            .dataSource(postgres.getPostgresDatabase())
+            .locations("classpath:db/migration")
+            .baselineOnMigrate(false)
+            .cleanDisabled(true)
+            .load()
+            .migrate();
+        return postgres;
+      } catch (Exception failure) {
+        postgres.close();
+        throw failure;
+      }
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }
@@ -73,6 +86,7 @@ class IamApplicationTest {
   }
 
   @Autowired MockMvc http;
+  @Autowired QueryBus queries;
   @Autowired ObjectMapper json;
   @Autowired EntityManager entityManager;
   JpaDatabaseFixture db;
@@ -229,6 +243,11 @@ class IamApplicationTest {
                     Map.of("tenantId", tenant)))
             .andExpect(status().isOk())
             .andReturn());
+  }
+
+  @Test
+  void startupDoesNotRegisterAnAutomaticFlywayMigrator() {
+    assertThat(context.getBeansOfType(org.flywaydb.core.Flyway.class)).isEmpty();
   }
 
   @Test
@@ -873,15 +892,8 @@ class IamApplicationTest {
                     selected),
                 Map.of("tenantId", tenant)))
         .andExpect(status().isForbidden());
-    var resolved =
-        body(
-            http.perform(
-                    payload(
-                        post("/internal/auth/introspect").header("X-Iam-Internal-Key", INTERNAL),
-                        Map.of("credential", selected, "type", "BEARER")))
-                .andExpect(status().isOk())
-                .andReturn());
-    assertThat(resolved.path("tenantId").asText()).isEqualTo(tenant);
+    var resolved = queries.dispatch(new AuthenticateQuery(selected, true));
+    assertThat(resolved.tenantId()).isEqualTo(UUID.fromString(tenant));
     http.perform(
             payload(
                 authorized(patch("/api/v1/cms/users/" + owner.id() + "/status"), admin.token()),
@@ -1050,13 +1062,13 @@ class IamApplicationTest {
   }
 
   @Test
-  void introspectionRequiresItsInternalSecret() throws Exception {
+  void removedIntrospectionEndpointIsNotExposed() throws Exception {
     Account user = register("user@example.com");
     http.perform(
             payload(
-                post("/internal/auth/introspect"),
+                authorized(post("/internal/auth/introspect"), user.token()),
                 Map.of("credential", user.token(), "type", "BEARER")))
-        .andExpect(status().isUnauthorized());
+        .andExpect(status().isNotFound());
   }
 
   @Test

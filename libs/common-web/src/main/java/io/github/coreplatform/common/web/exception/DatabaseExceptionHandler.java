@@ -11,6 +11,7 @@ import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -20,16 +21,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Handles database constraint violations and optimistic locking conflicts, formatting them
- * consistently into RFC 9457 Problem Details without leaking SQL internals. Active only when Spring
- * DAO / Data access classes are on the classpath.
+ * Handles database constraint violations and concurrency conflicts, formatting them consistently
+ * into RFC 9457 Problem Details without leaking SQL internals. Active only when Spring DAO / Data
+ * access classes are on the classpath.
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@ConditionalOnClass({
-  DataIntegrityViolationException.class,
-  OptimisticLockingFailureException.class
-})
+@ConditionalOnClass({DataIntegrityViolationException.class, ConcurrencyFailureException.class})
 public class DatabaseExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(DatabaseExceptionHandler.class);
@@ -89,6 +87,31 @@ public class DatabaseExceptionHandler {
   }
 
   // #endregion
+
+  @ExceptionHandler(ConcurrencyFailureException.class)
+  public ResponseEntity<ProblemDetail> handleConcurrencyFailure(
+      ConcurrencyFailureException ex, HttpServletRequest request) {
+    String requestId = resolveRequestId(request);
+    log.warn(
+        "[{}] Database concurrency conflict on {} {}: {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage());
+
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT,
+            "The operation conflicted with another transaction. Please retry.");
+    problem.setType(URI.create("/errors/conflict"));
+    problem.setTitle("Conflict");
+    problem.setInstance(resolveInstance(request));
+    problem.setProperty("code", "concurrency_conflict");
+    problem.setProperty("timestamp", Instant.now().toString());
+    problem.setProperty("requestId", requestId);
+
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+  }
 
   // #region resolveInstance
   private URI resolveInstance(HttpServletRequest request) {

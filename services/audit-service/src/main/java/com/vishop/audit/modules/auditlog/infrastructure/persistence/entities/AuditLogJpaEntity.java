@@ -3,6 +3,7 @@ package com.vishop.audit.modules.auditlog.infrastructure.persistence.entities;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
@@ -49,6 +50,11 @@ public class AuditLogJpaEntity {
   @Column(name = "occurred_at", nullable = false)
   private Instant occurredAt;
 
-  @Column(name = "created_at", nullable = false)
+  @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  @PrePersist
+  private void beforeInsert() {
+    if (createdAt == null) createdAt = Instant.now();
+  }
 }

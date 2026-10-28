@@ -40,6 +40,8 @@ their literal public URLs; the version prefix is an API contract, not an environ
 
 Runtime database access uses Spring Data JPA or JPA `EntityManager`, including native SQL.
 Hibernate only validates entity mappings; Flyway SQL migrations own every schema change.
+Applications do not run migrations at startup. Run each service's `migrate` task before `dev`,
+`start`, `bootRun` or `runJar`, with migration credentials pointing to the application database.
 See the [persistence standard](docs/core-architecture/persistence.md).
 
 ```powershell
@@ -150,9 +152,9 @@ switch-tenant accepts only `{tenantId}`. Logout clears both cookies. Issued JWTs
 valid until expiry. Production cookies use `AUTH_COOKIE_SECURE=true` and HTTPS.
 CMS requires PLATFORM_ADMIN; tenant OWNER does not grant CMS access.
 
-Configure independent JWT_SECRET and IAM_INTERNAL_SECRET secrets (at least 32 bytes each),
+Configure a random JWT_SECRET (at least 32 bytes),
 database credentials and exact ALLOWED_ORIGINS. JWT_SECRET is shared by IAM, gateway and
-downstream verification. IAM_INTERNAL_SECRET protects the private compatibility endpoint.
+downstream verification. IAM does not expose an internal introspection endpoint.
 
 
 Public registration accepts email, password and fullName; tenantId/role assignment is

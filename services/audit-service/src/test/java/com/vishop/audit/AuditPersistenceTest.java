@@ -26,7 +26,20 @@ class AuditPersistenceTest {
 
   private static EmbeddedPostgres startPostgres() {
     try {
-      return EmbeddedPostgres.builder().setPort(0).start();
+      var postgres = EmbeddedPostgres.builder().setPort(0).start();
+      try {
+        org.flywaydb.core.Flyway.configure()
+            .dataSource(postgres.getPostgresDatabase())
+            .locations("classpath:db/migration")
+            .baselineOnMigrate(false)
+            .cleanDisabled(true)
+            .load()
+            .migrate();
+        return postgres;
+      } catch (Exception failure) {
+        postgres.close();
+        throw failure;
+      }
     } catch (Exception failure) {
       throw new IllegalStateException(failure);
     }
@@ -82,6 +95,36 @@ class AuditPersistenceTest {
                         "SELECT count(*) FROM flyway_schema_history WHERE success=false")
                     .getSingleResult())
             .intValue());
+  }
+
+  @Test
+  void insertAutomaticallySetsCreatedAtWhenMissing() {
+    UUID id = UUID.randomUUID();
+    Instant occurredAt = Instant.parse("2026-10-01T00:00:00Z");
+    Instant beforeInsert = Instant.now();
+    logs.saveAndFlush(
+        new AuditLogJpaEntity(
+            id,
+            UUID.randomUUID(),
+            "UserRegistered",
+            null,
+            "User",
+            UUID.randomUUID(),
+            "iam-service",
+            "{}",
+            occurredAt,
+            null));
+    entityManager.clear();
+
+    var stored = logs.findById(id).orElseThrow();
+    assertNotNull(stored.getCreatedAt());
+    // PostgreSQL stores timestamps at microsecond precision.
+    assertFalse(
+        stored
+            .getCreatedAt()
+            .isBefore(beforeInsert.truncatedTo(java.time.temporal.ChronoUnit.MICROS)));
+    assertFalse(stored.getCreatedAt().isAfter(Instant.now()));
+    assertEquals(occurredAt, stored.getOccurredAt());
   }
 
   @Test

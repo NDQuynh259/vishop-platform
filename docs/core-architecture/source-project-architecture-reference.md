@@ -242,6 +242,6 @@ Dưới đây là bảng đối chiếu trực tiếp giữa giải pháp trong 
 * Public registration tạo global user với system role USER, không nhận tenant/role từ client. API tạo tenant ghi tenant, bốn role và OWNER membership trong cùng transaction.
 * Gateway xóa header danh tính/tenant và khoá nội bộ do client gửi, xác minh access JWT tại chỗ và chuyển tiếp JWT nguyên vẹn. Downstream tự verify JWT; không dựng principal từ header client.
 * Tenant OWNER chỉ có tenant permissions. API CMS kiểm tra system role PLATFORM_ADMIN; system admin không mặc nhiên là thành viên mọi tenant. Không có bảng permissions cho system role.
-* IAM, gateway và downstream dùng JWT_SECRET (ít nhất 32 byte). IAM_INTERNAL_SECRET chỉ bảo vệ introspection tương thích nội bộ; gateway không introspect IAM và không dùng cookie đăng nhập.
+* IAM, gateway và downstream dùng JWT_SECRET (ít nhất 32 byte). Endpoint introspection nội bộ đã được bỏ; gateway xác minh access JWT tại chỗ.
 Current IAM logout is stateless: clients discard tokens, which remain valid until expiry. See [security architecture](security-architecture.md).
 * Source đã chuyển runtime/configuration. Việc import dữ liệu từ database cũ và chuyển traffic trên hạ tầng đang chạy vẫn phải làm theo hướng dẫn cutover.

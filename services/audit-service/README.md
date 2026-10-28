@@ -132,4 +132,4 @@ It requires an existing PostgreSQL database and all three explicit `AUDIT_DB_*` 
 it does not read `SPRING_DATASOURCE_*` or application.yml defaults. Pending migrations run
 once; subsequent invocations validate the history and apply only newly added versions.
 Baseline-on-migrate is disabled and database cleaning is disabled.
-Normal service startup still runs pending migrations automatically.
+Normal service startup does not run migrations. Run `migrate` before starting the service; Hibernate only validates the prepared schema.

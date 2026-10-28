@@ -95,7 +95,6 @@ public class IamSecurityConfiguration {
                         ApiPaths.V1 + "/auth/register",
                         ApiPaths.V1 + "/auth/refresh",
                         ApiPaths.V1 + "/auth/logout",
-                        "/internal/auth/introspect",
                         "/actuator/health",
                         "/actuator/health/**",
                         "/actuator/info",

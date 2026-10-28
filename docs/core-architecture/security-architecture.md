@@ -37,7 +37,6 @@ CORS uses exact `ALLOWED_ORIGINS`. Never log credentials or put tokens into outb
 All unsafe browser API methods, including login/register/refresh/logout, require the
 non-simple header `X-Requested-With: XMLHttpRequest`. Gateway and IAM reject missing
 headers and untrusted Origins. Credentialed CORS permits only exact configured origins.
-The private key-authenticated introspection endpoint is exempt from the browser header.
 Frontend fetch calls use `credentials: 'include'`; Scalar supplies these options too.
 Cookies default to HttpOnly, host-only, SameSite=Lax. Access uses Path `/`, refresh uses
 Path `/api/v1/auth`. `AUTH_COOKIE_SECURE=true` is the production default and requires HTTPS;
@@ -45,8 +44,8 @@ SameSite=None is rejected unless Secure is enabled. Local HTTP may use Secure=fa
 
 Configure `JWT_SECRET` (at least 32 bytes) consistently in IAM, gateway and downstream.
 IAM token lifetimes use `JWT_ACCESS_EXPIRATION_MS` and `JWT_REFRESH_EXPIRATION_MS`.
-`IAM_INTERNAL_SECRET` protects a private compatibility introspection endpoint; gateway
-does not call it for authentication. Kafka/outbox continue to serve audit/integration events.
+The internal introspection endpoint has been removed; gateway and downstream verify JWTs
+locally. Kafka/outbox continue to serve audit/integration events.
 
 Flyway V4 removes sessions, security_states and their triggers/functions. Migration history
 V1-V3 remains unchanged to preserve checksums on existing databases. Deploying the new

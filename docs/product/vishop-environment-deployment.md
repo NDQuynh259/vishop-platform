@@ -68,7 +68,7 @@ không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác
 rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
 
 **Danh tính dịch vụ nội bộ (service-to-service).**
-Lời gọi có người dùng chuyển tiếp Bearer access JWT; gateway và service xác minh JWT_SECRET theo cấu hình hiện tại. IAM_INTERNAL_SECRET chỉ bảo vệ endpoint introspection tương thích nội bộ; gateway không dùng endpoint này để xác thực request. Danh tính máy-với-máy ngoài phạm vi token người dùng cần contract riêng, không được giả lập user bằng header client.
+Lời gọi có người dùng chuyển tiếp Bearer access JWT; gateway và service xác minh JWT_SECRET theo cấu hình hiện tại. Endpoint introspection nội bộ đã được bỏ; không cần cấu hình secret riêng cho endpoint này. Danh tính máy-với-máy ngoài phạm vi token người dùng cần contract riêng, không được giả lập user bằng header client.
 
 **Secret hạ tầng (DB credential, signing key, client secret app TikTok).**
 Lưu trong secret manager tập trung (KMS-backed), không đặt plaintext trong biến môi trường hay file cấu hình commit vào repo. Rotate định kỳ, tách biệt secret theo môi trường (dev/staging/prod dùng key khác nhau tuyệt đối).

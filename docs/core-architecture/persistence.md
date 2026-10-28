@@ -69,7 +69,7 @@ spring:
     init:
       mode: never
   flyway:
-    enabled: true
+    enabled: false
     baseline-on-migrate: false
     clean-disabled: true
 ```
@@ -82,7 +82,7 @@ Không bật `update`, `create`, `create-drop`, JPA schema generation hoặc `sc
 2. Viết SQL cho bảng, cột, kiểu dữ liệu, index, constraint, trigger và backfill cần thiết.
 3. Cập nhật entity/repository/query tương ứng. JSONB phải có JPA/Hibernate JSON type mapping; `columnDefinition` không thay thế mapping giá trị.
 4. Kiểm thử trên PostgreSQL: migrate từ database rỗng, validate mapping và kiểm tra hành vi/constraint. Với thay đổi schema đã triển khai, kiểm thử nâng cấp từ version trước.
-5. Triển khai migration bằng Flyway trước khi Hibernate validate. Khi Flyway được bật trong runtime, nó áp dụng các file SQL trước khi khởi tạo JPA. Việc này không phải entity tự sinh migration.
+5. Chạy lệnh `migrate` riêng để áp dụng SQL trước khi khởi động ứng dụng. Runtime không tự chạy Flyway; Hibernate chỉ validate schema đã được chuẩn bị.
 
 Không sửa/xóa migration đã chạy. Thêm migration version mới cho mỗi thay đổi. Database cũ không có Flyway history cần kế hoạch baseline/import riêng; không tự baseline khi khởi động.
 
@@ -101,3 +101,23 @@ Không sửa/xóa migration đã chạy. Thêm migration version mới cho mỗi
 ```powershell
 .\gradlew.bat check
 ```
+
+## Explicit migration before application startup
+
+IAM and Audit use `spring.flyway.enabled: false` during normal application startup.
+Hibernate runs `ddl-auto: validate` with `generate-ddl: false`; Spring SQL initialization
+remains `never`. Startup checks the existing schema and fails if required tables/columns
+are missing. It does not create, alter or migrate schema automatically.
+
+Run the service migration task with explicit database credentials before starting the app:
+
+```powershell
+.\gradlew.bat :services:iam-service:migrate
+.\gradlew.bat :services:audit-service:migrate
+```
+
+IAM uses `IAM_DB_URL/USER/PASSWORD`; Audit uses `AUDIT_DB_URL/USER/PASSWORD`.
+Point these variables at the same databases configured by the application's
+`SPRING_DATASOURCE_URL/USERNAME/PASSWORD`. Migration CLIs invoke Flyway directly and are
+independent of `spring.flyway.enabled`. Integration tests also run migrations explicitly
+before starting application contexts; startup itself remains free of schema changes.

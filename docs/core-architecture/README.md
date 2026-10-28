@@ -18,7 +18,8 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Service decomposition](./scaling-to-services.md) | Service boundaries, decomposition criteria, and extraction playbook |
 | [Service module anatomy](./domain-module-anatomy.md) | Domain, application, infrastructure, and presentation layers |
 | [Multi-tenancy](./tenancy.md) | Tenant context propagation, 1-to-N membership data modeling, and service boundary decomposition |
-| [Idempotency and tracing](./idempotency-and-tracing.md) | Deduplication and request/message correlation |
+| [Kafka architecture](./kafka-architecture.md) | Kafka topology, outbox, consumer transactions, retry/DLT, and replay |
+| [Idempotency and tracing](./idempotency-and-tracing.md) | Choosing consumed messages vs. unique event IDs, external API idempotency, and request/message correlation |
 | [Observability](./observability-architecture.md) | Logs, metrics, distributed tracing, and alerting |
 | [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, stateless JWT access/refresh and expiry-based logout, and Multi-Tenancy |
 | [Inter-service communication](./inter-service-communication.md) | Protocols: Kafka event-driven, REST/HTTPS, and gRPC decision framework |

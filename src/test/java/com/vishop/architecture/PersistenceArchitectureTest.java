@@ -55,7 +55,7 @@ class PersistenceArchitectureTest {
         assertEquals("validate", value(document, "spring", "jpa", "hibernate", "ddl-auto"), name);
         assertEquals(false, value(document, "spring", "jpa", "generate-ddl"), name);
         assertEquals("never", value(document, "spring", "sql", "init", "mode"), name);
-        assertEquals(true, value(document, "spring", "flyway", "enabled"), name);
+        assertEquals(false, value(document, "spring", "flyway", "enabled"), name);
         assertEquals(false, value(document, "spring", "flyway", "baseline-on-migrate"), name);
         assertEquals(true, value(document, "spring", "flyway", "clean-disabled"), name);
         try (var files = Files.list(resources.resolve("db/migration"))) {

@@ -98,6 +98,7 @@ services:
     expose:
       - "6379"
     volumes:
+      - redis-prod-data:/data
     deploy:
       resources:
         limits:
@@ -207,7 +208,6 @@ services:
       - "8080"
     environment:
       SERVER_PORT: 8080
-      IAM_INTERNAL_SECRET: ${IAM_INTERNAL_SECRET:?Set IAM_INTERNAL_SECRET to a random value of at least 32 bytes}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-900000}

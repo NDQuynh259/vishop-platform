@@ -1,7 +1,7 @@
 # Kiến trúc Kafka và lưu ý triển khai
 
 Tài liệu đối chiếu với mã nguồn ngày 27/10/2026, sau khi tổ chức audit theo DDD/CQRS. Tài liệu gồm 2 phần:
-- **Phần I: Kiến trúc tổng quan Apache Kafka**: Nền tảng kiến trúc chuẩn của Kafka (Broker, KRaft, Topic, Partition, Leader/Follower, Consumer Group, Offset).
+- **Phần I: Kiến trúc tổng quan Apache Kafka**: Nền tảng kiến trúc chuẩn của Kafka (Broker, KRaft, Topic, Partition, Leader/Follower, Consumer Group, Offset, quy tắc scale-out và lưu ý tăng Partition).
 - **Phần II: Thiết kế áp dụng vào dự án Vishop Platform**: Chi tiết triển khai thực tế (Transactional Outbox, Topic Naming, Idempotent Consumer, Retry/DLT).
 
 ---
@@ -13,94 +13,76 @@ Apache Kafka là một **Distributed Event Streaming Platform** (nền tảng nh
 ## 1. Sơ đồ kiến trúc tổng quan chuẩn của Apache Kafka
 
 ```mermaid
-flowchart TD
+flowchart LR
     %% =========================================================================
     %% TẦNG 1: PRODUCERS
     %% =========================================================================
-    subgraph S1["1. PRODUCER LAYER (BÊN GỬI DỮ LIỆU)"]
-        direction TB
-        P1["fa:fa-paper-plane Producer App 1"]
-        P2["fa:fa-paper-plane Producer App 2"]
-        P_Logic["fa:fa-cogs Cơ chế gửi tin:<br/>- <b>Key Hash</b>: MurmurHash2(Key) % Số Partitions (Cùng key => Cùng partition)<br/>- <b>Round-Robin</b>: Nếu message không có Key<br/>- <b>Acks Config</b>: acks=0 | acks=1 | acks=all (-1)"]
-        P1 --> P_Logic
-        P2 --> P_Logic
+    subgraph S1["1. PRODUCERS (Bên gửi)"]
+        P1["Producer App A"]
+        P2["Producer App B"]
     end
 
     %% =========================================================================
-    %% TẦNG 2: KAFKA CLUSTER (BROKERS & TOPICS)
+    %% TẦNG 2: KAFKA CLUSTER
     %% =========================================================================
-    subgraph S2["2. KAFKA CLUSTER (HẠ TẦNG LƯU TRỮ VÀ ĐIỀU PHỐI)"]
+    subgraph S2["2. KAFKA CLUSTER (Brokers)"]
         direction TB
-        
-        subgraph KRaft["Cơ chế đồng thuận cụm: KRaft Controller (Quản lý metadata, thay thế Zookeeper)"]
-            Metadata["fa:fa-server Active Controller Node"]
-        end
+        KRaft["KRaft Controller<br/><i>(Quản lý Cluster Metadata)</i>"]
 
-        subgraph TOPIC_X["Topic: example.topic (Replication Factor = 2, Partitions = 3)"]
+        subgraph TOPIC["Topic: example.topic"]
             direction TB
-
-            subgraph P0["Partition 0"]
-                P0_Leader["fa:fa-crown <b>Leader Replica</b> (Broker 1)<br/>[Offset 0] -> [Offset 1] -> [Offset 2] -> [Offset 3]..."]
-                P0_Follower["fa:fa-clone Follower Replica (Broker 2 - ISR)"]
-                P0_Leader -.->|"Replication Sync"| P0_Follower
-            end
-
-            subgraph P1["Partition 1"]
-                P1_Leader["fa:fa-crown <b>Leader Replica</b> (Broker 2)<br/>[Offset 0] -> [Offset 1] -> [Offset 2]..."]
-                P1_Follower["fa:fa-clone Follower Replica (Broker 3 - ISR)"]
-                P1_Leader -.->|"Replication Sync"| P1_Follower
-            end
-
-            subgraph P2["Partition 2"]
-                P2_Leader["fa:fa-crown <b>Leader Replica</b> (Broker 3)<br/>[Offset 0] -> [Offset 1] -> [Offset 2]..."]
-                P2_Follower["fa:fa-clone Follower Replica (Broker 1 - ISR)"]
-                P2_Leader -.->|"Replication Sync"| P2_Follower
-            end
+            P0["<b>Partition 0</b><br/>Leader (Broker 1) | Follower (Broker 2)"]
+            P1_Part["<b>Partition 1</b><br/>Leader (Broker 2) | Follower (Broker 3)"]
+            P2_Part["<b>Partition 2</b><br/>Leader (Broker 3) | Follower (Broker 1)"]
         end
-    end
 
-    P_Logic ==>|"Publish tin vào Leader Partition"| TOPIC_X
+        Offsets[("Internal Topic:<br/><b>__consumer_offsets</b>")]
+    end
 
     %% =========================================================================
     %% TẦNG 3: CONSUMER GROUPS
     %% =========================================================================
-    subgraph S3["3. CONSUMER LAYER (BÊN TIÊU THỤ THEO NHÓM)"]
+    subgraph S3["3. CONSUMER GROUPS (Bên nhận)"]
         direction TB
-
-        subgraph GROUP_A["Consumer Group A (Logic Nghiệp Vụ 1)"]
-            C_A1["fa:fa-user Consumer A1<br/>(Đọc Partition 0)"]
-            C_A2["fa:fa-user Consumer A2<br/>(Đọc Partition 1)"]
-            C_A3["fa:fa-user Consumer A3<br/>(Đọc Partition 2)"]
+        subgraph GA["Consumer Group A (Nghiệp vụ 1)"]
+            CA1["Consumer A1 (P0)"]
+            CA2["Consumer A2 (P1)"]
+            CA3["Consumer A3 (P2)"]
         end
 
-        subgraph GROUP_B["Consumer Group B (Logic Nghiệp Vụ 2 - Đọc song song độc lập)"]
-            C_B1["fa:fa-user Consumer B1<br/>(Đọc Partition 0 + 1)"]
-            C_B2["fa:fa-user Consumer B2<br/>(Đọc Partition 2)"]
-        end
-
-        subgraph OFFSET_STORE["Hệ thống lưu vết vị trí đọc"]
-            OffsetTopic[("fa:fa-bookmark Internal Topic: __consumer_offsets<br/>(Lưu Offset mới nhất mà mỗi Consumer Group đã đọc thành công)")]
+        subgraph GB["Consumer Group B (Nghiệp vụ 2 - Đọc độc lập)"]
+            CB1["Consumer B1 (P0, P1)"]
+            CB2["Consumer B2 (P2)"]
         end
     end
 
-    TOPIC_X ==>|"Pull tin (Theo Offset)"| GROUP_A
-    TOPIC_X ==>|"Pull tin (Theo Offset)"| GROUP_B
+    %% =========================================================================
+    %% DATA FLOW
+    %% =========================================================================
+    P1 -->|"Publish (Key Hash)"| TOPIC
+    P2 -->|"Publish (Round-Robin)"| TOPIC
 
-    GROUP_A -.->|"Commit Offset"| OffsetTopic
-    GROUP_B -.->|"Commit Offset"| OffsetTopic
+    P0 ==>|"Pull"| CA1
+    P1_Part ==>|"Pull"| CA2
+    P2_Part ==>|"Pull"| CA3
+
+    TOPIC ==>|"Pull (Song song)"| GB
+
+    GA -.->|"Commit Offset"| Offsets
+    GB -.->|"Commit Offset"| Offsets
 
     %% =========================================================================
-    %% STYLING (PHONG CÁCH TỐI GIẢN - CLEAN & MINIMALIST)
+    %% STYLING (TỐI GIẢN & HIỆN ĐẠI)
     %% =========================================================================
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1.5px,color:#f8fafc;
-    classDef leader fill:#0f172a,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
-    classDef follower fill:#1e293b,stroke:#475569,stroke-width:1px,color:#94a3b8;
+    classDef controller fill:#0f172a,stroke:#3b82f6,stroke-width:1.5px,color:#f8fafc;
+    classDef partition fill:#1e293b,stroke:#0ea5e9,stroke-width:1.5px,color:#f8fafc;
     classDef storage fill:#0f172a,stroke:#64748b,stroke-width:1.5px,color:#f8fafc;
 
-    class P1,P2,P_Logic,Metadata,C_A1,C_A2,C_A3,C_B1,C_B2 default;
-    class P0_Leader,P1_Leader,P2_Leader leader;
-    class P0_Follower,P1_Follower,P2_Follower follower;
-    class OffsetTopic storage;
+    class P1,P2,CA1,CA2,CA3,CB1,CB2 default;
+    class KRaft controller;
+    class P0,P1_Part,P2_Part partition;
+    class Offsets storage;
 ```
 
 ## 2. Các khái niệm cốt lõi của Kafka
@@ -128,6 +110,48 @@ flowchart TD
 | **At-most-once** | Commit offset trước khi xử lý, có thể mất message nếu lỗi | Phù hợp log đo lường, tracking không quan trọng |
 | **At-least-once** | Xử lý xong mới commit offset, có thể trùng lặp khi mạng lỗi | **Chuẩn mặc định của Kafka**; Consumer cần có Idempotency |
 | **Exactly-once** | Không mất tin, không trùng lặp | Cần Transactional Producer và Consumer Idempotent |
+
+## 3. Mối quan hệ giữa Partition và Consumer (Nguyên lý Scale-out & Lưu ý)
+
+### 3.1. Quy tắc mở rộng (The Golden Rule)
+Partition là **đơn vị song song hóa (unit of parallelism)** duy nhất của Kafka:
+> **Trong cùng một Consumer Group: Một Partition chỉ được đọc bởi TỐI ĐA một Consumer instance tại một thời điểm.**
+
+Vì vậy:
+* Bạn **không thể** chỉ tăng số lượng Consumer mà kỳ vọng tăng thông lượng nếu số Partition không đủ.
+* **Số Consumer hoạt động tối đa = Số lượng Partition**.
+
+| Số Consumer vs Số Partition | Trạng thái phân bổ | Hiệu quả thực tế |
+| :--- | :--- | :--- |
+| **Consumer < Partition** (vd: 2 consumers, 3 partitions) | Một consumer sẽ phải gánh đọc nhiều partition ($C_1 \rightarrow P_0, P_1$; $C_2 \rightarrow P_2$). | Hoạt động bình thường nhưng chưa tối đa hóa tài nguyên. |
+| **Consumer = Partition** (vd: 3 consumers, 3 partitions) | Mỗi consumer đọc đúng 1 partition độc lập ($1:1$). | **Trạng thái lý tưởng nhất** về thông lượng và cân bằng tải. |
+| **Consumer > Partition** (vd: 4 consumers, 3 partitions) | 3 consumer nhận 3 partition; **consumer thứ 4 bị IDLE (ngồi chơi)**. | **Lãng phí tài nguyên**: Consumer thừa không nhận được bất kỳ tin nào. |
+
+```
+Topic: 3 Partitions                 Consumer Group: 4 Pods
+   [ Partition 0 ] ----------------> Consumer 1 (Active)
+   [ Partition 1 ] ----------------> Consumer 2 (Active)
+   [ Partition 2 ] ----------------> Consumer 3 (Active)
+                                     Consumer 4 (IDLE - Rảnh rỗi!)
+```
+
+### 3.2. Khi tăng Consumer thì có tăng Partition không?
+* **Nguyên lý**: Muốn tăng số lượng Consumer instance hoạt động hiệu quả, **bắt buộc phải có đủ số Partition trước**.
+* Nếu số Consumer hiện tại đã đạt trần (bằng số Partition) mà hệ thống vẫn bị nghẽn (Consumer lag cao), ta cần tăng số Partition của Topic lên trước, sau đó mới scale thêm Consumer Pod/Container.
+
+### 3.3. Hai rủi ro sống còn khi tăng Partition
+> [!WARNING]
+> 1. **Kafka chỉ cho phép TĂNG, KHÔNG cho phép GIẢM Partition**:
+>    Bạn có thể tăng một topic từ 3 lên 6 partitions, nhưng không bao giờ có thể giảm ngược từ 6 về 3 (cách duy nhất là xóa topic và tạo lại từ đầu).
+>
+> 2. **Phá vỡ thứ tự xử lý của Message có Key (Key-Ordering Break)**:
+>    * Kafka tính partition theo công thức: `MurmurHash2(key) % num_partitions`.
+>    * Khi số partition thay đổi từ $N \rightarrow M$, kết quả phép tính modulo thay đổi.
+>    * **Hệ quả**: Một message mới của `user_id = 123` có thể bị chuyển sang partition mới, trong khi message cũ của cùng user đó vẫn đang chờ xử lý ở partition cũ. Điều này dẫn tới việc **event đến sau bị xử lý trước event đến trước**.
+
+> [!TIP]
+> **Khuyến nghị thiết kế (Best Practice)**:
+> Dự trù số Partition ngay từ khi tạo Topic (ví dụ khởi tạo sẵn 6, 12 hoặc 24 partitions tùy dự báo tải). Khi đó, bạn có thể tự do mở rộng số lượng Pod/Consumer từ 1 lên tối đa 24 instance bất kỳ lúc nào mà không cần can thiệp cấu trúc Partition của topic đang chạy.
 
 ---
 
@@ -305,6 +329,11 @@ IAM relay hiện gửi headers `X-Tenant-Id` nếu có tenant và `X-Event-Type`
 - Thêm trường theo hướng tương thích; khi đổi nghĩa/xóa trường cần kế hoạch version và phối hợp consumer. Hiện chưa có kiểm tra tương thích schema tập trung trong luồng này.
 
 ## 6. Chống trùng và transaction phía consumer
+
+Mỗi consumer cần xác định cách chịu được message trùng; không bắt buộc service nào
+nhận Kafka cũng có bảng `consumed_messages`. Có thể dùng khóa unique ngay trên dữ
+liệu đích nếu phù hợp. Xem [cách chọn bảng riêng hay khóa unique](idempotency-and-tracing.md#24-chọn-bảng-riêng-hay-khóa-unique-trên-dữ-liệu-đích)
+và [idempotency khi gọi API bên ngoài](idempotency-and-tracing.md#25-gọi-api-bên-ngoài-giới-hạn-của-transaction-db).
 
 Audit kiểm tra `(message_id, consumer_group)` trong `consumed_messages`, thực hiện ghi audit, rồi lưu dấu đã xử lý. Hai thao tác ghi nằm trong cùng transaction database.
 

@@ -56,7 +56,20 @@ class AuditApplicationTest {
 
   private static EmbeddedPostgres startPostgres() {
     try {
-      return EmbeddedPostgres.builder().setPort(0).start();
+      var postgres = EmbeddedPostgres.builder().setPort(0).start();
+      try {
+        org.flywaydb.core.Flyway.configure()
+            .dataSource(postgres.getPostgresDatabase())
+            .locations("classpath:db/migration")
+            .baselineOnMigrate(false)
+            .cleanDisabled(true)
+            .load()
+            .migrate();
+        return postgres;
+      } catch (Exception failure) {
+        postgres.close();
+        throw failure;
+      }
     } catch (Exception failure) {
       throw new IllegalStateException(failure);
     }
@@ -327,6 +340,7 @@ class AuditApplicationTest {
 
   @Test
   void startsHttpAndKafkaInfrastructureWithoutImportingOutboxComponents() {
+    assertThat(context.getBeansOfType(org.flywaydb.core.Flyway.class)).isEmpty();
     assertThat(context.getBean(SpringDataAuditLogRepository.class)).isNotNull();
     assertThat(context.getBean(ConsumedMessageRepository.class)).isNotNull();
     assertThat(context.getBean(AuditKafkaListener.class)).isNotNull();
