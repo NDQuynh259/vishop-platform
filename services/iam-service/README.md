@@ -130,6 +130,62 @@ infrastructure depending on module internals. Integration
 tests cover cross-module JPA rollback when event publication fails, tenant version updates, existing
 authorization/concurrency rules, and the unchanged HTTP/event contracts.
 
+## List the current user's tenants
+
+`GET /api/v1/tenants` is handled by `TenantController` through
+`ListMyTenantsQuery`. The user ID comes from the authenticated principal, not a request
+parameter. It returns active tenants in which that user has an active membership,
+ordered by creation time and ID by default. Use `GET /api/v1/tenants?page=1&limit=20`; the endpoint uses
+the shared `PaginationRequest` normalization (default page 1, limit 20, maximum 100).
+It supports offset pagination only; a nonblank `cursor` returns 400.
+
+The response is the system `ListEnvelope`: `{object, url, data, pageInfo}`. Each item
+in `data` contains `{id, code, name, status, createdAt}`. `pageInfo` contains `page`,
+`limit`, `total`, `totalPages`, and `hasNextPage`. The database filters by the current
+user and active statuses before applying LIMIT/OFFSET; the count uses the same filters.
+
+The handler obtains the current user's active tenant IDs through the public `AccessApi`.
+`TenantReadAdapter` uses `SpringDataTenantRepository` / `JpaSpecificationExecutor` with
+`Specification`, `PageRequest`, and `Sort`; it does not build SQL or use `EntityManager`
+directly. Membership authorization remains inside the access module. Text searches use
+case-normalized JPA `LIKE` with escaped wildcard characters.
+
+Optional field filters are combined with AND:
+
+| Parameter | Match |
+| --- | --- |
+| `id` | Exact tenant UUID |
+| `code` | Case-insensitive contains; trimmed, maximum 50 characters |
+| `name` | Case-insensitive contains; trimmed, maximum 200 characters |
+| `status` | Exact `ACTIVE`, `SUSPENDED`, or `ARCHIVED`; inactive tenants remain excluded, so requesting another status gives no matches |
+| `createdFrom` | Inclusive lower bound on `createdAt`, ISO-8601 instant |
+| `createdTo` | Exclusive upper bound on `createdAt`, ISO-8601 instant |
+
+Blank text filters are ignored. `%`, `_`, and `!` in text filters are literal
+characters, not wildcard syntax. When both date bounds are present, `createdFrom`
+must be before `createdTo`.
+
+Use `sort=field:direction`, for example `sort=createdAt:desc`. Fields are
+`id`, `code`, `name`, `status`, or `createdAt`; directions are `asc` or `desc`.
+The default is `createdAt:asc`; ties use `id asc` so page boundaries remain deterministic for an
+unchanged dataset. Only the allowlisted fields and directions are accepted; invalid
+sort/filter values return 400. Text values and date/ID filters are bound parameters.
+
+```http
+GET /api/v1/tenants?page=1&limit=20&name=shop&sort=createdAt:desc
+```
+
+Client-supplied user IDs or identity headers cannot select another user's tenants.
+System admins also receive only their own memberships on this endpoint.
+The caller must still be active in the database. Missing/invalid credentials return
+401. A user without active tenants receives empty `data` and total 0. A page beyond
+the last page also has empty `data` while retaining the matching total.
+Tenant and membership reads share a read-only REPEATABLE READ transaction.
+
+The list returns tenant information rather than the old membership projection with
+`roleId` and `role`. Tenant editing continues through `PATCH /api/v1/tenants/{id}`
+with `{"name":"New name"}`, requiring active membership and `tenant.manage`.
+
 ## Cross-module member read projection
 
 * `GET /api/v1/tenants/{tenantId}/members/me` returns the caller's membership.

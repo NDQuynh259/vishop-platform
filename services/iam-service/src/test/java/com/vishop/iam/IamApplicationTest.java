@@ -246,6 +246,265 @@ class IamApplicationTest {
   }
 
   @Test
+  void listsTenantsFromAuthenticatedUserWithoutLeakingOtherTenants() throws Exception {
+    Account owner = register("owner@example.com");
+    Account other = register("other@example.com");
+    String second = createTenant(owner, "beta-shop").path("id").asText();
+    String first = createTenant(owner, "alpha-shop").path("id").asText();
+    String suspended = createTenant(owner, "suspended-shop").path("id").asText();
+    String inactive = createTenant(owner, "inactive-shop").path("id").asText();
+    createTenant(other, "unrelated-shop");
+    db.update("UPDATE tenants SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", suspended);
+    db.update(
+        "UPDATE tenant_members SET status='INACTIVE' WHERE user_id=CAST(? AS uuid) AND tenant_id=CAST(? AS uuid)",
+        owner.id(),
+        inactive);
+
+    http.perform(authorized(get("/api/v1/tenants").param("sort", "name:asc"), owner.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.object").value("list"))
+        .andExpect(jsonPath("$.url").value("/api/v1/tenants"))
+        .andExpect(jsonPath("$.pageInfo.page").value(1))
+        .andExpect(jsonPath("$.pageInfo.limit").value(20))
+        .andExpect(jsonPath("$.pageInfo.total").value(2))
+        .andExpect(jsonPath("$.pageInfo.totalPages").value(1))
+        .andExpect(jsonPath("$.pageInfo.hasNextPage").value(false))
+        .andExpect(jsonPath("$.data.length()").value(2))
+        .andExpect(jsonPath("$.data[0].id").value(first))
+        .andExpect(jsonPath("$.data[0].code").value("alpha-shop"))
+        .andExpect(jsonPath("$.data[0].name").value("alpha-shop"))
+        .andExpect(jsonPath("$.data[0].status").value("ACTIVE"))
+        .andExpect(jsonPath("$.data[0].createdAt").isNotEmpty())
+        .andExpect(jsonPath("$.data[1].id").value(second));
+    for (int page = 1; page <= 3; page++) {
+      var response =
+          http.perform(
+                  authorized(
+                      get("/api/v1/tenants")
+                          .param("sort", "name:asc")
+                          .param("page", String.valueOf(page))
+                          .param("limit", "1"),
+                      owner.token()))
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.pageInfo.page").value(page))
+              .andExpect(jsonPath("$.pageInfo.limit").value(1))
+              .andExpect(jsonPath("$.pageInfo.total").value(2))
+              .andExpect(jsonPath("$.pageInfo.totalPages").value(2))
+              .andExpect(jsonPath("$.pageInfo.hasNextPage").value(page == 1));
+      if (page <= 2) {
+        response
+            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].id").value(page == 1 ? first : second));
+      } else {
+        response.andExpect(jsonPath("$.data.length()").value(0));
+      }
+    }
+    http.perform(authorized(get("/api/v1/tenants"), owner.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].id").value(second))
+        .andExpect(jsonPath("$.data[1].id").value(first));
+    http.perform(
+            authorized(
+                get("/api/v1/tenants").param("page", "2147483647").param("limit", "100"),
+                owner.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(0))
+        .andExpect(jsonPath("$.pageInfo.total").value(2));
+  }
+
+  @Test
+  void listingTenantsUsesPrincipalAndRequiresAnActiveUser() throws Exception {
+    Account user = register("user@example.com");
+    Account other = register("other@example.com");
+    createTenant(other, "other-shop");
+    http.perform(get("/api/v1/tenants")).andExpect(status().isUnauthorized());
+    // Client-supplied IDs cannot override the authenticated principal.
+    http.perform(
+            authorized(
+                get("/api/v1/tenants").param("userId", other.id()).header("X-User-Id", other.id()),
+                user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(0))
+        .andExpect(jsonPath("$.pageInfo.total").value(0));
+    // System admins also receive only their own memberships on this endpoint.
+    db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", user.id());
+    http.perform(authorized(get("/api/v1/tenants"), user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(0));
+    db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", user.id());
+    http.perform(authorized(get("/api/v1/tenants"), user.token()))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void tenantListUsesSharedPaginationNormalizationAndRejectsUnsupportedCursor() throws Exception {
+    Account user = register("pagination@example.com");
+    http.perform(
+            authorized(
+                get("/api/v1/tenants").param("page", "0").param("limit", "-1"), user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.page").value(1))
+        .andExpect(jsonPath("$.pageInfo.limit").value(20))
+        .andExpect(jsonPath("$.pageInfo.totalPages").value(0))
+        .andExpect(jsonPath("$.pageInfo.hasNextPage").value(false));
+    http.perform(authorized(get("/api/v1/tenants").param("limit", "1000"), user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.limit").value(100));
+    http.perform(authorized(get("/api/v1/tenants").param("cursor", "unsupported"), user.token()))
+        .andExpect(status().isBadRequest());
+    http.perform(authorized(get("/api/v1/tenants").param("page", "invalid"), user.token()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void tenantListCombinesFieldFiltersSortingAndPaginationWithinCurrentUserScope() throws Exception {
+    Account user = register("filter-user@example.com");
+    Account other = register("filter-other@example.com");
+    String first = createTenant(user, "shop-alpha").path("id").asText();
+    String second = createTenant(user, "shop-beta").path("id").asText();
+    String foreign = createTenant(other, "shop-other").path("id").asText();
+    String inactive = createTenant(user, "shop-inactive").path("id").asText();
+    db.update(
+        "UPDATE tenants SET name=?,created_at='2026-10-01T00:00:00Z' WHERE id=CAST(? AS uuid)",
+        "North Shop 50%_!",
+        first);
+    db.update(
+        "UPDATE tenants SET name=?,created_at='2026-10-02T00:00:00Z' WHERE id=CAST(? AS uuid)",
+        "North Market",
+        second);
+    db.update("UPDATE tenants SET name=? WHERE id=CAST(? AS uuid)", "North Shop 50%_!", foreign);
+    db.update(
+        "UPDATE tenant_members SET status='INACTIVE' WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+        inactive,
+        user.id());
+
+    for (int page = 1; page <= 2; page++) {
+      http.perform(
+              authorized(
+                  get("/api/v1/tenants")
+                      .param("code", "SHOP")
+                      .param("name", " north ")
+                      .param("status", "ACTIVE")
+                      .param("createdFrom", "2026-10-01T00:00:00Z")
+                      .param("createdTo", "2026-10-03T00:00:00Z")
+                      .param("sort", "createdAt:desc")
+                      .param("page", String.valueOf(page))
+                      .param("limit", "1"),
+                  user.token()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(1))
+          .andExpect(jsonPath("$.data[0].id").value(page == 1 ? second : first))
+          .andExpect(jsonPath("$.pageInfo.total").value(2))
+          .andExpect(jsonPath("$.pageInfo.totalPages").value(2))
+          .andExpect(jsonPath("$.pageInfo.hasNextPage").value(page == 1));
+    }
+    http.perform(authorized(get("/api/v1/tenants").param("id", first), user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].id").value(first))
+        .andExpect(jsonPath("$.pageInfo.total").value(1));
+    http.perform(authorized(get("/api/v1/tenants").param("id", foreign), user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(0))
+        .andExpect(jsonPath("$.pageInfo.total").value(0));
+    http.perform(
+            authorized(
+                get("/api/v1/tenants").param("code", "alp").param("name", "%_!"), user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].id").value(first))
+        .andExpect(jsonPath("$.pageInfo.total").value(1));
+    http.perform(
+            authorized(
+                get("/api/v1/tenants")
+                    .param("createdFrom", "2026-10-01T00:00:00Z")
+                    .param("createdTo", "2026-10-02T00:00:00Z"),
+                user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].id").value(first))
+        .andExpect(jsonPath("$.pageInfo.total").value(1));
+    for (var filter :
+        List.of(
+            Map.entry("status", "SUSPENDED"),
+            Map.entry("name", "' OR 1=1 --"),
+            Map.entry("id", inactive))) {
+      http.perform(
+              authorized(
+                  get("/api/v1/tenants").param(filter.getKey(), filter.getValue()), user.token()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(0))
+          .andExpect(jsonPath("$.pageInfo.total").value(0));
+    }
+  }
+
+  @Test
+  void tenantListSupportsAllowedSortFieldsAndStableTieBreaks() throws Exception {
+    Account user = register("sort-user@example.com");
+    String first = createTenant(user, "sort-alpha").path("id").asText();
+    String second = createTenant(user, "sort-beta").path("id").asText();
+    db.update(
+        "UPDATE tenants SET name='Same name',created_at='2026-10-01T00:00:00Z' WHERE id IN (CAST(? AS uuid),CAST(? AS uuid))",
+        first,
+        second);
+    for (String field : List.of("name", "status", "createdAt")) {
+      for (String direction : List.of("asc", "DESC")) {
+        http.perform(
+                authorized(
+                    get("/api/v1/tenants")
+                        .param("sort", field + ":" + direction)
+                        .param("limit", "1"),
+                    user.token()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].id").value(first));
+        http.perform(
+                authorized(
+                    get("/api/v1/tenants")
+                        .param("sort", field + ":" + direction)
+                        .param("page", "2")
+                        .param("limit", "1"),
+                    user.token()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].id").value(second));
+      }
+    }
+    for (String field : List.of("id", "code")) {
+      http.perform(authorized(get("/api/v1/tenants").param("sort", field + ":desc"), user.token()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data[0].id").value(second))
+          .andExpect(jsonPath("$.data[1].id").value(first));
+    }
+  }
+
+  @Test
+  void tenantListRejectsInvalidSortAndFilterValues() throws Exception {
+    Account user = register("invalid-filter@example.com");
+    for (var parameter :
+        List.of(
+            Map.entry("sort", "name; DROP TABLE tenants:asc"),
+            Map.entry("sort", "name:invalid"),
+            Map.entry("sort", "createdAt"),
+            Map.entry("sort", "createdAt:desc:extra"),
+            Map.entry("sort", ":desc"),
+            Map.entry("sort", "name:"),
+            Map.entry("id", "invalid"),
+            Map.entry("status", "invalid"),
+            Map.entry("createdFrom", "invalid"),
+            Map.entry("name", "x".repeat(201)),
+            Map.entry("code", "x".repeat(51)))) {
+      http.perform(
+              authorized(
+                  get("/api/v1/tenants").param(parameter.getKey(), parameter.getValue()),
+                  user.token()))
+          .andExpect(status().isBadRequest());
+    }
+    http.perform(
+            authorized(
+                get("/api/v1/tenants")
+                    .param("createdFrom", "2026-10-02T00:00:00Z")
+                    .param("createdTo", "2026-10-01T00:00:00Z"),
+                user.token()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void startupDoesNotRegisterAnAutomaticFlywayMigrator() {
     assertThat(context.getBeansOfType(org.flywaydb.core.Flyway.class)).isEmpty();
   }
@@ -793,7 +1052,7 @@ class IamApplicationTest {
         .doesNotContain("order.create");
     http.perform(authorized(get("/api/v1/tenants"), member.token()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.length()").value(2));
+        .andExpect(jsonPath("$.data.length()").value(2));
     // Previously issued refresh JWTs retain their signed tenant after cookies are replaced.
     var result =
         http.perform(refreshRequest(operations.refreshToken()))

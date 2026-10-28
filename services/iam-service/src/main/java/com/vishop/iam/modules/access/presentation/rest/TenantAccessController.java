@@ -8,9 +8,7 @@ import com.vishop.iam.modules.access.application.command.InviteMemberCommand;
 import com.vishop.iam.modules.access.application.command.UpdateRoleCommand;
 import com.vishop.iam.modules.access.application.dto.InvitationCreated;
 import com.vishop.iam.modules.access.application.dto.MemberView;
-import com.vishop.iam.modules.access.application.dto.MyTenant;
 import com.vishop.iam.modules.access.application.dto.RoleResponseDto;
-import com.vishop.iam.modules.access.application.query.ListMyTenantsQuery;
 import com.vishop.iam.modules.access.application.query.ListTenantMembersQuery;
 import com.vishop.iam.modules.access.application.query.ListTenantRolesQuery;
 import com.vishop.iam.modules.access.presentation.rest.dto.ChangeMemberRoleRequest;
@@ -36,11 +34,6 @@ public class TenantAccessController {
   public TenantAccessController(CommandBus commands, QueryBus queries) {
     this.commands = commands;
     this.queries = queries;
-  }
-
-  @GetMapping
-  public List<MyTenant> mine(@AuthenticationPrincipal IamPrincipal actor) {
-    return queries.dispatch(new ListMyTenantsQuery(actor.actor()));
   }
 
   @GetMapping("/{id}/members")
