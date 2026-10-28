@@ -22,6 +22,10 @@ public class IntrospectQueryHandler implements QueryHandler<IntrospectQuery, Res
 
     var actor = authenticate.handle(new AuthenticateQuery(credential, bearer));
     return new ResolvedIdentity(
-        actor.userId(), actor.tenantId(), actor.systemRole(), actor.roles(), actor.permissions());
+        actor.userId(),
+        actor.tenantId(),
+        actor.systemRole(),
+        actor.tenantRole(),
+        actor.permissions());
   }
 }

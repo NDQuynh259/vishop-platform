@@ -8,7 +8,6 @@ import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.time.Instant;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -73,7 +72,7 @@ public class TokenService {
         tokens.issueRefresh(user.id(), selected, refreshExpiry),
         UserViewMapper.from(user),
         selected,
-        actor.roles(),
+        actor.tenantRole(),
         actor.permissions(),
         refreshExpiry.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
   }
@@ -89,12 +88,8 @@ public class TokenService {
                       new io.github.coreplatform.common.domain.exception.ForbiddenException(
                           "Active tenant membership is required"));
       return new AuthenticatedUser(
-          user.id(),
-          tenant,
-          user.systemRole().name(),
-          List.of(grant.roleKey()),
-          grant.permissions());
+          user.id(), tenant, user.systemRole().name(), grant.roleKey(), grant.permissions());
     }
-    return new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
+    return new AuthenticatedUser(user.id(), null, user.systemRole().name(), null, Set.of());
   }
 }

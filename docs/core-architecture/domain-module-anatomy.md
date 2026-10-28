@@ -63,7 +63,7 @@ services/iam-service/src/main/java/com/vishop/iam/
 │       │   └── dto/
 │       ├── infrastructure/
 │       │   ├── persistence/                    # JPA entities, repositories và adapters
-│       │   ├── integration/IdentityUserActivityAdapter.java
+│       │   ├── integration/IdentityUserAdapter.java
 │       │   └── config/IamDomainConfiguration.java
 │       └── presentation/rest/                  # TenantAccessController, InvitationController
 ├── infra/
@@ -223,7 +223,7 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 - `IdentityApi`: kiểm tra tài khoản, quyền CMS và cung cấp user view hiện tại.
 - `TenantApi`: tạo tenant, kiểm tra trạng thái, trả tenant view và lấy khóa trong transaction của use case.
 - `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để cấp JWT theo tenant; composition dùng để hoàn tất onboarding.
-- `UserActivityPort` thuộc access domain; `IdentityUserActivityAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
+- `UserDirectoryPort` thuộc access domain; `IdentityUserAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
 
 Interface công khai nằm trong `modules/<tên>/application/api`, DTO công khai nằm trong `application/dto` của chính module: `UserView`, `TenantResponseDto`, `TenantMemberResponseDto`. Các kiểu công khai này không phụ thuộc framework, infra hay nội bộ module. Implementation cùng nằm trong `application/api` nhưng chỉ được dùng nội bộ; việc map domain sang DTO nằm trong `application/mapper`. Phân hệ khác và composition chỉ dùng interface công khai và ba DTO được phép, không gọi implementation, repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc các module, composition, hạ tầng hay framework.
 

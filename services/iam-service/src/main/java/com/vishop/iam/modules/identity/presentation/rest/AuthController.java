@@ -13,6 +13,7 @@ import com.vishop.iam.modules.identity.presentation.rest.dto.AuthenticationView;
 import com.vishop.iam.modules.identity.presentation.rest.dto.LoginRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.RegisterUserRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.SwitchTenantRequest;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.security.constants.AuthCookies;
@@ -22,7 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping(ApiPaths.V1 + "/auth")
 public class AuthController {
   private final CommandBus commands;
   private final QueryBus queries;

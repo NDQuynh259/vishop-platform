@@ -1,6 +1,7 @@
 package io.github.coreplatform.common.web.pagination;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.pagination.PagedResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -17,7 +18,7 @@ import java.util.List;
 @JsonPropertyOrder({"object", "url", "data", "pageInfo"})
 public record ListEnvelope<T>(
     @Schema(description = "Object kind descriptor, always 'list'", example = "list") String object,
-    @Schema(description = "Canonical request URL", example = "/api/v1/tenants") String url,
+    @Schema(description = "Canonical request URL", example = ApiPaths.V1 + "/tenants") String url,
     @Schema(description = "List of domain items returned for this page") List<T> data,
     @Schema(description = "Pagination metadata for cursor or offset pagination")
         PageInfo pageInfo) {

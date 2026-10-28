@@ -2,8 +2,8 @@ package com.vishop.audit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.vishop.audit.domain.AuditLogEntity;
-import com.vishop.audit.domain.AuditLogRepository;
+import com.vishop.audit.modules.auditlog.infrastructure.persistence.entities.AuditLogJpaEntity;
+import com.vishop.audit.modules.auditlog.infrastructure.persistence.repositories.SpringDataAuditLogRepository;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -21,7 +21,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class AuditPersistenceTest {
   private static final EmbeddedPostgres POSTGRES = startPostgres();
-  @Autowired AuditLogRepository logs;
+  @Autowired SpringDataAuditLogRepository logs;
   @Autowired EntityManager entityManager;
 
   private static EmbeddedPostgres startPostgres() {
@@ -49,7 +49,7 @@ class AuditPersistenceTest {
     UUID id = UUID.randomUUID();
     UUID tenant = UUID.randomUUID();
     logs.saveAndFlush(
-        new AuditLogEntity(
+        new AuditLogJpaEntity(
             id,
             UUID.randomUUID(),
             "TenantCreated",
@@ -82,5 +82,51 @@ class AuditPersistenceTest {
                         "SELECT count(*) FROM flyway_schema_history WHERE success=false")
                     .getSingleResult())
             .intValue());
+  }
+
+  @Test
+  void timestampRenamePreservesExistingAuditRecords() throws Exception {
+    var datasource = POSTGRES.getPostgresDatabase();
+    org.flywaydb.core.Flyway.configure()
+        .dataSource(datasource)
+        .schemas("audit_timestamp_upgrade")
+        .locations("classpath:db/migration")
+        .target("1")
+        .load()
+        .migrate();
+    UUID id = UUID.randomUUID();
+    Instant timestamp = Instant.parse("2026-10-01T00:00:01Z");
+    try (var connection = datasource.getConnection();
+        var insert =
+            connection.prepareStatement(
+                """
+            INSERT INTO audit_timestamp_upgrade.audit_logs
+                (id,event_id,event_type,aggregate_type,aggregate_id,payload,occurred_at,recorded_at)
+            VALUES (?,?,'UserRegistered','User',?,'{}',?,?)
+            """)) {
+      insert.setObject(1, id);
+      insert.setObject(2, UUID.randomUUID());
+      insert.setObject(3, UUID.randomUUID());
+      insert.setTimestamp(4, java.sql.Timestamp.from(timestamp.minusSeconds(1)));
+      insert.setTimestamp(5, java.sql.Timestamp.from(timestamp));
+      insert.executeUpdate();
+    }
+    org.flywaydb.core.Flyway.configure()
+        .dataSource(datasource)
+        .schemas("audit_timestamp_upgrade")
+        .locations("classpath:db/migration")
+        .load()
+        .migrate();
+    try (var connection = datasource.getConnection();
+        var select =
+            connection.prepareStatement(
+                "SELECT created_at,occurred_at FROM audit_timestamp_upgrade.audit_logs WHERE id=?")) {
+      select.setObject(1, id);
+      try (var rows = select.executeQuery()) {
+        assertTrue(rows.next());
+        assertEquals(timestamp, rows.getTimestamp("created_at").toInstant());
+        assertEquals(timestamp.minusSeconds(1), rows.getTimestamp("occurred_at").toInstant());
+      }
+    }
   }
 }

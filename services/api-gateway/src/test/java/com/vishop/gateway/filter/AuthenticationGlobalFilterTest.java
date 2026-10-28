@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.vishop.gateway.security.AuthenticationFailure;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
 import com.vishop.gateway.security.LocalAuthenticationVerifier.Identity;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import java.util.*;
@@ -98,7 +99,7 @@ class AuthenticationGlobalFilterTest {
             .header("Authorization", "Bearer valid-token")
             .header(SecurityHeaders.X_USER_ID, "spoofed")
             .header(SecurityHeaders.X_TENANT_ID, UUID.randomUUID().toString())
-            .header(SecurityHeaders.X_USER_ROLES, "PLATFORM_ADMIN")
+            .header(SecurityHeaders.X_USER_ROLES, SystemRole.PLATFORM_ADMIN.name())
             .header(SecurityHeaders.X_USER_PERMISSIONS, "system.admin")
             .build());
     var headers = forwarded().getRequest().getHeaders();

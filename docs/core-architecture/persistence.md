@@ -49,7 +49,7 @@ tồn tại, phải giữ nguyên ID, `createdAt` và version để optimistic l
 
 Bulk/native SQL không chạy các callback này; câu lệnh ghi vẫn phải tự cập nhật timestamp
 và version. `deleted_at` chỉ lưu dấu xóa mềm; use case/repository quy định thao tác xóa và
-lọc dữ liệu. Audit log giữ `occurredAt`/`recordedAt`; outbox giữ metadata gửi/retry;
+lọc dữ liệu. Audit log giữ `occurredAt`/`createdAt`; outbox giữ metadata gửi/retry;
 consumed message giữ khóa kép và `processedAt`, không cần callback `updatedAt`.
 
 ## Entity không tạo hay sửa schema

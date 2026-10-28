@@ -3,16 +3,14 @@ package io.github.coreplatform.common.security.filter;
 import io.github.coreplatform.common.security.context.CommonUserDetails;
 import io.github.coreplatform.common.security.context.TenantContext;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
+import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Set;
-import java.util.UUID;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -36,27 +34,16 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
       if (token != null) {
         CommonUserDetails principal;
         try {
-          var claims = tokens.parseClaims(token);
-          if (claims.getExpiration() == null) {
-            throw new IllegalArgumentException("Token expiration is required");
-          }
-          if (!"iam-service".equals(claims.getIssuer())
-              || claims.getAudience() == null
-              || !claims.getAudience().contains("vishop-api")
-              || !"access".equals(claims.get("token_use"))) {
-            throw new IllegalArgumentException("An IAM access token is required");
-          }
-          UUID userId = UUID.fromString(claims.getSubject());
-          UUID tenantId = UUID.fromString(claims.get("tenantId", String.class));
-          var authorities = new ArrayList<GrantedAuthority>();
-          addAuthorities(authorities, claims.get("roles"), true);
-          addAuthorities(authorities, claims.get("permissions"), false);
-          String systemRole = claims.get("systemRole", String.class);
-          if (!Set.of("USER", "PLATFORM_ADMIN").contains(systemRole)) {
-            throw new IllegalArgumentException("Invalid system role");
-          }
-          authorities.add(new SimpleGrantedAuthority("SYSTEM_" + systemRole));
-          principal = new CommonUserDetails(userId, tenantId, Set.of(), authorities);
+          var access = VerifiedAccessToken.verify(tokens, token);
+          var authorities = access.permissions().stream().map(SimpleGrantedAuthority::new).toList();
+          principal =
+              new CommonUserDetails(
+                  access.userId(),
+                  access.tenantId(),
+                  access.systemRole(),
+                  access.tenantRole(),
+                  Set.of(),
+                  authorities);
         } catch (RuntimeException invalidToken) {
           response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid authentication token");
           return;
@@ -71,17 +58,6 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
     } finally {
       SecurityContextHolder.clearContext();
       TenantContext.clear();
-    }
-  }
-
-  private static void addAuthorities(
-      ArrayList<GrantedAuthority> target, Object values, boolean roles) {
-    if (!(values instanceof java.util.List<?> list)) return;
-    for (Object value : list) {
-      if (!(value instanceof String name) || name.isBlank()) {
-        throw new IllegalArgumentException("Invalid authority claim");
-      }
-      target.add(new SimpleGrantedAuthority(roles ? "TENANT_ROLE_" + name : name));
     }
   }
 

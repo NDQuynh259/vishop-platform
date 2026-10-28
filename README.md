@@ -23,6 +23,19 @@ Reusable Java 21 and Spring Boot 3.3 libraries for building service-oriented app
 
 Shared code uses the `io.github.coreplatform.common` Java package namespace. See [Core Architecture](docs/core-architecture/README.md) and [Module Boundaries](docs/core-architecture/module-boundaries.md) for design and dependency guidance.
 
+## API path convention
+
+Production Java code uses the shared [ApiPaths](libs/common-domain/src/main/java/io/github/coreplatform/common/domain/constants/ApiPaths.java)
+constants for version prefixes, including controllers, security matching, cookie paths,
+OpenAPI customization and response URLs:
+
+```java
+@RequestMapping(ApiPaths.V1 + "/invitations")
+```
+
+Versions remain explicit per controller. Gateway YAML and external API examples retain
+their literal public URLs; the version prefix is an API contract, not an environment setting.
+
 ## Build and test
 
 Runtime database access uses Spring Data JPA or JPA `EntityManager`, including native SQL.
@@ -32,6 +45,36 @@ See the [persistence standard](docs/core-architecture/persistence.md).
 ```powershell
 .\gradlew.bat clean test
 ```
+
+## Project commands
+
+The `projectCommands` map in [build.gradle.kts](build.gradle.kts) is the central command
+list, similar to `scripts` in package.json. List available commands with:
+
+```powershell
+.\gradlew.bat commands
+# Gradle's built-in listing also works:
+.\gradlew.bat tasks --group project
+```
+
+| Command | Purpose |
+| --- | --- |
+| `runIam` | Start IAM on port 8080 |
+| `runGateway` | Start Gateway on port 8000 |
+| `runAudit` | Start Audit on port 8082 |
+| `migrateIam` | Migrate IAM using `IAM_DB_URL`, `IAM_DB_USER`, `IAM_DB_PASSWORD` |
+| `migrateAudit` | Migrate Audit using `AUDIT_DB_URL`, `AUDIT_DB_USER`, `AUDIT_DB_PASSWORD` |
+| `packageAll` | Build boot JARs for all three services |
+| `buildAll` | Build and check all projects |
+| `testAll` | Run all module tests and root architecture tests |
+| `checkAll` | Run all checks |
+| `formatAll` | Format Java sources across all projects |
+| `lintAll` | Check formatting without modifying sources |
+| `cleanAll` | Remove Gradle build outputs across all projects |
+
+Run any command as `.\gradlew.bat <command>`. Start each service in its own terminal.
+Database migration commands run independently of services; see the [IAM](services/iam-service/README.md)
+and [Audit](services/audit-service/README.md) guides for database configuration.
 
 ## Services and access
 
@@ -57,7 +100,7 @@ downstream verification. IAM_INTERNAL_SECRET protects the private compatibility 
 Public registration accepts email, password and fullName; tenantId/role assignment is
 rejected. Create an organization through POST /api/v1/tenants, then select it through
 POST /api/v1/auth/switch-tenant. The user profile returns systemRole separately from
-roles/permissions in the selected tenant. Existing legacy databases require a planned
+tenantRole/permissions in the selected tenant. Existing legacy databases require a planned
 import before deploying the new runtime; source changes do not migrate those records.
 
 ## Contribution rules

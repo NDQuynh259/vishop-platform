@@ -1,6 +1,7 @@
 package com.vishop.iam.modules.identity.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import java.util.Arrays;
@@ -90,10 +91,10 @@ public class IamSecurityConfiguration {
                 a.requestMatchers(HttpMethod.OPTIONS, "/**")
                     .permitAll()
                     .requestMatchers(
-                        "/api/v1/auth/login",
-                        "/api/v1/auth/register",
-                        "/api/v1/auth/refresh",
-                        "/api/v1/auth/logout",
+                        ApiPaths.V1 + "/auth/login",
+                        ApiPaths.V1 + "/auth/register",
+                        ApiPaths.V1 + "/auth/refresh",
+                        ApiPaths.V1 + "/auth/logout",
                         "/internal/auth/introspect",
                         "/actuator/health",
                         "/actuator/health/**",

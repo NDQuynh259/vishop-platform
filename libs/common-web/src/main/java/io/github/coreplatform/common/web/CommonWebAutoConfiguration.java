@@ -4,6 +4,7 @@ import io.github.coreplatform.common.web.cqrs.CqrsAutoConfiguration;
 import io.github.coreplatform.common.web.exception.ExceptionHandlingAutoConfiguration;
 import io.github.coreplatform.common.web.filter.RequestIdFilterAutoConfiguration;
 import io.github.coreplatform.common.web.openapi.OpenApiAutoConfiguration;
+import io.github.coreplatform.common.web.pagination.PaginationAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Import;
 
@@ -17,6 +18,7 @@ import org.springframework.context.annotation.Import;
  *   <li>{@link RequestIdFilterAutoConfiguration}
  *   <li>{@link CqrsAutoConfiguration}
  *   <li>{@link OpenApiAutoConfiguration}
+ *   <li>{@link PaginationAutoConfiguration}
  * </ul>
  */
 @AutoConfiguration
@@ -24,6 +26,7 @@ import org.springframework.context.annotation.Import;
   ExceptionHandlingAutoConfiguration.class,
   RequestIdFilterAutoConfiguration.class,
   CqrsAutoConfiguration.class,
-  OpenApiAutoConfiguration.class
+  OpenApiAutoConfiguration.class,
+  PaginationAutoConfiguration.class
 })
 public class CommonWebAutoConfiguration {}

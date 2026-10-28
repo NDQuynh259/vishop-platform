@@ -1,5 +1,6 @@
 package io.github.coreplatform.common.security.context;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Collections;
@@ -11,12 +12,14 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 /**
  * In-memory Spring Security UserDetails representation for microservices. Reconstructed from a
- * verified IAM access token. Tenant role names and system authorities use separate namespaces;
- * request headers alone confer no access.
+ * verified IAM access token. System role and tenant roles are separate fields; authorities contain
+ * permissions only; request headers alone confer no access.
  */
 public record CommonUserDetails(
     UUID userId,
     UUID tenantId,
+    String systemRole,
+    String tenantRole,
     Set<UUID> accessibleShopIds,
     Collection<? extends GrantedAuthority> authorities)
     implements UserDetails, Serializable {
@@ -25,6 +28,7 @@ public record CommonUserDetails(
   public CommonUserDetails {
     Objects.requireNonNull(userId, "userId must not be null");
     Objects.requireNonNull(tenantId, "tenantId must not be null");
+    if (!SystemRole.isValid(systemRole)) throw new IllegalArgumentException("Invalid system role");
     accessibleShopIds =
         accessibleShopIds != null ? Set.copyOf(accessibleShopIds) : Collections.emptySet();
     authorities =

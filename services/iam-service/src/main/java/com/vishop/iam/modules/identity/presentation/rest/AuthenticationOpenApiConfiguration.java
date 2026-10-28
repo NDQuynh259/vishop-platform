@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.identity.presentation.rest;
 
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.media.StringSchema;
@@ -51,14 +52,14 @@ public class AuthenticationOpenApiConfiguration {
                                           new StringSchema()
                                               ._default(AuthCookies.REQUEST_HEADER_VALUE)));
                             }
-                            if (path.equals("/api/v1/auth/register")
-                                || path.equals("/api/v1/auth/login")
-                                || path.equals("/api/v1/auth/logout")) return;
+                            if (path.equals(ApiPaths.V1 + "/auth/register")
+                                || path.equals(ApiPaths.V1 + "/auth/login")
+                                || path.equals(ApiPaths.V1 + "/auth/logout")) return;
                             var requirement = new SecurityRequirement();
-                            if (!path.equals("/api/v1/auth/refresh"))
+                            if (!path.equals(ApiPaths.V1 + "/auth/refresh"))
                               requirement.addList("accessCookie");
-                            if (path.equals("/api/v1/auth/refresh")
-                                || path.equals("/api/v1/auth/switch-tenant"))
+                            if (path.equals(ApiPaths.V1 + "/auth/refresh")
+                                || path.equals(ApiPaths.V1 + "/auth/switch-tenant"))
                               requirement.addList("refreshCookie");
                             operation.addSecurityItem(requirement);
                           }));

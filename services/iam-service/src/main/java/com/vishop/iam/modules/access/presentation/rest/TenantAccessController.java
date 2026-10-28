@@ -16,6 +16,7 @@ import com.vishop.iam.modules.access.application.query.ListTenantRolesQuery;
 import com.vishop.iam.modules.access.presentation.rest.dto.ChangeMemberRoleRequest;
 import com.vishop.iam.modules.access.presentation.rest.dto.InviteMemberRequest;
 import com.vishop.iam.modules.access.presentation.rest.dto.RoleRequest;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;
@@ -27,7 +28,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/tenants")
+@RequestMapping(ApiPaths.V1 + "/tenants")
 public class TenantAccessController {
   private final CommandBus commands;
   private final QueryBus queries;
@@ -79,7 +80,8 @@ public class TenantAccessController {
     var role =
         commands.dispatch(
             new CreateRoleCommand(actor.actor(), id, request.name(), request.permissions()));
-    return ResponseEntity.created(URI.create("/api/v1/tenants/" + id + "/roles/" + role.id()))
+    return ResponseEntity.created(
+            URI.create(ApiPaths.V1 + "/tenants/" + id + "/roles/" + role.id()))
         .body(role);
   }
 

@@ -3,6 +3,7 @@ package io.github.coreplatform.common.security.context;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -29,7 +30,8 @@ class SecurityContextHelperTest {
   void shouldExtractCurrentUserWhenAuthenticated() {
     UUID userId = UUID.randomUUID();
     UUID tenantId = UUID.randomUUID();
-    CommonUserDetails user = new CommonUserDetails(userId, tenantId, Set.of(), List.of());
+    CommonUserDetails user =
+        new CommonUserDetails(userId, tenantId, SystemRole.USER.name(), null, Set.of(), List.of());
 
     SecurityContextHolder.getContext()
         .setAuthentication(

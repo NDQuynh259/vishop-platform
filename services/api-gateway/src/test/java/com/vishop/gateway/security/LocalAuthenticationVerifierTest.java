@@ -2,9 +2,9 @@ package com.vishop.gateway.security;
 
 import static org.assertj.core.api.Assertions.*;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import java.time.Instant;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ class LocalAuthenticationVerifierTest {
 
   private String issue(JwtTokenProvider provider) {
     return provider.generateIamAccessToken(
-        user, tenant, "USER", List.of("OWNER"), Set.of("order.view"));
+        user, tenant, SystemRole.USER.name(), "OWNER", Set.of("order.view"));
   }
 
   private void rejects(String token, boolean bearer) {
@@ -59,7 +59,7 @@ class LocalAuthenticationVerifierTest {
 
   @Test
   void permitsIdentityJwtWithoutTenant() {
-    var jwt = tokens.generateIamAccessToken(user, null, "USER", List.of(), Set.of());
+    var jwt = tokens.generateIamAccessToken(user, null, SystemRole.USER.name(), null, Set.of());
     StepVerifier.create(verifier.authenticate(jwt, true))
         .assertNext(c -> assertThat(c.tenantId()).isNull())
         .verifyComplete();

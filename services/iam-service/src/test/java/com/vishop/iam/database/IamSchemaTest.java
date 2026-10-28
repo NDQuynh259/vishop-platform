@@ -2,6 +2,7 @@ package com.vishop.iam.database;
 
 import static org.assertj.core.api.Assertions.*;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.CommonPermissions;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import java.lang.reflect.Modifier;
@@ -174,7 +175,8 @@ class IamSchemaTest {
     member(user, first, role(first, "OWNER"));
     member(user, second, role(second, "ACCOUNTING"));
     assertThat(scalar("SELECT count(*) FROM tenant_members WHERE user_id=?", user)).isEqualTo("2");
-    assertThat(scalar("SELECT system_role FROM users WHERE id=?", user)).isEqualTo("USER");
+    assertThat(scalar("SELECT system_role FROM users WHERE id=?", user))
+        .isEqualTo(SystemRole.USER.name());
     execute("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=?", user);
     assertThat(
             scalar(

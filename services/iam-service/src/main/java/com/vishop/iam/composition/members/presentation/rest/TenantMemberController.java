@@ -3,6 +3,7 @@ package com.vishop.iam.composition.members.presentation.rest;
 import com.vishop.iam.composition.members.application.query.GetTenantMemberQuery;
 import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
@@ -11,7 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/tenants")
+@RequestMapping(ApiPaths.V1 + "/tenants")
 public class TenantMemberController {
   private final QueryBus queries;
 

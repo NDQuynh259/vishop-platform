@@ -12,6 +12,7 @@ import com.vishop.iam.database.JpaDatabaseFixture;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.persistence.EntityManager;
@@ -100,6 +101,10 @@ class IamApplicationTest {
     JsonNode response = body(result);
     assertThat(response.has("accessToken")).isFalse();
     assertThat(response.has("refreshToken")).isFalse();
+    assertThat(response.has("roles")).isFalse();
+    assertThat(response.has("tenantRole")).isTrue();
+    assertThat(response.path("tenantRole").isNull() || response.path("tenantRole").isTextual())
+        .isTrue();
     var cookies =
         result.getResponse().getHeaders("Set-Cookie").stream()
             .map(org.springframework.mock.web.MockCookie::parse)
@@ -124,6 +129,11 @@ class IamApplicationTest {
             .filter(c -> c.getName().equals(AuthCookies.REFRESH_TOKEN))
             .findFirst()
             .orElseThrow();
+    var claims = tokens.parseClaims(access.getValue());
+    assertThat(claims).doesNotContainKey("roles");
+    assertThat(claims.get("tenantRole", String.class))
+        .isEqualTo(
+            response.path("tenantRole").isNull() ? null : response.path("tenantRole").asText());
     assertThat(access.getPath()).isEqualTo(AuthCookies.ACCESS_PATH);
     assertThat(refresh.getPath()).isEqualTo(AuthCookies.REFRESH_PATH);
     assertThat(result.getResponse().getHeader("Cache-Control")).isEqualTo("no-store");
@@ -623,7 +633,7 @@ class IamApplicationTest {
             "test-jwt-secret-with-at-least-thirty-two-bytes", -1000);
     String expired =
         expiredProvider.generateIamAccessToken(
-            UUID.fromString(user.id()), null, "USER", List.of(), Set.of());
+            UUID.fromString(user.id()), null, SystemRole.USER.name(), null, Set.of());
     for (var access : List.of(expired, "")) {
       var result =
           http.perform(
@@ -644,7 +654,8 @@ class IamApplicationTest {
   void registrationIsGlobalAndDoesNotPersistTokens() throws Exception {
     Account user = register("User@example.com");
     assertThat(db.queryForObject("SELECT count(*) FROM tenants", Integer.class)).isZero();
-    assertThat(db.queryForObject("SELECT system_role FROM users", String.class)).isEqualTo("USER");
+    assertThat(db.queryForObject("SELECT system_role FROM users", String.class))
+        .isEqualTo(SystemRole.USER.name());
     assertThat(db.queryForObject("SELECT full_name FROM users", String.class)).isNull();
     assertThat(db.queryForObject("SELECT password_hash FROM users", String.class))
         .startsWith("$2a$")
@@ -657,7 +668,7 @@ class IamApplicationTest {
         .isZero();
     http.perform(authorized(get("/api/v1/auth/me"), user.token()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.systemRole").value("USER"))
+        .andExpect(jsonPath("$.systemRole").value(SystemRole.USER.name()))
         .andExpect(jsonPath("$.fullName").isEmpty())
         .andExpect(jsonPath("$.passwordHash").doesNotExist())
         .andExpect(jsonPath("$.tenantId").doesNotExist());
@@ -778,7 +789,7 @@ class IamApplicationTest {
     http.perform(
             get("/api/v1/auth/me")
                 .header("X-User-Id", user.id())
-                .header("X-User-Roles", "PLATFORM_ADMIN"))
+                .header("X-User-Roles", SystemRole.PLATFORM_ADMIN.name()))
         .andExpect(status().isUnauthorized());
     http.perform(get("/api/v1/auth/me").cookie(new Cookie("vishop_session", user.refreshToken())))
         .andExpect(status().isUnauthorized());
@@ -805,19 +816,19 @@ class IamApplicationTest {
             payload(
                 authorized(
                     patch("/api/v1/cms/users/" + admin.id() + "/system-role"), admin.token()),
-                Map.of("systemRole", "USER")))
+                Map.of("systemRole", SystemRole.USER.name())))
         .andExpect(status().isConflict());
     http.perform(
             payload(
                 authorized(
                     patch("/api/v1/cms/users/" + owner.id() + "/system-role"), admin.token()),
-                Map.of("systemRole", "PLATFORM_ADMIN")))
+                Map.of("systemRole", SystemRole.PLATFORM_ADMIN.name())))
         .andExpect(status().isNoContent());
     http.perform(
             payload(
                 authorized(
                     patch("/api/v1/cms/users/" + admin.id() + "/system-role"), admin.token()),
-                Map.of("systemRole", "USER")))
+                Map.of("systemRole", SystemRole.USER.name())))
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/cms/tenants"), admin.token()))
         .andExpect(status().isForbidden());
@@ -962,7 +973,7 @@ class IamApplicationTest {
                         authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
                         Map.of(
                             "name",
-                            "PLATFORM_ADMIN",
+                            SystemRole.PLATFORM_ADMIN.name(),
                             "permissions",
                             List.of(
                                 "tenant.view", "tenant.member.role_assign", "tenant.member.view"))))
@@ -1089,7 +1100,7 @@ class IamApplicationTest {
             "test-jwt-secret-with-at-least-thirty-two-bytes", -1000);
     String expired =
         expiredProvider.generateIamAccessToken(
-            UUID.fromString(user.id()), null, "USER", List.of(), Set.of());
+            UUID.fromString(user.id()), null, SystemRole.USER.name(), null, Set.of());
     http.perform(authorized(get("/api/v1/auth/me"), expired)).andExpect(status().isUnauthorized());
     var result =
         http.perform(
@@ -1144,8 +1155,7 @@ class IamApplicationTest {
     Account owner = register("rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
-    var actor =
-        new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
+    var actor = new AuthenticatedUser(user.id(), null, user.systemRole().name(), null, Set.of());
     // Stub the spy target so MANDATORY transaction advice does not run while configuring it.
     IamEventPublisherPort events =
         org.springframework.test.util.AopTestUtils.getUltimateTargetObject(eventsSpy);
@@ -1184,8 +1194,7 @@ class IamApplicationTest {
     Account owner = register("owner-init-rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
-    var actor =
-        new AuthenticatedUser(user.id(), null, user.systemRole().name(), List.of(), Set.of());
+    var actor = new AuthenticatedUser(user.id(), null, user.systemRole().name(), null, Set.of());
     var access = context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class);
     var failingAccess =
         org.mockito.Mockito.mock(com.vishop.iam.modules.access.application.api.AccessApi.class);

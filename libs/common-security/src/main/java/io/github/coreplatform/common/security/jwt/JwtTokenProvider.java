@@ -28,7 +28,7 @@ public class JwtTokenProvider {
   public static final String CLAIM_TENANT_ID = "tenantId";
   public static final String CLAIM_EMAIL = "email";
   public static final String CLAIM_FULL_NAME = "fullName";
-  public static final String CLAIM_ROLES = "roles";
+  public static final String CLAIM_TENANT_ROLE = "tenantRole";
   public static final String CLAIM_PERMISSIONS = "permissions";
 
   private final SecretKey key;
@@ -51,7 +51,7 @@ public class JwtTokenProvider {
       UUID tenantId,
       String email,
       String fullName,
-      List<String> roles,
+      String tenantRole,
       List<String> permissions) {
 
     Date now = new Date();
@@ -62,7 +62,7 @@ public class JwtTokenProvider {
         .claim(CLAIM_TENANT_ID, tenantId.toString())
         .claim(CLAIM_EMAIL, email)
         .claim(CLAIM_FULL_NAME, fullName)
-        .claim(CLAIM_ROLES, roles != null ? roles : Collections.emptyList())
+        .claim(CLAIM_TENANT_ROLE, tenantRole)
         .claim(CLAIM_PERMISSIONS, permissions != null ? permissions : Collections.emptyList())
         .issuedAt(now)
         .expiration(expiryDate)
@@ -82,14 +82,14 @@ public class JwtTokenProvider {
       UUID.fromString(claims.getSubject());
       UUID.fromString(claims.get(CLAIM_TENANT_ID, String.class));
       if (claims.getExpiration() == null) return false;
-      for (String claim : List.of(CLAIM_ROLES, CLAIM_PERMISSIONS)) {
-        Object value = claims.get(claim);
-        if (value != null
-            && (!(value instanceof List<?> list)
-                || list.stream().anyMatch(item -> !(item instanceof String s) || s.isBlank()))) {
-          return false;
-        }
-      }
+      String tenantRole = claims.get(CLAIM_TENANT_ROLE, String.class);
+      if (tenantRole == null || tenantRole.isBlank() || claims.containsKey("roles")) return false;
+      Object permissions = claims.get(CLAIM_PERMISSIONS);
+      if (permissions != null
+          && (!(permissions instanceof List<?> list)
+              || list.stream()
+                  .anyMatch(item -> !(item instanceof String value) || value.isBlank())))
+        return false;
       return true;
     } catch (ExpiredJwtException e) {
       log.warn("JWT token has expired: {}", e.getMessage());
@@ -125,10 +125,8 @@ public class JwtTokenProvider {
     return parseClaims(token).get(CLAIM_FULL_NAME, String.class);
   }
 
-  @SuppressWarnings("unchecked")
-  public List<String> extractRoles(String token) {
-    Object roles = parseClaims(token).get(CLAIM_ROLES);
-    return roles instanceof List<?> ? (List<String>) roles : Collections.emptyList();
+  public String extractTenantRole(String token) {
+    return parseClaims(token).get(CLAIM_TENANT_ROLE, String.class);
   }
 
   @SuppressWarnings("unchecked")
@@ -145,7 +143,7 @@ public class JwtTokenProvider {
       UUID userId,
       UUID tenantId,
       String systemRole,
-      List<String> roles,
+      String tenantRole,
       java.util.Set<String> permissions) {
     long now = System.currentTimeMillis();
     return Jwts.builder()
@@ -158,7 +156,7 @@ public class JwtTokenProvider {
         .claim("token_use", "access")
         .claim("tenantId", tenantId == null ? null : tenantId.toString())
         .claim("systemRole", systemRole)
-        .claim("roles", roles)
+        .claim(CLAIM_TENANT_ROLE, tenantRole)
         .claim("permissions", permissions)
         .issuedAt(new Date(now))
         .expiration(new Date(now + expirationMs))

@@ -2,6 +2,7 @@ package io.github.coreplatform.common.security.filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import io.github.coreplatform.common.security.context.CommonUserDetails;
 import io.github.coreplatform.common.security.context.SecurityContextHelper;
@@ -49,8 +50,8 @@ class InternalHeaderAuthFilterTest {
             + tokens.generateIamAccessToken(
                 userId,
                 tenantId,
-                "USER",
-                java.util.List.of("OWNER", "OPERATOR"),
+                SystemRole.USER.name(),
+                "OWNER",
                 java.util.Set.of("order.create", "product.view")));
     request.addHeader(SecurityHeaders.X_USER_ID, userId.toString());
     request.addHeader(SecurityHeaders.X_TENANT_ID, tenantId.toString());
@@ -76,10 +77,11 @@ class InternalHeaderAuthFilterTest {
             assertThat(user.userId()).isEqualTo(userId);
             assertThat(user.tenantId()).isEqualTo(tenantId);
             assertThat(user.hasShopAccess(shopId)).isFalse();
-            assertThat(user.hasAuthority("TENANT_ROLE_OWNER")).isTrue();
-            assertThat(user.hasAuthority("TENANT_ROLE_OPERATOR")).isTrue();
-            assertThat(user.hasAuthority("SYSTEM_USER")).isTrue();
-            assertThat(user.hasAuthority("SYSTEM_PLATFORM_ADMIN")).isFalse();
+            assertThat(user.systemRole()).isEqualTo(SystemRole.USER.name());
+            assertThat(user.tenantRole()).isEqualTo("OWNER");
+            assertThat(user.getAuthorities())
+                .extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .containsExactlyInAnyOrder("order.create", "product.view");
             assertThat(user.hasAuthority("order.create")).isTrue();
             assertThat(user.hasAuthority("product.view")).isTrue();
             assertThat(user.hasAuthority("order.delete")).isFalse();

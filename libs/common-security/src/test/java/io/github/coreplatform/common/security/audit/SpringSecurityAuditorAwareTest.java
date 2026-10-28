@@ -2,6 +2,7 @@ package io.github.coreplatform.common.security.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.context.CommonUserDetails;
 import java.util.List;
 import java.util.Set;
@@ -29,7 +30,9 @@ class SpringSecurityAuditorAwareTest {
   @DisplayName("Should return userId as current auditor when authenticated")
   void shouldReturnUserIdWhenAuthenticated() {
     UUID userId = UUID.randomUUID();
-    CommonUserDetails user = new CommonUserDetails(userId, UUID.randomUUID(), Set.of(), List.of());
+    CommonUserDetails user =
+        new CommonUserDetails(
+            userId, UUID.randomUUID(), SystemRole.USER.name(), null, Set.of(), List.of());
 
     SecurityContextHolder.getContext()
         .setAuthentication(

@@ -1,4 +1,4 @@
-package com.vishop.audit.domain;
+package com.vishop.audit.modules.auditlog.infrastructure.persistence.entities;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,7 +18,7 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
-public class AuditLogEntity {
+public class AuditLogJpaEntity {
 
   @Id
   @Column(name = "id", nullable = false)
@@ -49,6 +49,6 @@ public class AuditLogEntity {
   @Column(name = "occurred_at", nullable = false)
   private Instant occurredAt;
 
-  @Column(name = "recorded_at", nullable = false)
-  private Instant recordedAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 }

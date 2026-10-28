@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import java.time.Instant;
-import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockCookie;
@@ -16,7 +15,7 @@ class AuthenticationCookiesTest {
   void refreshCookieLifetimeNeverRestartsTheAbsoluteRefreshWindow() {
     var result =
         new AuthResponse(
-            "access", "refresh", null, null, List.of(), Set.of(), Instant.now().plusSeconds(120));
+            "access", "refresh", null, null, null, Set.of(), Instant.now().plusSeconds(120));
     var writer = new AuthenticationCookies(true, "Strict", 900000);
     var cookies = writer.issue(result).get("Set-Cookie").stream().map(MockCookie::parse).toList();
     assertThat(cookies)

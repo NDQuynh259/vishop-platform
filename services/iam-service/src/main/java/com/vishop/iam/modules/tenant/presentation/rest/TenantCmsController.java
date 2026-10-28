@@ -5,6 +5,7 @@ import com.vishop.iam.modules.tenant.application.command.ChangeTenantStatusComma
 import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import com.vishop.iam.modules.tenant.application.query.ListCmsTenantsQuery;
 import com.vishop.iam.modules.tenant.presentation.rest.dto.ChangeTenantStatusRequest;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;
@@ -16,7 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/cms")
+@RequestMapping(ApiPaths.V1 + "/cms")
 @Validated
 public class TenantCmsController {
   private final CommandBus commands;

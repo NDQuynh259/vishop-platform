@@ -4,6 +4,7 @@ import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.access.application.command.AcceptInvitationCommand;
 import com.vishop.iam.modules.access.presentation.rest.dto.AcceptInvitationRequest;
 import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;
@@ -11,7 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/invitations")
+@RequestMapping(ApiPaths.V1 + "/invitations")
 public class InvitationController {
   private final CommandBus commands;
   private final QueryBus queries;

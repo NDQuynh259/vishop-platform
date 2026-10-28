@@ -2,6 +2,7 @@ package io.github.coreplatform.common.security.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +23,7 @@ class JwtTokenProviderTest {
               var provider = context.getBean(JwtTokenProvider.class);
               String token =
                   provider.generateIamAccessToken(
-                      UUID.randomUUID(), null, "USER", List.of(), java.util.Set.of());
+                      UUID.randomUUID(), null, SystemRole.USER.name(), null, java.util.Set.of());
               var claims = provider.parseClaims(token);
               assertThat(claims.getExpiration().getTime() - claims.getIssuedAt().getTime())
                   .isEqualTo(123000);
@@ -71,11 +72,12 @@ class JwtTokenProviderTest {
     UUID tenantId = UUID.randomUUID();
     String email = "admin@vishop.vn";
     String fullName = "System Admin";
-    List<String> roles = List.of("OWNER", "ADMIN");
+    String tenantRole = "OWNER";
     List<String> permissions = List.of("tenant.view", "tenant.create");
 
     String token =
-        jwtTokenProvider.generateAccessToken(userId, tenantId, email, fullName, roles, permissions);
+        jwtTokenProvider.generateAccessToken(
+            userId, tenantId, email, fullName, tenantRole, permissions);
 
     assertThat(token).isNotBlank();
     assertThat(jwtTokenProvider.validateToken(token)).isTrue();
@@ -83,7 +85,7 @@ class JwtTokenProviderTest {
     assertThat(jwtTokenProvider.extractTenantId(token)).isEqualTo(tenantId);
     assertThat(jwtTokenProvider.extractEmail(token)).isEqualTo(email);
     assertThat(jwtTokenProvider.extractFullName(token)).isEqualTo(fullName);
-    assertThat(jwtTokenProvider.extractRoles(token)).containsExactlyElementsOf(roles);
+    assertThat(jwtTokenProvider.extractTenantRole(token)).isEqualTo(tenantRole);
     assertThat(jwtTokenProvider.extractPermissions(token)).containsExactlyElementsOf(permissions);
   }
 
@@ -98,7 +100,7 @@ class JwtTokenProviderTest {
     JwtTokenProvider shortLivedProvider = new JwtTokenProvider(secret, -1000L); // expired 1s ago
     String expiredToken =
         shortLivedProvider.generateAccessToken(
-            UUID.randomUUID(), UUID.randomUUID(), "test@vishop.vn", "Test", List.of(), List.of());
+            UUID.randomUUID(), UUID.randomUUID(), "test@vishop.vn", "Test", null, List.of());
     assertThat(jwtTokenProvider.validateToken(expiredToken)).isFalse();
   }
 }

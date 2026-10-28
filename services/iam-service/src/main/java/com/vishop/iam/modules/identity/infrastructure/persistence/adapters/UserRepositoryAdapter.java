@@ -2,10 +2,10 @@ package com.vishop.iam.modules.identity.infrastructure.persistence.adapters;
 
 import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
-import com.vishop.iam.modules.identity.domain.valueobject.SystemRole;
 import com.vishop.iam.modules.identity.infrastructure.persistence.entities.UserJpaEntity;
 import com.vishop.iam.modules.identity.infrastructure.persistence.repositories.SpringDataUserRepository;
 import io.github.coreplatform.common.domain.UuidV7;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import jakarta.persistence.EntityManager;
 import java.util.*;
 import org.springframework.stereotype.Repository;
@@ -48,7 +48,7 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   public int activeAdmins() {
-    return users.activeAdmins();
+    return users.activeAdmins(SystemRole.PLATFORM_ADMIN.name());
   }
 
   public void updateSystemRole(UUID user, SystemRole role) {

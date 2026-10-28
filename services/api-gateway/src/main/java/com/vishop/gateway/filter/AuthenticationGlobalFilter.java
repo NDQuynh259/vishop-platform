@@ -2,6 +2,7 @@ package com.vishop.gateway.filter;
 
 import com.vishop.gateway.security.AuthenticationFailure;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import java.nio.charset.StandardCharsets;
@@ -149,9 +150,9 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
     // only.
     // Resolve lazy cookie parsing before removing the request's Cookie header.
     var values = new java.util.ArrayList<String>();
-    boolean logout = path.equals("/api/v1/auth/logout");
-    if (path.equals("/api/v1/auth/refresh")
-        || path.equals("/api/v1/auth/switch-tenant")
+    boolean logout = path.equals(ApiPaths.V1 + "/auth/logout");
+    if (path.equals(ApiPaths.V1 + "/auth/refresh")
+        || path.equals(ApiPaths.V1 + "/auth/switch-tenant")
         || logout) {
       var refresh = request.getCookies().get(AuthCookies.REFRESH_TOKEN);
       if (refresh != null && refresh.size() == 1)
@@ -176,11 +177,11 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
    * tra quyền thao tác cụ thể.
    */
   private boolean identityRoute(String path) {
-    return path.startsWith("/api/v1/auth/")
-        || path.equals("/api/v1/tenants")
-        || path.startsWith("/api/v1/tenants/")
-        || path.startsWith("/api/v1/cms/")
-        || path.startsWith("/api/v1/invitations/");
+    return path.startsWith(ApiPaths.V1 + "/auth/")
+        || path.equals(ApiPaths.V1 + "/tenants")
+        || path.startsWith(ApiPaths.V1 + "/tenants/")
+        || path.startsWith(ApiPaths.V1 + "/cms/")
+        || path.startsWith(ApiPaths.V1 + "/invitations/");
   }
 
   /**
@@ -189,10 +190,10 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
    */
   private boolean publicPath(String path) {
     return Set.of(
-                "/api/v1/auth/login",
-                "/api/v1/auth/register",
-                "/api/v1/auth/refresh",
-                "/api/v1/auth/logout",
+                ApiPaths.V1 + "/auth/login",
+                ApiPaths.V1 + "/auth/register",
+                ApiPaths.V1 + "/auth/refresh",
+                ApiPaths.V1 + "/auth/logout",
                 "/actuator/health",
                 "/actuator/health/liveness",
                 "/actuator/health/readiness")

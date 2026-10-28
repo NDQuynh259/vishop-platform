@@ -7,6 +7,7 @@ import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.query.ListCmsUsersQuery;
 import com.vishop.iam.modules.identity.presentation.rest.dto.ChangeSystemRoleRequest;
 import com.vishop.iam.modules.identity.presentation.rest.dto.ChangeUserStatusRequest;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;
@@ -19,7 +20,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/cms")
+@RequestMapping(ApiPaths.V1 + "/cms")
 @Validated
 public class UserCmsController {
   private final CommandBus commands;

@@ -99,3 +99,46 @@ tasks.test {
         }.files
     })
 }
+
+// Project commands: the Gradle equivalent of package.json scripts.
+fun projectTaskPaths(task: String) = allprojects.map {
+    if (it == rootProject) ":$task" else "${it.path}:$task"
+}
+
+val projectCommands = linkedMapOf(
+    "runIam" to ("Start IAM service (:8080)." to listOf(":services:iam-service:bootRun")),
+    "runGateway" to ("Start API gateway (:8000)." to listOf(":services:api-gateway:bootRun")),
+    "runAudit" to ("Start audit service (:8082)." to listOf(":services:audit-service:bootRun")),
+    "migrateIam" to ("Run IAM migrations; requires IAM_DB_URL/USER/PASSWORD." to listOf(":services:iam-service:migrateIamDb")),
+    "migrateAudit" to ("Run audit migrations; requires AUDIT_DB_URL/USER/PASSWORD." to listOf(":services:audit-service:dbMigrate")),
+    "packageAll" to ("Package all three service boot JARs." to listOf(
+        ":services:iam-service:bootJar",
+        ":services:api-gateway:bootJar",
+        ":services:audit-service:bootJar",
+    )),
+    "buildAll" to ("Build and check every project." to projectTaskPaths("build")),
+    "testAll" to ("Run all module tests and root architecture tests." to projectTaskPaths("test")),
+    "checkAll" to ("Run all project checks." to projectTaskPaths("check")),
+    "formatAll" to ("Format Java sources in every project." to projectTaskPaths("spotlessApply")),
+    "lintAll" to ("Check Java formatting without changing files." to projectTaskPaths("spotlessCheck")),
+    "cleanAll" to ("Remove Gradle build outputs in every project." to projectTaskPaths("clean")),
+)
+
+projectCommands.forEach { (name, command) ->
+    tasks.register(name) {
+        group = "project"
+        description = command.first
+        dependsOn(command.second)
+    }
+}
+
+tasks.register("commands") {
+    group = "project"
+    description = "List project commands, similar to npm run."
+    doLast {
+        println("Project commands (run from the repository root):")
+        projectCommands.forEach { (name, command) ->
+            println("  .\\gradlew.bat ${name.padEnd(15)} ${command.first}")
+        }
+    }
+}

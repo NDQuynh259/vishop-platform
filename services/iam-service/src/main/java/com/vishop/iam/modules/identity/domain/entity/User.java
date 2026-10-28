@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.domain.entity;
 
-import com.vishop.iam.modules.identity.domain.valueobject.SystemRole;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import java.time.Instant;
 import java.util.UUID;
 

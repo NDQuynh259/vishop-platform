@@ -78,7 +78,7 @@ These are local Java calls using the same transaction manager, not HTTP calls to
 `AccessApi.initializeOwner`, all in one transaction. The composition layer uses only module
 contracts; modules never depend on composition. Any failure rolls back the tenant,
 default roles, OWNER membership and outbox together.
-The domain owner policy uses its own `UserActivityPort`; an integration adapter calls
+The domain owner policy uses its own `UserDirectoryPort`; an integration adapter calls
 `IdentityApi` to resolve global account status.
 
 All business persistence uses Spring Data JPA entities/repositories with versioning and
@@ -170,7 +170,7 @@ microservices' databases. Cross-service aggregation requires APIs or an event-fe
 
 Login, registration, refresh and tenant switching set HttpOnly cookies
 `vishop_access_token` (Path `/`) and `vishop_refresh_token` (Path `/api/v1/auth`). JSON
-contains only `user`, `tenantId`, `roles`, and `permissions`, never tokens. No server-side
+contains only `user`, `tenantId`, `tenantRole`, and `permissions`, never tokens. No server-side
 session is created. Access lifetime defaults to 15 minutes (`JWT_ACCESS_EXPIRATION_MS`),
 refresh lifetime to seven days (`JWT_REFRESH_EXPIRATION_MS`).
 
@@ -273,7 +273,7 @@ password policy still apply. `fullName` is optional profile data and starts as n
 V7 makes `users.full_name` nullable while preserving existing names. Extra registration
 fields are rejected with 400, and missing/invalid required fields follow the existing
 validation response (422).
-Responses expose `systemRole` on the user; tenantId, roles and permissions are separate
+Responses expose `systemRole` on the user; tenantId, tenantRole and permissions are separate
 fields of the auth response. The old per-user tenantId/role contract is retired.
 
 `POST /internal/auth/introspect` remains private for compatibility. It requires
@@ -347,3 +347,27 @@ Outbox events use the common EventEnvelope format on vishop.user.events and
 vishop.tenant.events. Delivery is at least once with row locking and acknowledgement
 before marking published. Failures retry up to five attempts; operators can investigate
 FAILED rows and requeue them after recovery. Consumers must deduplicate event IDs.
+
+## Single tenant role contract
+
+Each membership has one `role_id`. Authentication uses a single nullable `tenantRole`
+for the selected tenant, separate from the user's `systemRole`. Role catalogs and the
+`/tenants/{id}/roles` endpoints still return multiple available roles.
+
+JWT access claims and login/register/refresh/switch-tenant responses use `tenantRole`
+instead of the previous `roles` array. Without a selected tenant, `tenantRole` is null
+(the null JWT claim may be omitted). With a selected tenant it is the membership's
+role key/name. Permission grants remain a collection.
+
+```json
+{
+  "user": {"id": "<user-id>", "systemRole": "USER"},
+  "tenantId": "<selected-tenant-id>",
+  "tenantRole": "OWNER",
+  "permissions": ["tenant.view"]
+}
+```
+
+Old access JWTs with the `roles` claim are rejected. Deploy IAM, gateway, and downstream
+services together; clients must read `tenantRole` and obtain a new access token by refresh
+or login. Refresh credentials are unchanged. The existing membership schema needs no migration.

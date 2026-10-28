@@ -5,7 +5,7 @@ cookies. Login/register/refresh/switch-tenant return user/tenant grants in JSON,
 No login session or Redis projection is created.
 
 Access JWTs use issuer `iam-service`, audience `vishop-api`, `token_use=access` and a
-15-minute default lifetime. Claims contain user ID, tenant ID, system role, roles and
+15-minute default lifetime. Claims contain user ID, tenant ID, systemRole, a single tenantRole and
 permissions. Gateway and downstream services verify signatures, issuer, audience, use
 and expiry locally. Browsers send the access cookie; gateway forwards verified Bearer access
 to business services, stripping browser cookies. JWTs have no `sid`,

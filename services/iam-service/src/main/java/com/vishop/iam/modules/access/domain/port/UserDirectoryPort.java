@@ -2,6 +2,6 @@ package com.vishop.iam.modules.access.domain.port;
 
 import java.util.UUID;
 
-public interface UserActivityPort {
+public interface UserDirectoryPort {
   boolean isActive(UUID userId);
 }

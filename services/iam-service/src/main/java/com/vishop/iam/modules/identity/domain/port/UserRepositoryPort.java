@@ -1,7 +1,7 @@
 package com.vishop.iam.modules.identity.domain.port;
 
 import com.vishop.iam.modules.identity.domain.entity.User;
-import com.vishop.iam.modules.identity.domain.valueobject.SystemRole;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import java.util.Optional;
 import java.util.UUID;
 

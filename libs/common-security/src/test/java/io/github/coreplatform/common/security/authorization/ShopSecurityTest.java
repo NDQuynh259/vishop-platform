@@ -2,6 +2,7 @@ package io.github.coreplatform.common.security.authorization;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.context.CommonUserDetails;
 import java.util.List;
 import java.util.Set;
@@ -34,7 +35,12 @@ class ShopSecurityTest {
 
     CommonUserDetails user =
         new CommonUserDetails(
-            UUID.randomUUID(), UUID.randomUUID(), Set.of(shop1, shop2), List.of());
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            SystemRole.USER.name(),
+            null,
+            Set.of(shop1, shop2),
+            List.of());
 
     SecurityContextHolder.getContext()
         .setAuthentication(

@@ -23,11 +23,17 @@ public record IamPrincipal(AuthenticatedUser actor) implements UserDetails {
     return actor.userId();
   }
 
+  public String systemRole() {
+    return actor.systemRole();
+  }
+
+  public String tenantRole() {
+    return actor.tenantRole();
+  }
+
   @Override
   public Collection<? extends GrantedAuthority> getAuthorities() {
     var result = new ArrayList<GrantedAuthority>();
-    // System authorities have a separate prefix; a custom tenant role cannot impersonate one.
-    result.add(new SimpleGrantedAuthority("SYSTEM_" + actor.systemRole()));
     permissions().forEach(permission -> result.add(new SimpleGrantedAuthority(permission)));
     return result;
   }

@@ -2,8 +2,8 @@ package com.vishop.iam.modules.identity.application.service;
 
 import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
-import com.vishop.iam.modules.identity.domain.valueobject.SystemRole;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import java.util.UUID;

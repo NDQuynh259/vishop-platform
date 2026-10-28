@@ -4,7 +4,7 @@ import com.vishop.iam.modules.access.domain.entity.Membership;
 import com.vishop.iam.modules.access.domain.entity.Role;
 import com.vishop.iam.modules.access.domain.port.MembershipRepositoryPort;
 import com.vishop.iam.modules.access.domain.port.RoleRepositoryPort;
-import com.vishop.iam.modules.access.domain.port.UserActivityPort;
+import com.vishop.iam.modules.access.domain.port.UserDirectoryPort;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
@@ -13,17 +13,17 @@ import java.util.UUID;
 
 public final class RoleAssignmentPolicy {
   private final Set<String> catalogue;
-  private final UserActivityPort userActivity;
+  private final UserDirectoryPort userDirectory;
   private final MembershipRepositoryPort membershipRepository;
   private final RoleRepositoryPort roleRepository;
 
   public RoleAssignmentPolicy(
       Set<String> catalogue,
-      UserActivityPort userActivity,
+      UserDirectoryPort userDirectory,
       MembershipRepositoryPort membershipRepository,
       RoleRepositoryPort roleRepository) {
     this.catalogue = Set.copyOf(catalogue);
-    this.userActivity = userActivity;
+    this.userDirectory = userDirectory;
     this.membershipRepository = membershipRepository;
     this.roleRepository = roleRepository;
   }
@@ -45,7 +45,7 @@ public final class RoleAssignmentPolicy {
   public void protectOwner(UUID tenant, Membership member, String newRole, String newStatus) {
     if ("ACTIVE".equals(member.status())
         && "OWNER".equals(roleRepository.role(tenant, member.roleId()).builtinKey())
-        && userActivity.isActive(member.userId())
+        && userDirectory.isActive(member.userId())
         && (!"OWNER".equals(newRole) || !"ACTIVE".equals(newStatus))
         && membershipRepository.activeOwners(tenant) <= 1)
       throw new ConflictException("The final active owner cannot be removed or demoted");

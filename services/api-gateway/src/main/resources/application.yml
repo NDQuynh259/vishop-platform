@@ -13,6 +13,12 @@ spring:
       default-filters:
         - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
       routes:
+        # CMS audit must be matched before the general CMS route to IAM.
+        - id: cms-audit-service
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/cms/audit-logs,/api/v1/cms/audit-logs/**
+
         # ---------------------------------------------------------------------
         # 1. Identity, tenants and CMS share IAM
         # ---------------------------------------------------------------------

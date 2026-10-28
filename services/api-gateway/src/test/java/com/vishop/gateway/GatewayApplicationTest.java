@@ -2,6 +2,7 @@ package com.vishop.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import org.junit.jupiter.api.AfterAll;
@@ -64,7 +65,7 @@ class GatewayApplicationTest {
                         + "=new-refresh; Path=/api/v1/auth; HttpOnly; SameSite=Lax");
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             byte[] body =
-                "{\"user\":{\"email\":\"cookie@example.com\"},\"tenantId\":null,\"roles\":[],\"permissions\":[]}"
+                "{\"user\":{\"email\":\"cookie@example.com\"},\"tenantId\":null,\"tenantRole\":null,\"permissions\":[]}"
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
@@ -95,6 +96,18 @@ class GatewayApplicationTest {
             exchange.getResponseBody().write(body);
             exchange.close();
           });
+      server.createContext(
+          "/api/v1/cms/audit-logs",
+          exchange -> {
+            FORWARDED.set(exchange.getRequestHeaders());
+            byte[] body =
+                "{\"object\":\"list\",\"data\":[]}"
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+          });
       server.start();
       return server;
     } catch (java.io.IOException e) {
@@ -118,6 +131,43 @@ class GatewayApplicationTest {
   @LocalServerPort private int port;
 
   @Autowired private WebTestClient webTestClient;
+
+  @Autowired org.springframework.cloud.gateway.route.RouteLocator routes;
+
+  @Test
+  void cmsAuditMatchesAuditRouteBeforeGeneralIamRouteAndAllowsNoSelectedTenant() {
+    var exchange =
+        org.springframework.mock.web.server.MockServerWebExchange.from(
+            org.springframework.mock.http.server.reactive.MockServerHttpRequest.get(
+                "/api/v1/cms/audit-logs"));
+    var route =
+        routes
+            .getRoutes()
+            .filterWhen(candidate -> candidate.getPredicate().apply(exchange))
+            .next()
+            .block();
+    assertThat(route).isNotNull();
+    assertThat(route.getId()).isEqualTo("cms-audit-service");
+    String jwt =
+        tokens.generateIamAccessToken(
+            java.util.UUID.randomUUID(),
+            null,
+            SystemRole.PLATFORM_ADMIN.name(),
+            null,
+            java.util.Set.of());
+    webTestClient
+        .get()
+        .uri("/api/v1/cms/audit-logs?limit=10")
+        .cookie(AuthCookies.ACCESS_TOKEN, jwt)
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody()
+        .jsonPath("$.object")
+        .isEqualTo("list");
+    assertThat(FORWARDED.get().getFirst("Authorization")).isEqualTo("Bearer " + jwt);
+    assertThat(FORWARDED.get().getFirst("Cookie")).isNull();
+  }
 
   @Test
   void exposesOpenApiSpecificationWithoutAuthentication() {
@@ -154,7 +204,7 @@ class GatewayApplicationTest {
     var tenant = java.util.UUID.randomUUID();
     String jwt =
         tokens.generateIamAccessToken(
-            user, tenant, "USER", java.util.List.of("OWNER"), java.util.Set.of("audit_log.view"));
+            user, tenant, SystemRole.USER.name(), "OWNER", java.util.Set.of("audit_log.view"));
     webTestClient
         .get()
         .uri("/api/v1/audit/probe")

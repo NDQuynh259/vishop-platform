@@ -3,6 +3,7 @@ package com.vishop.iam.modules.identity.infrastructure.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.identity.application.query.AuthenticateQuery;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.DomainException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
@@ -31,9 +32,9 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
 
   private boolean publicPath(String path) {
     return Set.of(
-                "/api/v1/auth/login",
-                "/api/v1/auth/register",
-                "/api/v1/auth/refresh",
+                ApiPaths.V1 + "/auth/login",
+                ApiPaths.V1 + "/auth/register",
+                ApiPaths.V1 + "/auth/refresh",
                 "/internal/auth/introspect")
             .contains(path)
         || path.startsWith("/actuator/")
@@ -61,7 +62,7 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
         return;
       }
-      boolean logout = request.getRequestURI().equals("/api/v1/auth/logout");
+      boolean logout = request.getRequestURI().equals(ApiPaths.V1 + "/auth/logout");
       String credential = accessCredential(request);
       if (credential == null || credential.isBlank()) {
         if (logout) chain.doFilter(request, response);

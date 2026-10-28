@@ -7,8 +7,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * Unified web request parameter object supporting both Cursor-based and Offset-based pagination.
  *
- * <p>Spring MVC binds {@code ?cursor=...&page=...&limit=...} query parameters directly into this
- * record.
+ * <p>The shared MVC argument resolver binds {@code ?cursor=...&page=...&limit=...} query parameters
+ * directly into this record. Use an unannotated controller argument (optionally with OpenAPI's
+ * {@code @ParameterObject}); do not use {@code @ModelAttribute}, which bypasses this resolver.
  *
  * <p><strong>Resolution Rule:</strong> Prioritizes Cursor pagination if {@code cursor} is provided
  * (non-null and non-blank). If {@code cursor} is absent, falls back to Offset pagination

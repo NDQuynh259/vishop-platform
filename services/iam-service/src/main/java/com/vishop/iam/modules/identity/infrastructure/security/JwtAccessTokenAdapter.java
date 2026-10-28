@@ -28,7 +28,7 @@ public class JwtAccessTokenAdapter implements AccessTokenPort {
     try {
       var c = VerifiedAccessToken.verify(tokens, credential);
       return new AuthenticatedUser(
-          c.userId(), c.tenantId(), c.systemRole(), c.roles(), c.permissions());
+          c.userId(), c.tenantId(), c.systemRole(), c.tenantRole(), c.permissions());
     } catch (RuntimeException invalid) {
       throw new UnauthorizedException("Invalid access token");
     }
@@ -56,7 +56,11 @@ public class JwtAccessTokenAdapter implements AccessTokenPort {
 
   public String issue(AuthenticatedUser actor) {
     return tokens.generateIamAccessToken(
-        actor.userId(), actor.tenantId(), actor.systemRole(), actor.roles(), actor.permissions());
+        actor.userId(),
+        actor.tenantId(),
+        actor.systemRole(),
+        actor.tenantRole(),
+        actor.permissions());
   }
 
   public String issueRefresh(UUID userId, UUID tenantId, Instant expiresAt) {
