@@ -2,7 +2,7 @@ package com.vishop.iam.modules.identity.application.api;
 
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
-import com.vishop.iam.modules.identity.application.port.AccessTokenPort;
+import com.vishop.iam.modules.identity.application.port.TokenPort;
 import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
@@ -13,12 +13,10 @@ import org.springframework.stereotype.Component;
 class IdentityApplicationApi implements IdentityApi {
   private final IdentityAuthorizationService authorization;
   private final UserRepositoryPort users;
-  private final AccessTokenPort tokens;
+  private final TokenPort tokens;
 
   public IdentityApplicationApi(
-      IdentityAuthorizationService authorization,
-      UserRepositoryPort users,
-      AccessTokenPort tokens) {
+      IdentityAuthorizationService authorization, UserRepositoryPort users, TokenPort tokens) {
     this.authorization = authorization;
     this.users = users;
     this.tokens = tokens;

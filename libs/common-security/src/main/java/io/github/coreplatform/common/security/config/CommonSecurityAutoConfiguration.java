@@ -34,9 +34,12 @@ public class CommonSecurityAutoConfiguration {
   // #region internalHeaderAuthFilter
   @Bean
   @ConditionalOnMissingBean
+  @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(
+      io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter.class)
   public InternalHeaderAuthFilter internalHeaderAuthFilter(
-      io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens) {
-    return new InternalHeaderAuthFilter(tokens);
+      io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens,
+      io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter converter) {
+    return new InternalHeaderAuthFilter(tokens, converter);
   }
 
   // #endregion
@@ -68,8 +71,13 @@ public class CommonSecurityAutoConfiguration {
   @ConditionalOnMissingBean(SecurityFilterChain.class)
   @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
   public SecurityFilterChain defaultSecurityFilterChain(
-      HttpSecurity http, InternalHeaderAuthFilter authFilter) throws Exception {
+      HttpSecurity http,
+      org.springframework.beans.factory.ObjectProvider<InternalHeaderAuthFilter> filters)
+      throws Exception {
 
+    var authFilter = filters.getIfAvailable();
+    if (authFilter != null)
+      http.addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class);
     return http.csrf(AbstractHttpConfigurer::disable)
         .cors(Customizer.withDefaults())
         .sessionManagement(
@@ -85,7 +93,6 @@ public class CommonSecurityAutoConfiguration {
                     .permitAll()
                     .anyRequest()
                     .authenticated())
-        .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }
   // #endregion

@@ -10,6 +10,9 @@ springBoot {
 
 dependencies {
     implementation(project(":libs:common-domain"))
+    testImplementation(project(":libs:common-test"))
+    implementation(project(":libs:common-cache"))
+    implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
     implementation(project(":libs:common-security"))
     implementation(project(":libs:common-observability"))
     implementation("org.springframework.cloud:spring-cloud-starter-gateway")
@@ -18,6 +21,7 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
     testImplementation("io.projectreactor:reactor-test")
+    testImplementation("com.github.codemonstur:embedded-redis:1.4.3")
 }
 
 apply(from = rootProject.file("gradle/jvm-tools.gradle.kts"))

@@ -5,6 +5,14 @@ spring:
   output:
     ansi:
       enabled: ALWAYS
+  data:
+    redis:
+      host: ${AUTH_REDIS_HOST:localhost}
+      port: ${AUTH_REDIS_PORT:6380}
+      password: ${AUTH_REDIS_PASSWORD:}
+      database: ${AUTH_REDIS_DATABASE:0}
+      timeout: 2s
+      connect-timeout: 2s
   application:
     name: api-gateway
 
@@ -98,6 +106,13 @@ management:
 
 vishop:
   security:
+    authorization:
+      cache-prefix: ${AUTH_CACHE_PREFIX:vishop:}
+      max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
+    context:
+      iam-secret: ${GATEWAY_IAM_CONTEXT_SECRET:dev_gateway_iam_context_secret_at_least_32_bytes}
+      audit-secret: ${GATEWAY_AUDIT_CONTEXT_SECRET:dev_gateway_audit_context_secret_at_least_32_bytes}
+      subscription-secret: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:dev_gateway_subscription_context_secret_at_least_32_bytes}
     jwt:
       secret: ${JWT_SECRET:vishop_platform_dev_jwt_secret_key_at_least_32_bytes_long!}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:3000}

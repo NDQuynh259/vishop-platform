@@ -10,7 +10,7 @@ Thiết kế bảng, ERD, khóa và transaction: [Database Billing](docs/databas
 
 ```mermaid
 flowchart LR
-  Client --> Gateway --> Controller[Controller: JWT + permission]
+  Client --> Gateway --> Controller[Controller: gateway context + permission]
   Controller --> CQRS[CommandBus / QueryBus]
   CQRS --> DB[(Billing DB)]
   SePay -->|POST + HMAC body gốc| Inbox[Durable webhook inbox]
@@ -74,17 +74,18 @@ duy trì từ allocation ledger; JPA không ghi đè counter này.
 
 ## Quyền truy cập
 
-Gateway chuyển tiếp Bearer JWT; service xác minh chữ ký, issuer, audience, token use
-và expiry tại chỗ. `@PreAuthorize` dùng permission từ token; không gọi IAM/Redis/DB
-để dựng lại quyền người gọi. Mọi đơn và subscription được ràng buộc tenant trong JWT.
+Gateway verifies the user JWT and resolves current grants from Auth Redis. Subscription
+accepts only request-bound context signed specifically for subscription-service; it does
+not verify the original JWT or call IAM/Redis for normal requests. Method permissions,
+tenant ownership and payment/subscription business invariants remain in this service.
 
-- `billing.view`: catalog, subscription và lịch sử đơn của tenant.
-- `billing.manage`: tạo/hủy đơn.
-- `systemRole=PLATFORM_ADMIN`: cấu hình giá và xem hàng đợi cần kiểm tra của CMS.
+- billing.view: catalog, subscription and tenant order history.
+- billing.manage: create/cancel tenant orders.
+- systemRole=PLATFORM_ADMIN: CMS prices and payment review.
 
-IAM migration `V8__add_billing_permissions.sql` mở rộng permission catalog và cấp
-hai quyền cho OWNER hiện tại/tương lai. Chạy migration IAM và refresh/login lại để
-token có quyền mới. Access JWT cũ giữ quyền đến khi hết hạn, mặc định 15 phút.
+IAM V8 defines billing permissions; V9 maintains current authorization snapshots. Role
+permission changes become effective through the Redis projection without refreshing JWTs.
+See [authorization contract](../../docs/core-architecture/gateway-authorization.md).
 
 ## API
 
@@ -146,14 +147,14 @@ chỉ tự tạo trên volume PostgreSQL mới; volume hiện có cần tạo th
 $env:SUBSCRIPTION_DB_URL = 'jdbc:postgresql://localhost:5432/vishop_billing'
 $env:SUBSCRIPTION_DB_USER = 'vishop'
 $env:SUBSCRIPTION_DB_PASSWORD = '<database-password>'
-$env:JWT_SECRET = '<cùng JWT secret của IAM và gateway>'
+$env:GATEWAY_SUBSCRIPTION_CONTEXT_SECRET = '<same subscription context secret as gateway>'
 .\gradlew.bat migrateSubscription
 .\gradlew.bat runSubscription
 ```
 
 Lệnh riêng service: `:services:subscription-service:commands`, `dev`, `start`, `migrate`,
 `test`, `bootJar`, `spotlessApply`, `spotlessCheck`. `start` chọn profile prod và yêu
-cầu khai báo DB/JWT qua environment. JPA chỉ validate; ứng dụng không tự migrate.
+cầu khai báo DB/context secret qua environment. JPA chỉ validate; ứng dụng không tự migrate.
 
 Nếu production chỉ có JAR, dùng cùng biến `SUBSCRIPTION_DB_*` để migrate riêng rồi mới chạy:
 

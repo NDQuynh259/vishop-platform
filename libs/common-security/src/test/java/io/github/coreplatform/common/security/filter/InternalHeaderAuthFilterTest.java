@@ -23,8 +23,31 @@ class InternalHeaderAuthFilterTest {
 
   private final io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens =
       new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
-          "test-secret-key-long-enough-for-hmac-sha-256-signing", 3600000);
-  private final InternalHeaderAuthFilter filter = new InternalHeaderAuthFilter(tokens);
+          "test-secret-key-long-enough-for-hmac-sha-256-signing");
+  private final InternalHeaderAuthFilter filter =
+      new InternalHeaderAuthFilter(
+          tokens,
+          claims -> {
+            String tenant = claims.get("tenantId", String.class);
+            var permissions = (java.util.List<?>) claims.get("permissions");
+            var authorities =
+                permissions.stream()
+                    .map(
+                        value ->
+                            new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                (String) value))
+                    .toList();
+            var principal =
+                new CommonUserDetails(
+                    UUID.fromString(claims.getSubject()),
+                    UUID.fromString(tenant),
+                    claims.get("systemRole", String.class),
+                    claims.get("tenantRole", String.class),
+                    java.util.Set.of(),
+                    authorities);
+            return new org.springframework.security.authentication
+                .UsernamePasswordAuthenticationToken(principal, null, authorities);
+          });
 
   // #region tearDown
   @AfterEach
@@ -47,12 +70,18 @@ class InternalHeaderAuthFilterTest {
     request.addHeader(
         "Authorization",
         "Bearer "
-            + tokens.generateIamAccessToken(
-                userId,
-                tenantId,
-                SystemRole.USER.name(),
-                "OWNER",
-                java.util.Set.of("order.create", "product.view")));
+            + tokens.encode(
+                java.util.Map.of(
+                    "sub",
+                    userId.toString(),
+                    "tenantId",
+                    tenantId.toString(),
+                    "systemRole",
+                    SystemRole.USER.name(),
+                    "tenantRole",
+                    "OWNER",
+                    "permissions",
+                    java.util.List.of("order.create", "product.view"))));
     request.addHeader(SecurityHeaders.X_USER_ID, userId.toString());
     request.addHeader(SecurityHeaders.X_TENANT_ID, tenantId.toString());
     request.addHeader(SecurityHeaders.X_USER_ROLES, "OWNER, OPERATOR");

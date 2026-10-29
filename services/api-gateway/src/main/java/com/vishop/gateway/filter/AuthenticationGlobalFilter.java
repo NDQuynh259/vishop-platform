@@ -18,23 +18,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-/**
- * Filter xác thực dùng chung cho các route đi qua Spring Cloud Gateway.
- *
- * <p>Luồng xử lý: xóa header định danh do client gửi → kiểm tra Origin → bỏ qua xác thực cho
- * OPTIONS/public path → xác minh access JWT từ cookie/Bearer → kiểm tra tenant → chuyển tiếp
- * request.
- *
- * <p>Xác thực stateless: verifier kiểm tra access JWT tại chỗ, không tra session hay database hay
- * Redis. Header định danh gửi xuống service được dựng lại từ JWT đã xác minh; client không thể tự
- * cấp quyền bằng cách gửi X-User-Id hoặc X-Tenant-Id.
- */
+/** Authenticates at ingress and propagates request-bound, service-specific trusted context. */
 @Component
 public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
-  // Thành phần xác minh JWT và trả về userId, tenantId cùng access token đã kiểm tra.
   private final LocalAuthenticationVerifier authentication;
+  private final com.vishop.gateway.security.GatewayContextSigners signers;
 
-  // Danh sách Origin được phép; chỉ áp dụng khi request có header Origin.
   private final Set<String> origins;
 
   /**
@@ -43,105 +32,112 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
    */
   public AuthenticationGlobalFilter(
       LocalAuthenticationVerifier authentication,
+      com.vishop.gateway.security.GatewayContextSigners signers,
       @Value("${vishop.security.allowed-origins:http://localhost:3000,http://localhost:8000}")
           String origins) {
     this.authentication = authentication;
-    // Bỏ khoảng trắng quanh mỗi giá trị; Set loại trùng và hỗ trợ kiểm tra contains().
+    this.signers = signers;
     this.origins = Arrays.stream(origins.split(",")).map(String::trim).collect(Collectors.toSet());
   }
 
   @Override
   public Mono<Void> filter(ServerWebExchange original, GatewayFilterChain chain) {
-    // 1. Request trong WebFlux được thay đổi thông qua builder mutate().
-    // Xóa header định danh/nội bộ ngay cả với public path để tránh giả mạo từ client.
     ServerHttpRequest request =
         original
             .getRequest()
             .mutate()
             .headers(
                 h -> {
-                  // So sánh không phân biệt hoa/thường. Locale.ROOT giúp việc đổi chữ
-                  // thường không phụ thuộc locale của máy chủ.
                   h.keySet().stream()
                       .filter(
                           key ->
                               key.toLowerCase(java.util.Locale.ROOT).startsWith("x-user-")
                                   || key.equalsIgnoreCase(SecurityHeaders.X_TENANT_ID)
-                                  || key.equalsIgnoreCase("X-Iam-Internal-Key"))
-                      // Chụp danh sách tên trước khi xóa, tránh vừa duyệt vừa sửa keySet.
+                                  || key.equalsIgnoreCase("X-Iam-Internal-Key")
+                                  || key.toLowerCase(java.util.Locale.ROOT)
+                                      .startsWith("x-gateway-"))
                       .toList()
                       .forEach(h::remove);
                 })
             .build();
-    // Dùng request đã làm sạch cho mọi nhánh xử lý tiếp theo.
     ServerWebExchange exchange = original.mutate().request(request).build();
-    // Raw path giữ nguyên phần ký tự percent-encoded; các rule bên dưới so khớp giá trị này.
     String path = request.getURI().getRawPath();
-    // Provider callbacks use raw-body HMAC verified by subscription-service, not browser
-    // credentials.
     boolean sepayWebhook =
         request.getMethod() == HttpMethod.POST
             && path.equals(ApiPaths.V1 + "/billing/webhooks/sepay");
     String origin = request.getHeaders().getOrigin();
-    // 2. Nếu có Origin thì phải khớp chính xác cấu hình. Không có Origin vẫn đi tiếp.
-    // Kiểm tra này diễn ra trước nhánh OPTIONS/public; đây chưa phải toàn bộ xử lý CORS.
     if (origin != null && !origins.contains(origin)) return error(exchange, 403);
     if (!sepayWebhook
         && AuthCookies.requiresRequestHeader(request.getMethod().name())
         && !AuthCookies.REQUEST_HEADER_VALUE.equals(
             request.getHeaders().getFirst(AuthCookies.REQUEST_HEADER)))
       return error(exchange, 403, "csrf-request-header-required");
-    // 3. Cho OPTIONS (thường dùng cho CORS preflight) và public path đi tiếp không cần JWT.
-    // chain.filter() chuyển quyền xử lý cho filter kế tiếp trong chuỗi.
     if (request.getMethod() == HttpMethod.OPTIONS || sepayWebhook || publicPath(path))
       return chain.filter(exchange.mutate().request(forwardCookies(request, path).build()).build());
 
-    // 4. Trình duyệt dùng access cookie HttpOnly; Bearer vẫn phục vụ lời gọi nội bộ.
-    // Nếu có Authorization thì phải hợp lệ, không fallback từ header sai sang cookie.
+    boolean logout = path.equals(ApiPaths.V1 + "/auth/logout");
     String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
     String credential =
         authorization != null
             ? authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : null
             : accessCookie(request);
-    // Thiếu header, sai tiền tố hoặc token rỗng: kết thúc request với 401.
-    if (credential == null || credential.isBlank()) return error(exchange, 401);
+    if (credential == null || credential.isBlank())
+      return logout
+          ? chain.filter(exchange.mutate().request(forwardCookies(request, path).build()).build())
+          : error(exchange, 401);
 
-    // 5. true cho biết credential được lấy theo cơ chế Bearer.
-    // Mono mô tả xử lý reactive; không cần gọi block() hay subscribe() thủ công.
     return authentication
         .authenticate(credential, true)
-        // Chuyển kết quả/lỗi/hoàn tất rỗng thành Signal để xử lý trong cùng flatMap.
-        // Chỉ materialize kết quả xác thực; lỗi từ chain.filter() phía dưới không bị
-        // nhánh này chuyển nhầm thành lỗi xác thực.
         .materialize()
         .flatMap(
             signal -> {
               if (signal.isOnError()) {
+                if (logout)
+                  return chain.filter(
+                      exchange.mutate().request(forwardCookies(request, path).build()).build());
                 var failure = signal.getThrowable();
-                // Lỗi xác thực đã biết: giữ status/code do verifier cung cấp.
-                // Lỗi ngoài dự kiến: trả 503, không đưa chi tiết exception cho client.
                 return failure instanceof AuthenticationFailure rejected
                     ? error(exchange, rejected.status(), rejected.code())
                     : error(exchange, 503);
               }
               var identity = signal.get();
-              // Verifier hoàn tất mà không trả Identity được xem là không khả dụng.
               if (identity == null) return error(exchange, 503);
-              // 6. Token chưa có tenant chỉ được vào nhóm route identityRoute().
-              // Các route còn lại yêu cầu tenantId; thiếu tenant thì trả 403.
               if (identity.tenantId() == null && !identityRoute(path)) return error(exchange, 403);
-              // 7. Chuẩn bị request gửi xuống service sau khi xác thực thành công.
               var builder =
                   forwardCookies(request, path)
                       .headers(
                           h -> {
-                            // Ghi lại token đã xác minh và dựng định danh từ claims tin cậy.
-                            h.setBearerAuth(identity.accessToken());
+                            h.remove(HttpHeaders.AUTHORIZATION);
+                            var route =
+                                exchange
+                                    .<org.springframework.cloud.gateway.route.Route>getAttribute(
+                                        org.springframework.cloud.gateway.support
+                                            .ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR);
+                            String audience =
+                                route == null
+                                    ? "iam-service"
+                                    : route.getId().equals("cms-audit-service")
+                                        ? "audit-service"
+                                        : route.getId();
+                            String target =
+                                request.getURI().getRawPath()
+                                    + (request.getURI().getRawQuery() == null
+                                        ? ""
+                                        : "?" + request.getURI().getRawQuery());
+                            h.set(
+                                io.github.coreplatform.common.security.gateway.GatewayContextCodec
+                                    .HEADER,
+                                signers
+                                    .forService(audience)
+                                    .sign(
+                                        identity.actor(),
+                                        identity.roleId(),
+                                        request.getMethod().name(),
+                                        target));
                             h.set(SecurityHeaders.X_USER_ID, identity.userId().toString());
                             if (identity.tenantId() != null)
                               h.set(SecurityHeaders.X_TENANT_ID, identity.tenantId().toString());
                           });
-              // Chuyển exchange chứa request mới cho phần còn lại của gateway pipeline.
               return chain.filter(exchange.mutate().request(builder.build()).build());
             });
   }
@@ -152,9 +148,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
   }
 
   private ServerHttpRequest.Builder forwardCookies(ServerHttpRequest request, String path) {
-    // Only IAM auth endpoints receive refresh credentials. Other services receive Bearer access
-    // only.
-    // Resolve lazy cookie parsing before removing the request's Cookie header.
     var values = new java.util.ArrayList<String>();
     boolean logout = path.equals(ApiPaths.V1 + "/auth/logout");
     if (path.equals(ApiPaths.V1 + "/auth/refresh")
@@ -173,6 +166,7 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         .headers(
             headers -> {
               headers.remove(HttpHeaders.COOKIE);
+              headers.remove(HttpHeaders.AUTHORIZATION);
               if (!values.isEmpty()) headers.set(HttpHeaders.COOKIE, String.join("; ", values));
             });
   }
@@ -199,7 +193,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
                 ApiPaths.V1 + "/auth/login",
                 ApiPaths.V1 + "/auth/register",
                 ApiPaths.V1 + "/auth/refresh",
-                ApiPaths.V1 + "/auth/logout",
                 "/actuator/health",
                 "/actuator/health/liveness",
                 "/actuator/health/readiness")
@@ -226,7 +219,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
     response.getHeaders().setContentType(MediaType.APPLICATION_PROBLEM_JSON);
     String title =
         status == 401 ? "Unauthorized" : status == 403 ? "Forbidden" : "Authentication unavailable";
-    // Body gồm type (đường dẫn mã lỗi), title và HTTP status, mã hóa UTF-8.
     byte[] json =
         ("{\"type\":\"/errors/"
                 + code
@@ -236,14 +228,11 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
                 + status
                 + "}")
             .getBytes(StandardCharsets.UTF_8);
-    // Bọc byte[] thành DataBuffer để WebFlux ghi response theo cơ chế reactive.
     return response.writeWith(Mono.just(response.bufferFactory().wrap(json)));
   }
 
   @Override
   public int getOrder() {
-    // Giá trị order càng nhỏ thì filter càng chạy sớm ở chiều request.
-    // Chạy gần mức ưu tiên cao nhất; thứ tự tương đối phụ thuộc order của filter khác.
     return Ordered.HIGHEST_PRECEDENCE + 2;
   }
 }

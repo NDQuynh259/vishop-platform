@@ -89,7 +89,14 @@ class SubscriptionApplicationTest {
 
   @Autowired MockMvc http;
   @Autowired ObjectMapper json;
-  @Autowired JwtTokenProvider tokens;
+  private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
+
+  @Autowired
+  void tokenFixture(JwtTokenProvider provider) {
+    tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
+  }
+
+  @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;
   @Autowired EntityManager em;
   @Autowired PlatformTransactionManager transactions;
   @Autowired CommandBus commands;
@@ -120,7 +127,24 @@ class SubscriptionApplicationTest {
   }
 
   MockHttpServletRequestBuilder auth(MockHttpServletRequestBuilder request, String token) {
-    return request.header("Authorization", "Bearer " + token);
+    return request.with(
+        r -> {
+          try {
+            var actor = tokens.access(token);
+            String target =
+                r.getRequestURI() + (r.getQueryString() == null ? "" : "?" + r.getQueryString());
+            r.addHeader(
+                "X-Gateway-Context",
+                gateway.sign(
+                    actor,
+                    actor.tenantId() == null ? null : new UUID(0, 1),
+                    r.getMethod(),
+                    target));
+          } catch (RuntimeException invalid) {
+            r.addHeader("Authorization", "Bearer " + token);
+          }
+          return r;
+        });
   }
 
   MockHttpServletRequestBuilder body(MockHttpServletRequestBuilder request, Object payload)

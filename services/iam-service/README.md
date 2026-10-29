@@ -59,12 +59,12 @@ role-assignment rules retain their existing behavior.
 CMS updates a tenant through `PUT /api/v1/cms/tenants/{id}` with the complete mutable
 representation, for example `{"name":"Updated tenant","status":"SUSPENDED"}`.
 Both fields are required; statuses are `ACTIVE`, `SUSPENDED` and `ARCHIVED`.
-Only an access JWT carrying system role `PLATFORM_ADMIN` can use this endpoint. `id`, `code` and
+Only a gateway context carrying system role `PLATFORM_ADMIN` can use this endpoint. `id`, `code` and
 `createdAt` remain immutable. Name and status updates share one transaction and
 outbox publication; repeating an unchanged update emits no additional domain events.
 Archived tenants cannot be reactivated. This replaces the tenant status-only PATCH endpoint.
 Each endpoint in `TenantCmsController` declares `@PreAuthorize` using
-`iamAuthorization.canAccessCms(authentication)`, which checks the verified JWT
+`iamAuthorization.canAccessCms(authentication)`, which checks the verified gateway context
 principal without database or IAM calls. Handlers retain the same claims-based
 authorization for non-HTTP callers.
 
@@ -207,7 +207,7 @@ roles with no permissions. Joins use tenant/role/user IDs, never role names. Aut
 and projection share a read-only REPEATABLE READ transaction. The handler imports only
 public module contracts and its own read port, not module entities or repositories.
 The returned membership and grants are current database data, not a replacement for
-the request's signed authorization claims. Authorization uses only the JWT snapshot;
+the request's signed authorization claims. Authorization uses the gateway-authenticated context;
 the requested tenant must match its selected tenant. Switch tenant before accessing
 another tenant, even when the user belongs to both.
 
@@ -217,88 +217,30 @@ microservices' databases. Cross-service aggregation requires APIs or an event-fe
 
 ## Authentication
 
-Login, registration, refresh and tenant switching set HttpOnly cookies
-`vishop_access_token` (Path `/`) and `vishop_refresh_token` (Path `/api/v1/auth`). JSON
-contains only `user`, `tenantId`, `tenantRole`, and `permissions`, never tokens. No server-side
-session is created. Access lifetime defaults to 15 minutes (`JWT_ACCESS_EXPIRATION_MS`),
-refresh lifetime to seven days (`JWT_REFRESH_EXPIRATION_MS`).
+See the [gateway/Redis authorization contract](../../docs/core-architecture/gateway-authorization.md).
+IAM issues HttpOnly access/refresh cookies; JSON never returns JWTs. Access defaults to
+15 minutes and refresh to seven days. Refresh preserves its absolute expiry and checks
+current user tokenVersion and tenant access; rotation/reuse tracking is not implemented.
 
-Both settings use milliseconds and are passed through the dev/prod Compose configuration.
-Set them in the deployment env file or the IAM process environment, then restart IAM:
+Gateway verifies end-user JWTs and reads current user, tenant, membership and role snapshots
+from dedicated Auth Redis. IAM consumes gateway-signed context and performs local method,
+tenant/resource and business authorization. Direct Bearer/cookie authentication on protected
+IAM endpoints is rejected. Custom roles use CUSTOM:{roleId}, never their display name,
+as authorization keys. System roles remain separate from tenant roles.
 
-```dotenv
-JWT_ACCESS_EXPIRATION_MS=900000
-JWT_REFRESH_EXPIRATION_MS=604800000
-```
+V9 transactionally maintains authorization_outbox through PostgreSQL triggers. Role edits
+update one tenant-scoped role snapshot; no per-member invalidation. Credential/status/system-role
+changes increment tokenVersion. Commit wakes the Redis relay, with a scheduled retry fallback.
+Cache freshness defaults to 30 seconds; failures never fall back to old JWT permissions.
 
-Refresh lifetime must exceed access lifetime. New settings affect subsequently issued
-tokens; existing JWTs retain their signed expiry. Cookie lifetimes follow the access lifetime
-and remaining absolute refresh expiry. JavaScript does not read either token.
+Login prefers users.last_tenant_id if membership and tenant remain ACTIVE, otherwise selects
+the only active membership or leaves tenant null. Switch tenant accepts only {tenantId} and
+requires the gateway principal plus matching refresh cookie. Tabs share browser cookies.
+Logout clears cookies and audits valid callers; it does not revoke all issued tokens.
 
-Browsers authenticate with the access cookie. Gateway converts verified access to
-`Authorization: Bearer <accessToken>` for downstream services and strips browser cookies
-from business requests; only IAM auth routes receive refresh cookies. Gateway and services
-verify signature, issuer, audience, token use and expiry locally. JWTs have no `sid`,
-session version or Redis projection. Identity routes allow a null tenant; business APIs
-require a tenant context. Controllers and handlers authorize using signed `systemRole`,
-`tenantRole` and `permissions` claims only; they do not query IAM, a database or Redis
-to reconstruct the caller's grants. Permission authorities remain separate from roles.
-Custom tenant roles use `CUSTOM:{roleId}` in the token so a role named `OWNER` cannot
-impersonate the built-in owner. Membership projection responses still expose display names.
-
-Role/permission changes, membership removal, account suspension and logout do not
-revoke previously issued access JWTs. Existing access remains valid until expiry
-(15 minutes by default). Login, refresh and tenant switching read current account,
-tenant, membership and MFA requirements before issuing new claims. Removed members
-and suspended accounts cannot refresh their old grants. No session, denylist or
-per-request IAM introspection is used.
-
-Stateless authorization does not remove business persistence: profile and membership
-reads return current data; tenant/member/role writes still load and lock their targets,
-enforce final-owner/final-admin and grant-assignment rules, and write outbox events.
-Invitation acceptance also validates the invitation, recipient email and current issuer
-grants as part of redeeming that stored invitation, not as request authentication.
-
-`POST /api/v1/auth/refresh` has no body and reads the HttpOnly refresh cookie, without requiring
-a valid access token. It validates the refresh JWT and current account/tenant grants, then sets
-new cookies. The refreshed token retains the original absolute refresh expiry, so refreshing
-does not extend login indefinitely. The previous refresh JWT remains valid until expiry;
-there is no server-side rotation/reuse tracking in this fully stateless model.
-
-`POST /api/v1/auth/switch-tenant` accepts only `{ "tenantId": "..." }` and reads access/refresh
-cookies. Both tokens must belong to the same user. New cookies carry the selected tenant.
-Tabs in the same browser share these cookies and the current tenant context.
-
-Login prefers `users.last_tenant_id` when the user still has ACTIVE membership in an
-ACTIVE tenant. Otherwise, exactly one active membership is selected automatically;
-zero or multiple memberships return `tenantId: null`. The frontend can use
-`GET /api/v1/tenants` to distinguish `/no-tenant` from `/select-tenant`.
-Successful login selection and tenant switching persist the preference; stale preferences
-are replaced or cleared on login. Token issuance still validates current access and MFA
-requirements before saving a selection. Refresh keeps the tenant in its own token and
-does not change the remembered preference. Other browser/device cookie jars remain independent.
-This adds no IAM lookup to gateway authentication on business requests.
-
-Logout clears both cookie paths and returns 204, even when access has expired. A valid
-authenticated identity also produces an audit event. Without a
-revocation store, already issued JWTs remain usable until expiry. User/role/tenant changes
-are reflected when tokens are issued again; IAM domain authorization also checks live data.
-No Redis or Kafka security projection is required to authenticate requests.
-
-Browser clients must send `credentials: 'include'`. All unsafe API methods require
-`X-Requested-With: XMLHttpRequest`, including login/register/refresh/logout; requests with
-an Origin outside exact `ALLOWED_ORIGINS` are rejected. CORS allows credentials for that
-allowlist only. Cookies are host-only with SameSite=Lax by default. Local HTTP uses
-`AUTH_COOKIE_SECURE=false`; production Compose defaults to true. `AUTH_COOKIE_SAME_SITE=None`
-is supported only with Secure cookies. Scalar `/docs` supplies credentials and the header.
-
-```javascript
-await fetch('http://localhost:8000/api/v1/auth/login', {
-  method: 'POST', credentials: 'include',
-  headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
-  body: JSON.stringify({email: 'user@example.com', password: 'StrongPass123!'})
-});
-```
+Browser clients use credentials: include and X-Requested-With: XMLHttpRequest on writes.
+CORS origins must match ALLOWED_ORIGINS. Production uses Secure cookies. See the contract
+for context secrets, Auth Redis configuration, cache freshness and coordinated migration.
 
 ## APIs
 
@@ -342,21 +284,21 @@ validation response (422).
 Responses expose `systemRole` on the user; tenantId, tenantRole and permissions are separate
 fields of the auth response. The old per-user tenantId/role contract is retired.
 
-The internal introspection endpoint has been removed. Gateway and downstream services
-verify access JWTs locally; no separate IAM internal secret is required.
+The former introspection endpoint remains removed. Gateway uses the protected
+/internal/authorization cache-loader endpoint only on cache miss/staleness.
 
 ## Run and verify
 
 Set a random `JWT_SECRET` (at least 32 bytes),
 database credentials, and `ALLOWED_ORIGINS` (comma-separated exact origins). IAM signs JWTs;
-downstream services and gateway verify with the same JWT secret.
+gateway verifies with that JWT secret. Backend context secrets are separate; see the authorization guide.
 
 ```powershell
 .\gradlew.bat :services:iam-service:bootRun
 .\gradlew.bat test :services:iam-service:bootJar :services:api-gateway:bootJar
 ```
 
-Authentication uses Bearer JWTs. No system administrator is seeded:
+External authentication uses HttpOnly cookies or Bearer JWT at the gateway. No system administrator is seeded:
 after registering the initial operator, promote that specific account through a trusted
 database connection, then use the CMS APIs. Never promote legacy tenant roles automatically.
 
@@ -368,7 +310,7 @@ embedded PostgreSQL binaries from Maven Central. Use a non-root user on Linux.
 ## Database preparation and legacy cutover
 
 The schema contains users, tenants, roles, role_permissions, tenant_members,
-tenant_invitations, outbox_events and consumed_messages. Creating a new tenant
+tenant_invitations, outbox_events, consumed_messages and authorization_outbox. Creating a new tenant
 seeds built-in roles in its transaction. An application transaction creates its owner.
 Future permission catalogue changes need a new migration updating the check constraint,
 default-role trigger and existing built-in grants.
@@ -436,4 +378,4 @@ the custom role's display name separately. Permission grants remain a collection
 
 Old access JWTs with the `roles` claim are rejected. Deploy IAM, gateway, and downstream
 services together; clients must read `tenantRole` and obtain a new access token by refresh
-or login. Refresh credentials are unchanged. The existing membership schema needs no migration.
+or login. V9 also introduces tokenVersion; credentials predating that change require login. Apply V9 before rollout.

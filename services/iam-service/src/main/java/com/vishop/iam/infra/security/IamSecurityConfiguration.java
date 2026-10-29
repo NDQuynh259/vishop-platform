@@ -1,7 +1,6 @@
 package com.vishop.iam.infra.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vishop.iam.modules.identity.application.api.IdentityApi;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import java.util.Arrays;
@@ -35,7 +34,7 @@ public class IamSecurityConfiguration {
 
   @Bean
   IamAuthenticationFilter authenticationFilter(
-      IdentityApi identities,
+      io.github.coreplatform.common.security.gateway.GatewayContextCodec identities,
       ObjectMapper json,
       @Value("${vishop.security.allowed-origins:http://localhost:3000,http://localhost:8000}")
           String origins) {

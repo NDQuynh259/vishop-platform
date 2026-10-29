@@ -32,8 +32,20 @@ class AuthenticationGlobalFilterTest {
   void setup() {
     authentication = mock(LocalAuthenticationVerifier.class);
     chain = mock(GatewayFilterChain.class);
-    filter = new AuthenticationGlobalFilter(authentication, "http://localhost:3000");
-    identity = new Identity(user, tenant, "trusted-jwt");
+    var signers =
+        new com.vishop.gateway.security.GatewayContextSigners(
+            new com.fasterxml.jackson.databind.ObjectMapper(),
+            "dev_gateway_iam_context_secret_at_least_32_bytes",
+            "dev_gateway_audit_context_secret_at_least_32_bytes",
+            "dev_gateway_subscription_context_secret_at_least_32_bytes");
+    filter = new AuthenticationGlobalFilter(authentication, signers, "http://localhost:3000");
+    identity =
+        new Identity(
+            user,
+            tenant,
+            UUID.randomUUID(),
+            new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
+                user, tenant, "USER", "OWNER", Set.of("tenant.view")));
     when(chain.filter(any())).thenReturn(Mono.empty());
     when(authentication.authenticate(anyString(), anyBoolean()))
         .thenReturn(Mono.error(new AuthenticationFailure(401, "unauthorized")));
@@ -117,7 +129,7 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void validBearerPreservesVerifiedTokenAndReplacesUntrustedContext() {
+  void validBearerIsReplacedBySignedGatewayContext() {
     run(
         MockServerHttpRequest.get("/api/v1/tenants")
             .header("Authorization", "Bearer valid-token")
@@ -127,10 +139,11 @@ class AuthenticationGlobalFilterTest {
             .header(SecurityHeaders.X_USER_PERMISSIONS, "system.admin")
             .build());
     var headers = forwarded().getRequest().getHeaders();
-    assertThat(headers.getFirst("Authorization")).isEqualTo("Bearer trusted-jwt");
+    assertThat(headers.getFirst("Authorization")).isNull();
     assertThat(headers.getFirst(SecurityHeaders.X_USER_ID)).isEqualTo(user.toString());
     assertThat(headers.getFirst(SecurityHeaders.X_TENANT_ID)).isEqualTo(tenant.toString());
-    // Roles/grants stay inside the signed JWT; arbitrary role names never become HTTP headers.
+    assertThat(headers.getFirst("X-Gateway-Context")).isNotBlank();
+    // Roles/grants stay inside the signed context; arbitrary role names never become HTTP headers.
     assertThat(headers)
         .doesNotContainKeys(SecurityHeaders.X_USER_ROLES, SecurityHeaders.X_USER_PERMISSIONS);
   }
@@ -160,7 +173,13 @@ class AuthenticationGlobalFilterTest {
 
   @Test
   void tenantlessIdentityCanUseIamButCannotUseBusinessApis() {
-    var global = new Identity(user, null, "identity-jwt");
+    var global =
+        new Identity(
+            user,
+            null,
+            null,
+            new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
+                user, null, "USER", null, Set.of()));
     when(authentication.authenticate("identity", true)).thenReturn(Mono.just(global));
     run(
         MockServerHttpRequest.get("/api/v1/auth/me")
@@ -212,8 +231,7 @@ class AuthenticationGlobalFilterTest {
                 new HttpCookie("other", "private"))
             .build());
     verify(authentication).authenticate("valid-token", true);
-    assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
-        .isEqualTo("Bearer trusted-jwt");
+    assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION)).isNull();
     assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE)).isNull();
   }
 

@@ -28,7 +28,7 @@ class IamSchemaTest {
             .dataSource(postgres.getPostgresDatabase())
             .locations("classpath:db/migration")
             .load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(8);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(9);
   }
 
   @AfterAll
@@ -130,7 +130,7 @@ class IamSchemaTest {
 
       var upgraded =
           Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
-      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(3);
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(4);
       upgraded.validate();
       try (var upgradeConnection = database.getConnection();
           var statement = upgradeConnection.createStatement()) {
@@ -364,5 +364,65 @@ class IamSchemaTest {
             scalar(
                 "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'security_%'"))
         .isEqualTo("0");
+  }
+
+  @Test
+  void authorizationRoleChangesDoNotFanOutAcrossMembersOrTenants() throws Exception {
+    UUID user = user("projection@example.com"),
+        first = tenant("projection-first"),
+        second = tenant("projection-second");
+    UUID firstRole = role(first, "WAREHOUSE"), secondRole = role(second, "WAREHOUSE");
+    member(user, first, firstRole);
+    member(user, second, secondRole);
+    String memberVersion =
+        scalar(
+            "SELECT version FROM authorization_outbox WHERE state_key=?",
+            "auth:member:" + first + ":" + user);
+    String other =
+        scalar(
+            "SELECT payload::text FROM authorization_outbox WHERE state_key=?",
+            "auth:role:" + second + ":" + secondRole);
+    execute(
+        "DELETE FROM role_permissions WHERE role_id=? AND permission_key='inventory.view'",
+        firstRole);
+    assertThat(
+            scalar(
+                "SELECT payload::text FROM authorization_outbox WHERE state_key=?",
+                "auth:role:" + first + ":" + firstRole))
+        .doesNotContain("inventory.view");
+    assertThat(
+            scalar(
+                "SELECT payload::text FROM authorization_outbox WHERE state_key=?",
+                "auth:role:" + second + ":" + secondRole))
+        .isEqualTo(other);
+    assertThat(
+            scalar(
+                "SELECT version FROM authorization_outbox WHERE state_key=?",
+                "auth:member:" + first + ":" + user))
+        .isEqualTo(memberVersion);
+    execute("DELETE FROM tenant_members WHERE tenant_id=? AND user_id=?", first, user);
+    assertThat(
+            scalar(
+                "SELECT payload->>'status' FROM authorization_outbox WHERE state_key=?",
+                "auth:member:" + first + ":" + user))
+        .isEqualTo("INACTIVE");
+  }
+
+  @Test
+  void authorizationProjectionAndCredentialVersionRollbackWithBusinessMutation() throws Exception {
+    UUID user = user("projection-rollback@example.com");
+    String key = "auth:user:" + user;
+    String before = scalar("SELECT payload::text FROM authorization_outbox WHERE state_key=?", key);
+    var point = connection.setSavepoint();
+    execute("UPDATE users SET password_hash='changed' WHERE id=?", user);
+    assertThat(scalar("SELECT token_version FROM users WHERE id=?", user)).isEqualTo("2");
+    assertThat(
+            scalar(
+                "SELECT payload->>'tokenVersion' FROM authorization_outbox WHERE state_key=?", key))
+        .isEqualTo("2");
+    connection.rollback(point);
+    assertThat(scalar("SELECT payload::text FROM authorization_outbox WHERE state_key=?", key))
+        .isEqualTo(before);
+    assertThat(scalar("SELECT token_version FROM users WHERE id=?", user)).isEqualTo("1");
   }
 }

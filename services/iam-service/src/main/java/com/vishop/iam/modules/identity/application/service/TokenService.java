@@ -3,7 +3,7 @@ package com.vishop.iam.modules.identity.application.service;
 import com.vishop.iam.modules.identity.application.api.IdentityApi.TenantAccessPort;
 import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
-import com.vishop.iam.modules.identity.application.port.AccessTokenPort;
+import com.vishop.iam.modules.identity.application.port.TokenPort;
 import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
@@ -16,13 +16,13 @@ import org.springframework.stereotype.Component;
 public class TokenService {
   private final TenantAccessPort access;
   private final IdentityAuthorizationService identities;
-  private final AccessTokenPort tokens;
+  private final TokenPort tokens;
   private final UserRepositoryPort users;
 
   public TokenService(
       TenantAccessPort access,
       IdentityAuthorizationService identities,
-      AccessTokenPort tokens,
+      TokenPort tokens,
       UserRepositoryPort users) {
     this.access = access;
     this.identities = identities;

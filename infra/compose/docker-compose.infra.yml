@@ -74,6 +74,22 @@ services:
   # ---------------------------------------------------------------------------
   # Redis 7
   # ---------------------------------------------------------------------------
+  auth-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--requirepass", "${AUTH_REDIS_PASSWORD:-}"]
+    environment:
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
+    ports:
+      - "${AUTH_REDIS_PORT:-6380}:6379"
+    volumes:
+      - auth-redis-infra-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$AUTH_REDIS_PASSWORD" redis-cli ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: vishop-redis
@@ -152,6 +168,7 @@ services:
       - loki
 
 volumes:
+  auth-redis-infra-data:
   postgres-data:
   kafka-data:
   redis-data:

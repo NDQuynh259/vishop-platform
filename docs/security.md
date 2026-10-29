@@ -4,31 +4,20 @@ Defense-in-depth tooling covers source, dependencies, code, images, and supply-c
 All layers have local scripts. The current GitLab pipeline does not yet invoke those security
 scripts, so a clean local run is additional evidence rather than CI parity.
 
-## Authentication hiện tại và reset password
+## Runtime authentication
 
-Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
-API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
-chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
-không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
-trên mỗi request.
+See the [gateway authorization contract](core-architecture/gateway-authorization.md).
+Gateway verifies user JWTs and resolves current tenant permissions from dedicated Auth Redis.
+Backends accept signed gateway context and authorize tenant resources locally. IAM maintains
+transactional versioned snapshots and retries cache delivery through authorization_outbox.
 
-`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
-đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
-mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
-Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
+Access and refresh tokens are HttpOnly cookies, never JSON credentials. Refresh has no body,
+checks current tokenVersion and grants, and preserves the absolute refresh deadline. Logout
+clears cookies; password/account/system-role changes revoke old credentials through versioning.
+Rotation/reuse tracking and owner-issued temporary-password flows remain unimplemented.
 
-Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
-không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
-`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
-rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
-
-Owner-issued temporary password và `mustChangePassword` là đặc tả từ backend nguồn,
-chưa được triển khai trong Java IAM hiện tại. Không dùng luồng Better Auth/NestJS hoặc
-cam kết revoke phiên làm hướng dẫn vận hành. Trước khi triển khai reset password, cần
-định nghĩa riêng quy tắc đổi mật khẩu bắt buộc và hiệu lực của JWT đã cấp.
-
-Các công cụ scanning bên dưới là hướng dẫn nguồn; kiểm tra script tồn tại trong checkout
-trước khi chạy, không coi chúng là kiểm tra CI đã được áp dụng cho Java.
+The scanning tools below are source-project guidance; verify scripts exist in this checkout
+before using them. They are not evidence of Java CI coverage.
 
 ## Layers
 

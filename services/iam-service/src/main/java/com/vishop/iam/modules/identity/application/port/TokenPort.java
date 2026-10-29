@@ -4,7 +4,7 @@ import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.time.Instant;
 import java.util.UUID;
 
-public interface AccessTokenPort {
+public interface TokenPort {
   record RefreshIdentity(UUID userId, UUID tenantId, Instant expiresAt) {}
 
   AuthenticatedUser verify(String credential);

@@ -25,19 +25,15 @@ không cài Swagger UI hay cấu hình trang `/swagger-ui.html`.
 
 ## Xác thực và tenant context
 
-Gateway removes client-supplied `X-User-*`, `X-Tenant-Id` and internal secret headers.
-Browsers send the access HttpOnly cookie. `LocalAuthenticationVerifier` validates
-signature, issuer, audience, token_use and expiry locally, without session, Redis or IAM
-lookups. The original verified JWT is forwarded; user/tenant metadata comes from its claims.
-Identity/CMS/onboarding allow a null tenant; business APIs require tenant context.
+Gateway strips client identity/context headers and verifies the user access JWT once.
+It resolves active user/tenant/membership and role permissions from Auth Redis, then sends
+request-bound signed context to the selected service. The original Bearer token is removed.
+Backends verify gateway context and authorize resources locally. They do not verify user JWTs.
 
-Login/register/refresh, API docs, health and OPTIONS do not require access JWTs at gateway.
-IAM validates the refresh cookie even when access JWTs have expired. Only IAM auth routes
-receive refresh cookies; business services receive verified Bearer access with no browser cookies.
-Logout clears both cookies even with expired access and audits valid authenticated identities.
-Unsafe methods require `X-Requested-With: XMLHttpRequest`. CORS uses exact `ALLOWED_ORIGINS`
-with credentials enabled. Scalar `/docs` sends this header and `credentials: 'include'`.
-Gateway deduplicates CORS response headers from IAM while preserving both `Set-Cookie` headers.
+See [gateway authorization contract](gateway-authorization.md) for cache versions, freshness,
+miss loading, fail-closed behavior, context secrets, migration and rollout requirements.
+Public auth routes retain HttpOnly cookie and CSRF/Origin protections; SePay authenticates
+its own provider callback. Logout clears cookies even if the access credential is unusable.
 
 ## Luồng hoạt động chi tiết khi có 1 API đi qua Gateway (Request Lifecycle)
 
@@ -63,7 +59,7 @@ sequenceDiagram
     Note over TenantFilter: Kiểm tra cú pháp UUID nếu có header X-Tenant-Id
     
     TenantFilter->>AuthFilter: Chuyển tiếp
-    Note over AuthFilter: 1. Header Sanitization: Xóa x-user-*, X-Tenant-Id, X-Iam-Internal-Key<br/>2. Kiểm tra Allowed Origins<br/>3. Public path bypass (login/register/refresh/docs/health)<br/>4. Verify JWT Access Token (HMAC/Stateless in-memory)<br/>5. Context Propagation: Bơm X-User-Id, X-Tenant-Id chuẩn
+    Note over AuthFilter: 1. Header Sanitization: Xóa x-user-*, X-Tenant-Id, X-Iam-Internal-Key<br/>2. Kiểm tra Allowed Origins<br/>3. Public path bypass (login/register/refresh/docs/health)<br/>4. Verify JWT; resolve current authorization from Auth Redis; sign service context<br/>5. Context Propagation: Bơm X-User-Id, X-Tenant-Id chuẩn
     
     AuthFilter->>Routing: Khớp Route Predicates (application.yml)
     Routing->>Downstream: Forward HTTP Request đã được làm sạch và gắn context (đồng bộ)
@@ -85,7 +81,7 @@ Trong Spring Cloud Gateway, tất cả các filter implement `GlobalFilter, Orde
 | **0** | `CorsWebFilter` | *Tầng WebFilter* | Chạy trước `GatewayFilterChain`. Xử lý preflight `OPTIONS`, kiểm tra `AllowedOrigins`, `AllowedMethods`, `AllowedHeaders`. |
 | **1** | `CorrelationIdGlobalFilter` | `Ordered.HIGHEST_PRECEDENCE`<br>($-2,147,483,648$) | **Distributed Tracing**: Đảm bảo luôn có `X-Correlation-Id` và `X-Request-Id` (tự sinh UUIDv7 nếu thiếu). Bơm vào cả downstream request và client response. |
 | **2** | `TenantResolutionGlobalFilter` | `Ordered.HIGHEST_PRECEDENCE + 1`<br>($-2,147,483,647$) | Kiểm tra cú pháp UUID của header `X-Tenant-Id`. Nếu sai định dạng, ngắt luồng và trả ngay `400 Bad Request` (RFC 9457). |
-| **3** | `AuthenticationGlobalFilter` | `Ordered.HIGHEST_PRECEDENCE + 2`<br>($-2,147,483,646$) | **Zero Trust & Security**: Tẩy sạch untrusted header (`x-user-*`, `X-Tenant-Id` giả mạo). Bypass public routes (`/login`, `/register`, `/docs`). Verify JWT access token local (stateless in-memory), bơm `X-User-Id` và `X-Tenant-Id` đã xác thực. |
+| **3** | `AuthenticationGlobalFilter` | `Ordered.HIGHEST_PRECEDENCE + 2`<br>($-2,147,483,646$) | **Zero Trust & Security**: Tẩy sạch untrusted header (`x-user-*`, `X-Tenant-Id` giả mạo). Bypass public routes (`/login`, `/register`, `/docs`). Verify JWT locally, resolve Redis authorization and sign service context, bơm `X-User-Id` và `X-Tenant-Id` đã xác thực. |
 | **4** | `NettyRoutingFilter` (Core) | `Ordered.LOWEST_PRECEDENCE`<br>($2,147,483,647$) | Chuyển tiếp request qua Netty HTTP client tới service đích (`iam-service:8080`, `audit-service:8082`). |
 | **5** | `LoggingGlobalFilter` | `Ordered.LOWEST_PRECEDENCE`<br>($2,147,483,647$) | Dùng reactive operator `.doFinally(...)` để đón lúc response hoàn thành, tính toán `duration (ms)` và ghi log tập trung. |
 
@@ -157,6 +153,4 @@ Trong hệ thống **ViShop Platform**, cả hai công nghệ được phối h�
 .\gradlew.bat :services:api-gateway:bootRun
 ```
 
-Gateway verifies JWTs locally without Redis or an IAM introspection endpoint. Issued JWTs
-remain valid until expiry; there is no session/projection revocation mechanism.
-See [security architecture](security-architecture.md) and [IAM README](../../services/iam-service/README.md).
+Gateway verifies user JWTs and uses dedicated Auth Redis. See the authorization contract for failure and freshness behavior.

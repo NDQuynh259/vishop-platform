@@ -1,4 +1,5 @@
 dependencies {
+    api("com.fasterxml.jackson.core:jackson-databind")
     api(project(":libs:common-domain"))
     compileOnlyApi("jakarta.servlet:jakarta.servlet-api")
     api("org.springframework.data:spring-data-commons")

@@ -128,7 +128,34 @@ class GatewayApplicationTest {
     BACKEND.stop(0);
   }
 
-  @Autowired JwtTokenProvider tokens;
+  private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
+
+  @Autowired
+  void tokenFixture(JwtTokenProvider provider) {
+    tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
+  }
+
+  @org.springframework.boot.test.mock.mockito.MockBean
+  com.vishop.gateway.security.AuthorizationCacheReader authCache;
+
+  @org.junit.jupiter.api.BeforeEach
+  void authorizationCache() {
+    org.mockito.Mockito.when(authCache.get(org.mockito.ArgumentMatchers.anyString()))
+        .thenAnswer(
+            call -> {
+              String key = call.getArgument(0);
+              return reactor.core.publisher.Mono.just(
+                  new io.github.coreplatform.common.security.gateway.AuthorizationSnapshot(
+                      key,
+                      "1",
+                      "ACTIVE",
+                      "PLATFORM_ADMIN",
+                      new java.util.UUID(0, 1),
+                      "OWNER",
+                      java.util.Set.of("audit_log.view"),
+                      1));
+            });
+  }
 
   @LocalServerPort private int port;
 
@@ -208,7 +235,8 @@ class GatewayApplicationTest {
         .expectBody()
         .jsonPath("$.object")
         .isEqualTo("list");
-    assertThat(FORWARDED.get().getFirst("Authorization")).isEqualTo("Bearer " + jwt);
+    assertThat(FORWARDED.get().getFirst("Authorization")).isNull();
+    assertThat(FORWARDED.get().getFirst("X-Gateway-Context")).isNotBlank();
     assertThat(FORWARDED.get().getFirst("Cookie")).isNull();
   }
 
@@ -261,7 +289,8 @@ class GatewayApplicationTest {
         .isOk()
         .expectBody(String.class)
         .isEqualTo("ok");
-    assertThat(FORWARDED.get().getFirst("Authorization")).isEqualTo("Bearer " + jwt);
+    assertThat(FORWARDED.get().getFirst("Authorization")).isNull();
+    assertThat(FORWARDED.get().getFirst("X-Gateway-Context")).isNotBlank();
     assertThat(FORWARDED.get().getFirst("Cookie")).isNull();
     assertThat(IAM_LOOKUPS.get()).isEqualTo(previousLookups);
     assertThat(FORWARDED.get().getFirst("X-User-Id")).isEqualTo(user.toString());

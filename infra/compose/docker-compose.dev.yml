@@ -83,6 +83,22 @@ services:
   # ---------------------------------------------------------------------------
   # 4. Redis 7 (Port 6379 exposed for Redis Insight / CLI)
   # ---------------------------------------------------------------------------
+  auth-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--requirepass", "${AUTH_REDIS_PASSWORD:-}"]
+    environment:
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
+    ports:
+      - "${AUTH_REDIS_PORT:-6380}:6379"
+    volumes:
+      - auth-redis-dev-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$AUTH_REDIS_PASSWORD" redis-cli ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: vishop-dev-redis
@@ -186,6 +202,11 @@ services:
       - "${IAM_DEBUG_PORT:-5001}:5001"
     environment:
       SERVER_PORT: 8080
+      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:-dev_gateway_iam_context_secret_at_least_32_bytes}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-900000}
@@ -230,7 +251,7 @@ services:
       - "${AUDIT_DEBUG_PORT:-5003}:5003"
     environment:
       SERVER_PORT: 8082
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
+      GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:-dev_gateway_audit_context_secret_at_least_32_bytes}
       SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_audit
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
@@ -266,7 +287,7 @@ services:
       - "${SUBSCRIPTION_DEBUG_PORT:-5004}:5004"
     environment:
       SERVER_PORT: 8083
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
+      GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:-dev_gateway_subscription_context_secret_at_least_32_bytes}
       SEPAY_ENABLED: ${SEPAY_ENABLED:-false}
       SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
       SEPAY_BANK: ${SEPAY_BANK:-}
@@ -313,6 +334,13 @@ services:
       - "${GATEWAY_DEBUG_PORT:-5000}:5000"
     environment:
       SERVER_PORT: 8000
+      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:-dev_gateway_iam_context_secret_at_least_32_bytes}
+      GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:-dev_gateway_audit_context_secret_at_least_32_bytes}
+      GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:-dev_gateway_subscription_context_secret_at_least_32_bytes}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
       SPRING_PROFILES_ACTIVE: dev
@@ -326,6 +354,7 @@ services:
       - audit-service
 
 volumes:
+  auth-redis-dev-data:
   postgres-dev-data:
   kafka-dev-data:
   redis-dev-data:

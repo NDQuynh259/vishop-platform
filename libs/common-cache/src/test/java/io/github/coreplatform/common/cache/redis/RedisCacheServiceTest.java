@@ -256,4 +256,22 @@ class RedisCacheServiceTest {
         .isInstanceOf(CacheSerializationException.class);
     assertThat(cache.get("item", String.class)).contains("before");
   }
+
+  @Test
+  void authorizationVersionsCannotRegressEvenBeyondJavascriptIntegerPrecision() {
+    var write = new DefaultRedisScript<Long>(VersionedAuthorizationCache.WRITE, Long.class);
+    String key = "test:auth:role";
+    assertThat(redis.execute(write, List.of(key), "9007199254740993", "new")).isEqualTo(1L);
+    assertThat(redis.execute(write, List.of(key), "9007199254740992", "old")).isZero();
+    assertThat(redis.opsForHash().get(key, "payload")).isEqualTo("new");
+    var read = new DefaultRedisScript<String>(VersionedAuthorizationCache.READ, String.class);
+    assertThat(redis.execute(read, List.of(key), "30")).isEqualTo("new");
+    redis.opsForHash().put(key, "checkedAt", "1");
+    assertThat(redis.execute(read, List.of(key), "30")).isNull();
+    assertThat(redis.getExpire(key)).isEqualTo(-1L);
+    assertThat(redis.execute(write, List.of(key), "2", "stale-loader")).isZero();
+    assertThat(redis.execute(read, List.of(key), "30")).isNull();
+    assertThat(redis.execute(write, List.of(key), "9007199254740993", "new")).isEqualTo(1L);
+    assertThat(redis.execute(read, List.of(key), "30")).isEqualTo("new");
+  }
 }

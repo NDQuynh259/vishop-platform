@@ -4,6 +4,14 @@ spring:
   output:
     ansi:
       enabled: ALWAYS
+  data:
+    redis:
+      host: ${AUTH_REDIS_HOST:localhost}
+      port: ${AUTH_REDIS_PORT:6380}
+      password: ${AUTH_REDIS_PASSWORD:}
+      database: ${AUTH_REDIS_DATABASE:0}
+      timeout: 2s
+      connect-timeout: 2s
   application:
     name: iam-service
   datasource:
@@ -34,6 +42,11 @@ spring:
         enable.idempotence: true
 vishop:
   security:
+    authorization:
+      cache-prefix: ${AUTH_CACHE_PREFIX:vishop:}
+      max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
+    context:
+      secret: ${GATEWAY_IAM_CONTEXT_SECRET:dev_gateway_iam_context_secret_at_least_32_bytes}
     cookies:
       secure: ${AUTH_COOKIE_SECURE:false}
       same-site: ${AUTH_COOKIE_SAME_SITE:Lax}

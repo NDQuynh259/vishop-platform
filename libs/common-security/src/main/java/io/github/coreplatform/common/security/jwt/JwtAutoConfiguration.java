@@ -12,9 +12,8 @@ public class JwtAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public JwtTokenProvider jwtTokenProvider(
-      @Value("${vishop.security.jwt.secret:${JWT_SECRET:}}") String secret,
-      @Value("${vishop.security.jwt.access-expiration-ms:900000}") long expirationMs) {
-    return new JwtTokenProvider(secret, expirationMs);
+      @Value("${vishop.security.jwt.secret:${JWT_SECRET:}}") String secret) {
+    return new JwtTokenProvider(secret);
   }
   // #endregion
 }

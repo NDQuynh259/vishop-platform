@@ -35,6 +35,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @SpringBootTest(
     properties = {
       "vishop.outbox.enabled=false",
+      "vishop.security.authorization.initial-delay-ms=600000",
+      "vishop.security.authorization.eager-publish=false",
       "spring.kafka.listener.auto-startup=false",
       "management.tracing.enabled=false",
       "vishop.security.cookies.secure=true",
@@ -86,11 +88,19 @@ class IamApplicationTest {
   }
 
   @Autowired MockMvc http;
+  @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;
+  @Autowired com.vishop.iam.infra.security.AuthorizationProjection projection;
   @Autowired QueryBus queries;
   @Autowired ObjectMapper json;
   @Autowired EntityManager entityManager;
   JpaDatabaseFixture db;
-  @Autowired io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens;
+  private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
+
+  @Autowired
+  void tokenFixture(io.github.coreplatform.common.security.jwt.JwtTokenProvider provider) {
+    tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
+  }
+
   @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
   @Autowired org.springframework.context.ApplicationContext context;
 
@@ -100,7 +110,8 @@ class IamApplicationTest {
   @BeforeEach
   void reset() {
     db = new JpaDatabaseFixture(entityManager, transactions);
-    db.execute("TRUNCATE users,tenants,outbox_events,consumed_messages CASCADE");
+    db.execute(
+        "TRUNCATE users,tenants,outbox_events,consumed_messages,authorization_outbox CASCADE");
   }
 
   record Account(String email, String id, String token, String refreshToken) {}
@@ -167,8 +178,44 @@ class IamApplicationTest {
   private MockHttpServletRequestBuilder authorized(
       MockHttpServletRequestBuilder request, String token) {
     return request
-        .header("Authorization", "Bearer " + token)
-        .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE);
+        .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+        .with(
+            r -> {
+              try {
+                var c = tokens.access(token);
+                var u = projection.find("auth:user:" + c.userId());
+                if (u == null
+                    || !"ACTIVE".equals(u.status())
+                    || ((Number) tokens.parseClaims(token).get("tokenVersion")).longValue()
+                        != u.tokenVersion()) return r;
+                java.util.UUID roleId = null;
+                if (c.tenantId() != null) {
+                  var m = projection.find("auth:member:" + c.tenantId() + ":" + c.userId());
+                  var t = projection.find("auth:tenant:" + c.tenantId());
+                  if (m == null || !"ACTIVE".equals(m.status()) || !"ACTIVE".equals(t.status()))
+                    return r;
+                  roleId = m.roleId();
+                  var role = projection.find("auth:role:" + c.tenantId() + ":" + roleId);
+                  c =
+                      new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
+                          c.userId(),
+                          c.tenantId(),
+                          u.systemRole(),
+                          role.roleKey(),
+                          role.permissions());
+                } else
+                  c =
+                      new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
+                          c.userId(), null, u.systemRole(), null, Set.of());
+                String target =
+                    r.getRequestURI()
+                        + (r.getQueryString() == null ? "" : "?" + r.getQueryString());
+                r.addHeader("X-Gateway-Context", gateway.sign(c, roleId, r.getMethod(), target));
+              } catch (RuntimeException invalid) {
+                r.addHeader("Authorization", "Bearer " + token);
+              }
+              return r;
+            });
   }
 
   private MockHttpServletRequestBuilder payload(MockHttpServletRequestBuilder request, Object data)
@@ -247,10 +294,10 @@ class IamApplicationTest {
     return cookieAuth(
         http.perform(
                 payload(
-                    post("/api/v1/auth/switch-tenant")
-                        .cookie(
-                            new Cookie(AuthCookies.ACCESS_TOKEN, account.token()),
-                            new Cookie(AuthCookies.REFRESH_TOKEN, account.refreshToken())),
+                    authorized(
+                        post("/api/v1/auth/switch-tenant")
+                            .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, account.refreshToken())),
+                        account.token()),
                     Map.of("tenantId", tenant)))
             .andExpect(status().isOk())
             .andReturn());
@@ -324,7 +371,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void listingTenantsUsesVerifiedPrincipalWithoutRecheckingAccountStatus() throws Exception {
+  void listingTenantsRejectsRevokedCredentialsAfterAccountChanges() throws Exception {
     Account user = register("user@example.com");
     Account other = register("other@example.com");
     createTenant(other, "other-shop");
@@ -340,10 +387,14 @@ class IamApplicationTest {
     // System admins also receive only their own memberships on this endpoint.
     db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", user.id());
     http.perform(authorized(get("/api/v1/tenants"), user.token()))
+        .andExpect(status().isUnauthorized());
+    user = fresh(user);
+    http.perform(authorized(get("/api/v1/tenants"), user.token()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.length()").value(0));
     db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", user.id());
-    http.perform(authorized(get("/api/v1/tenants"), user.token())).andExpect(status().isOk());
+    http.perform(authorized(get("/api/v1/tenants"), user.token()))
+        .andExpect(status().isUnauthorized());
     http.perform(refreshRequest(user.refreshToken())).andExpect(status().isUnauthorized());
   }
 
@@ -977,7 +1028,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void existingJwtSurvivesRemovalAndSuspensionButCannotIssueNewGrants() throws Exception {
+  void removedMembershipAndSuspendedTenantStopTrustedContextIssuance() throws Exception {
     Account owner = register("inactive-details-owner@example.com");
     Account member = register("inactive-details-member@example.com");
     String tenant = createTenant(owner, "inactive-details").path("id").asText();
@@ -989,8 +1040,7 @@ class IamApplicationTest {
                 delete("/api/v1/tenants/" + tenant + "/members/" + member.id()), ownerAccess))
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), memberAccess))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("INACTIVE"));
+        .andExpect(status().isUnauthorized());
     http.perform(
             payload(
                 authorized(
@@ -998,14 +1048,14 @@ class IamApplicationTest {
                         .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, member.refreshToken())),
                     memberAccess),
                 Map.of("tenantId", tenant)))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isUnauthorized());
     http.perform(
             authorized(get("/api/v1/tenants/" + tenant + "/members/" + member.id()), ownerAccess))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("INACTIVE"));
     db.update("UPDATE tenants SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", tenant);
     http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), ownerAccess))
-        .andExpect(status().isOk());
+        .andExpect(status().isUnauthorized());
     http.perform(
             payload(
                 authorized(
@@ -1013,7 +1063,7 @@ class IamApplicationTest {
                         .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, owner.refreshToken())),
                     ownerAccess),
                 Map.of("tenantId", tenant)))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -1030,11 +1080,10 @@ class IamApplicationTest {
   }
 
   @Test
-  void accessCookieAuthenticatesAndRefreshRequiresCookieInsteadOfJson() throws Exception {
+  void gatewayContextAuthenticatesAndRefreshRequiresCookieInsteadOfJson() throws Exception {
     Account user = register("cookie-auth@example.com");
     http.perform(
-            get("/api/v1/auth/me")
-                .cookie(new Cookie(AuthCookies.ACCESS_TOKEN, user.token()))
+            authorized(get("/api/v1/auth/me"), user.token())
                 .header("Origin", "http://localhost:3000"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(user.id()))
@@ -1079,8 +1128,10 @@ class IamApplicationTest {
   void logoutClearsCookiesEvenWhenAccessExpiredOrMissing() throws Exception {
     Account user = register("expired-logout@example.com");
     var expiredProvider =
-        new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
-            "test-jwt-secret-with-at-least-thirty-two-bytes", -1000);
+        new io.github.coreplatform.common.test.security.IamTokenFixture(
+            new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
+                "test-jwt-secret-with-at-least-thirty-two-bytes"),
+            -1000);
     String expired =
         expiredProvider.generateIamAccessToken(
             UUID.fromString(user.id()), null, SystemRole.USER.name(), null, Set.of());
@@ -1281,7 +1332,8 @@ class IamApplicationTest {
                     patch("/api/v1/cms/users/" + admin.id() + "/system-role"), admin.token()),
                 Map.of("systemRole", SystemRole.USER.name())))
         .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/cms/tenants"), admin.token())).andExpect(status().isOk());
+    http.perform(authorized(get("/api/v1/cms/tenants"), admin.token()))
+        .andExpect(status().isUnauthorized());
     admin = fresh(admin);
     http.perform(authorized(get("/api/v1/cms/tenants"), admin.token()))
         .andExpect(status().isForbidden());
@@ -1380,7 +1432,7 @@ class IamApplicationTest {
                         .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, owner.refreshToken())),
                     selected),
                 Map.of("tenantId", tenant)))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isUnauthorized());
     var resolved = queries.dispatch(new AuthenticateQuery(selected, true));
     assertThat(resolved.tenantId()).isEqualTo(UUID.fromString(tenant));
     http.perform(
@@ -1389,14 +1441,14 @@ class IamApplicationTest {
                 Map.of("status", "SUSPENDED")))
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/auth/me"), owner.token()))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("status").value("SUSPENDED"));
+        .andExpect(status().isUnauthorized());
     http.perform(
             payload(
                 authorized(patch("/api/v1/cms/users/" + owner.id() + "/status"), admin.token()),
                 Map.of("status", "ACTIVE")))
         .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/auth/me"), owner.token())).andExpect(status().isOk());
+    http.perform(authorized(get("/api/v1/auth/me"), owner.token()))
+        .andExpect(status().isUnauthorized());
     http.perform(
             payload(
                 post("/api/v1/auth/login"),
@@ -1405,7 +1457,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void memberRemovalAndRoleChangesAffectNewTokensWhileExistingJwtRemainsValid() throws Exception {
+  void memberRemovalStopsAuthorizationAndRoleChangesAffectExistingCredentials() throws Exception {
     Account owner = register("owner@example.com");
     Account member = register("member@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
@@ -1430,7 +1482,8 @@ class IamApplicationTest {
                 delete("/api/v1/tenants/" + tenant + "/members/" + member.id()),
                 tenantToken(owner, tenant)))
         .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/tenants/" + tenant), old)).andExpect(status().isOk());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant), old))
+        .andExpect(status().isUnauthorized());
     http.perform(refreshRequest(refresh)).andExpect(status().isForbidden());
   }
 
@@ -1621,7 +1674,7 @@ class IamApplicationTest {
             payload(
                 authorized(post("/internal/auth/introspect"), user.token()),
                 Map.of("credential", user.token(), "type", "BEARER")))
-        .andExpect(status().isNotFound());
+        .andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -1661,8 +1714,10 @@ class IamApplicationTest {
   void expiredAccessDoesNotPreventRefresh() throws Exception {
     Account user = register("expired-access@example.com");
     var expiredProvider =
-        new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
-            "test-jwt-secret-with-at-least-thirty-two-bytes", -1000);
+        new io.github.coreplatform.common.test.security.IamTokenFixture(
+            new io.github.coreplatform.common.security.jwt.JwtTokenProvider(
+                "test-jwt-secret-with-at-least-thirty-two-bytes"),
+            -1000);
     String expired =
         expiredProvider.generateIamAccessToken(
             UUID.fromString(user.id()), null, SystemRole.USER.name(), null, Set.of());
@@ -1916,5 +1971,18 @@ class IamApplicationTest {
                 "SELECT count(*) FROM outbox_events WHERE status='FAILED' AND published_at IS NULL AND event_type='UserRegistered'",
                 Integer.class))
         .isEqualTo(1);
+  }
+
+  @Test
+  void backendRejectsOriginalJwtAndUnsignedIdentityHeaders() throws Exception {
+    var user = register("direct-bypass@example.com");
+    http.perform(
+            get("/api/v1/auth/me")
+                .header("Authorization", "Bearer " + user.token())
+                .header("X-User-Id", user.id())
+                .header("X-User-Roles", "PLATFORM_ADMIN"))
+        .andExpect(status().isUnauthorized());
+    http.perform(get("/internal/authorization").param("key", "auth:user:" + user.id()))
+        .andExpect(status().isUnauthorized());
   }
 }

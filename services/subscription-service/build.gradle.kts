@@ -9,6 +9,7 @@ springBoot {
 }
 
 dependencies {
+    testImplementation(project(":libs:common-test"))
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
     implementation(project(":libs:common-web"))

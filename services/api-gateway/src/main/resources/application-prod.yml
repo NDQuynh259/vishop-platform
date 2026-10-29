@@ -1,0 +1,8 @@
+
+---
+vishop:
+  security:
+    context:
+      iam-secret: ${GATEWAY_IAM_CONTEXT_SECRET}
+      audit-secret: ${GATEWAY_AUDIT_CONTEXT_SECRET}
+      subscription-secret: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET}

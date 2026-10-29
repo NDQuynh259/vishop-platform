@@ -5,7 +5,7 @@ import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-/** Authorization uses only the principal reconstructed from a verified access JWT. */
+/** Authorization uses only the principal reconstructed from authenticated gateway context. */
 @Component("iamAuthorization")
 public class IamAuthorization {
   public boolean canAccessCms(Authentication authentication) {

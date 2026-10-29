@@ -1,7 +1,7 @@
 package com.vishop.subscription.infra.security;
 
-import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
-import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
+import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,11 +12,11 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Uses signed IAM access claims; platform admins need not select a tenant to use CMS. */
+/** Accepts only gateway-authenticated context; never verifies the original user JWT. */
 final class SubscriptionAccessTokenFilter extends OncePerRequestFilter {
-  private final JwtTokenProvider tokens;
+  private final GatewayContextCodec tokens;
 
-  SubscriptionAccessTokenFilter(JwtTokenProvider tokens) {
+  SubscriptionAccessTokenFilter(GatewayContextCodec tokens) {
     this.tokens = tokens;
   }
 
@@ -26,13 +26,16 @@ final class SubscriptionAccessTokenFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     SecurityContextHolder.clearContext();
     try {
-      String header = request.getHeader("Authorization");
+      String header = request.getHeader(GatewayContextCodec.HEADER);
       if (header != null) {
-        VerifiedAccessToken actor;
+        GatewayPrincipal actor;
         try {
-          if (!header.startsWith("Bearer "))
-            throw new IllegalArgumentException("Bearer token required");
-          actor = VerifiedAccessToken.verify(tokens, header.substring(7).trim());
+          if (java.util.Collections.list(request.getHeaders(GatewayContextCodec.HEADER)).size()
+              != 1) throw new IllegalArgumentException("Ambiguous gateway context");
+          String target =
+              request.getRequestURI()
+                  + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+          actor = tokens.verify(header, request.getMethod(), target);
         } catch (RuntimeException invalid) {
           response.sendError(401, "Invalid authentication token");
           return;

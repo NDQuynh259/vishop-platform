@@ -8,7 +8,7 @@ import com.vishop.subscription.modules.subscription.presentation.rest.dto.Create
 import com.vishop.subscription.modules.subscription.presentation.rest.dto.PriceAvailabilityRequest;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
-import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.*;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -28,7 +28,7 @@ public class SubscriptionCmsController {
   @PostMapping("/prices")
   @PreAuthorize("@subscriptionAuthorization.isCms(authentication)")
   public PriceView createPrice(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @Valid @RequestBody CreatePriceRequest request) {
     return commands.dispatch(
         new CreatePriceCommand(
@@ -45,7 +45,7 @@ public class SubscriptionCmsController {
   @PutMapping("/prices/{id}/availability")
   @PreAuthorize("@subscriptionAuthorization.isCms(authentication)")
   public PriceView availability(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @PathVariable UUID id,
       @Valid @RequestBody PriceAvailabilityRequest request) {
     return commands.dispatch(

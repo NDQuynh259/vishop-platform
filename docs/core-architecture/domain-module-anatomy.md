@@ -188,7 +188,7 @@ Interface công khai nằm trong `modules/<tên>/application/api`, DTO được 
 
 `AuthenticatedUser` chỉ chứa user ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password adapter thuộc identity; authentication filter, filter-chain/CORS và principal chung nằm trong `infra/security`. Filter chỉ gọi contract `IdentityApi.authenticate`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
 
-JWT issuance uses `TokenService` and verification uses `AccessTokenPort`.
+JWT issuance uses `TokenService` and verification uses `TokenPort`.
 Authentication has no session persistence or Redis security projection. Request authorization
 uses only verified JWT `systemRole`, `tenantRole` and permission claims; it does not read
 the caller's current grants from a database or call IAM. Tenant URLs must match the JWT's

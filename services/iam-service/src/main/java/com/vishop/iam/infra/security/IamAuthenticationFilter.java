@@ -1,12 +1,10 @@
 package com.vishop.iam.infra.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vishop.iam.modules.identity.application.api.IdentityApi;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
-import io.github.coreplatform.common.domain.exception.DomainException;
-import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.context.TenantContext;
+import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.*;
@@ -18,11 +16,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class IamAuthenticationFilter extends OncePerRequestFilter {
-  private final IdentityApi identities;
+  private final GatewayContextCodec identities;
   private final ObjectMapper json;
   private final Set<String> origins;
 
-  public IamAuthenticationFilter(IdentityApi identities, ObjectMapper json, Set<String> origins) {
+  public IamAuthenticationFilter(
+      GatewayContextCodec identities, ObjectMapper json, Set<String> origins) {
     this.identities = identities;
     this.json = json;
     this.origins = origins;
@@ -59,7 +58,7 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         return;
       }
       boolean logout = request.getRequestURI().equals(ApiPaths.V1 + "/auth/logout");
-      String credential = accessCredential(request);
+      String credential = request.getHeader(GatewayContextCodec.HEADER);
       if (credential == null || credential.isBlank()) {
         if (logout) chain.doFilter(request, response);
         else error(response, 401, "Access cookie is required");
@@ -67,11 +66,22 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
       }
       IamPrincipal actor;
       try {
-        actor = new IamPrincipal(identities.authenticate(credential));
-      } catch (DomainException failure) {
+        if (java.util.Collections.list(request.getHeaders(GatewayContextCodec.HEADER)).size() != 1)
+          throw new IllegalArgumentException("Ambiguous gateway context");
+        String target =
+            request.getRequestURI()
+                + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        var c = identities.verify(credential, request.getMethod(), target);
+        if (request.getRequestURI().startsWith("/internal/")
+            && !c.userId().equals(new java.util.UUID(0, 0)))
+          throw new IllegalArgumentException("Invalid internal caller");
+        actor =
+            new IamPrincipal(
+                new com.vishop.iam.shared.application.dto.AuthenticatedUser(
+                    c.userId(), c.tenantId(), c.systemRole(), c.tenantRole(), c.permissions()));
+      } catch (IllegalArgumentException failure) {
         if (logout) chain.doFilter(request, response);
-        else
-          error(response, failure instanceof ForbiddenException ? 403 : 401, failure.getMessage());
+        else error(response, 401, "Invalid gateway context");
         return;
       }
       SecurityContextHolder.getContext()
@@ -83,23 +93,6 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
       TenantContext.clear();
       SecurityContextHolder.clearContext();
     }
-  }
-
-  private String accessCredential(HttpServletRequest request) {
-    String authorization = request.getHeader("Authorization");
-    // Gateway-to-service requests carry the verified JWT as Bearer; browsers use HttpOnly cookies.
-    if (authorization != null)
-      return authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : null;
-    String value = null;
-    if (request.getCookies() != null) {
-      for (var cookie : request.getCookies()) {
-        if (AuthCookies.ACCESS_TOKEN.equals(cookie.getName())) {
-          if (value != null) return null; // Ambiguous cookies do not authenticate.
-          value = cookie.getValue();
-        }
-      }
-    }
-    return value;
   }
 
   private void error(HttpServletResponse response, int status, String detail) throws IOException {

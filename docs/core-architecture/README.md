@@ -21,7 +21,7 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Kafka architecture](./kafka-architecture.md) | Kafka topology, outbox, consumer transactions, retry/DLT, and replay |
 | [Idempotency and tracing](./idempotency-and-tracing.md) | Choosing consumed messages vs. unique event IDs, external API idempotency, and request/message correlation |
 | [Observability](./observability-architecture.md) | Logs, metrics, distributed tracing, and alerting |
-| [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, stateless JWT access/refresh and expiry-based logout, and Multi-Tenancy |
+| [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, gateway-signed context, Redis permissions and token revocation, and Multi-Tenancy |
 | [Inter-service communication](./inter-service-communication.md) | Protocols: Kafka event-driven, REST/HTTPS, and gRPC decision framework |
 | [Billing and SePay design](../product/vishop-billing-sepay-design.md) | Tenant subscriptions, QR bank transfers, payment idempotency, reconciliation and entitlements (proposed) |
 | [Subscription/payment database](../../services/subscription-service/docs/database-design.md) | Nine-table V2 schema, ERD, payment allocation ledger, independent order/payment/fulfillment states and V1 upgrade |

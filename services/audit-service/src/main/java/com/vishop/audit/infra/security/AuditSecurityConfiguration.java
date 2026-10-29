@@ -2,8 +2,8 @@ package com.vishop.audit.infra.security;
 
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.constants.SystemRole;
-import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
-import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
+import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authorization.AuthorizationDecision;
@@ -16,7 +16,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration(proxyBeanMethods = false)
 public class AuditSecurityConfiguration {
   @Bean
-  public SecurityFilterChain auditSecurityFilterChain(HttpSecurity http, JwtTokenProvider tokens)
+  public SecurityFilterChain auditSecurityFilterChain(HttpSecurity http, GatewayContextCodec tokens)
       throws Exception {
     return http.csrf(AbstractHttpConfigurer::disable)
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -39,7 +39,7 @@ public class AuditSecurityConfiguration {
                         (authentication, context) ->
                             new AuthorizationDecision(
                                 authentication.get().getPrincipal()
-                                        instanceof VerifiedAccessToken actor
+                                        instanceof GatewayPrincipal actor
                                     && SystemRole.PLATFORM_ADMIN.name().equals(actor.systemRole())))
                     .anyRequest()
                     .denyAll())

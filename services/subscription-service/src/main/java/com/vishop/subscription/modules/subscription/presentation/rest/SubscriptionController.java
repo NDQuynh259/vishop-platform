@@ -15,7 +15,7 @@ import com.vishop.subscription.modules.subscription.presentation.rest.dto.Create
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.*;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
-import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.*;
 import jakarta.validation.Valid;
 import java.util.*;
@@ -39,14 +39,14 @@ public class SubscriptionController {
   @GetMapping("/plans")
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).VIEW)")
-  public List<PriceView> plans(@AuthenticationPrincipal VerifiedAccessToken actor) {
+  public List<PriceView> plans(@AuthenticationPrincipal GatewayPrincipal actor) {
     return queries.dispatch(new ListPricesQuery(SubscriptionAuthorization.actor(actor)));
   }
 
   @GetMapping("/subscription")
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).VIEW)")
-  public SubscriptionView subscription(@AuthenticationPrincipal VerifiedAccessToken actor) {
+  public SubscriptionView subscription(@AuthenticationPrincipal GatewayPrincipal actor) {
     return queries.dispatch(new GetSubscriptionQuery(SubscriptionAuthorization.actor(actor)));
   }
 
@@ -54,7 +54,7 @@ public class SubscriptionController {
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).MANAGE)")
   public ResponseEntity<CheckoutView> checkout(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @RequestHeader("Idempotency-Key") String key,
       @Valid @RequestBody CreateCheckoutRequest request) {
     return ResponseEntity.ok()
@@ -69,7 +69,7 @@ public class SubscriptionController {
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).VIEW)")
   public ResponseEntity<CheckoutView> order(
-      @AuthenticationPrincipal VerifiedAccessToken actor, @PathVariable UUID id) {
+      @AuthenticationPrincipal GatewayPrincipal actor, @PathVariable UUID id) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(queries.dispatch(new GetOrderQuery(SubscriptionAuthorization.actor(actor), id)));
@@ -79,7 +79,7 @@ public class SubscriptionController {
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).VIEW)")
   public ListEnvelope<OrderView> orders(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
     if (pagination.hasCursor())
       throw new BadRequestException(
@@ -94,8 +94,7 @@ public class SubscriptionController {
   @PostMapping("/orders/{id}/cancel")
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).MANAGE)")
-  public OrderView cancel(
-      @AuthenticationPrincipal VerifiedAccessToken actor, @PathVariable UUID id) {
+  public OrderView cancel(@AuthenticationPrincipal GatewayPrincipal actor, @PathVariable UUID id) {
     return commands.dispatch(new CancelOrderCommand(SubscriptionAuthorization.actor(actor), id));
   }
 }

@@ -1,106 +1,75 @@
 package io.github.coreplatform.common.security.jwt;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
-import io.github.coreplatform.common.domain.constants.SystemRole;
-import java.util.List;
-import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
+import java.time.Instant;
+import java.util.Date;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class JwtTokenProviderTest {
+  final String secret = "test-generic-jwt-secret-with-at-least-thirty-two-bytes";
+  final JwtTokenProvider jwt = new JwtTokenProvider(secret);
 
   @Test
-  void accessExpirationPropertyControlsIssuedJwtLifetime() {
-    new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+  void roundTripsCallerDefinedPayloadWithoutIdentityAssumptions() {
+    var claims =
+        Map.<String, Object>of(
+            "iss",
+            "custom-service",
+            "sub",
+            "not-a-uuid",
+            "invoiceNumber",
+            "INV-2026-10",
+            "amount",
+            150000,
+            "exp",
+            Date.from(Instant.now().plusSeconds(60)));
+    String token = jwt.encode(claims);
+    assertThat(jwt.verify(token))
+        .containsEntry("invoiceNumber", "INV-2026-10")
+        .containsEntry("sub", "not-a-uuid");
+    assertThat(jwt.decode(token)).containsEntry("iss", "custom-service");
+  }
+
+  @Test
+  void mandatoryClaimsAreDecidedByCaller() {
+    var token = jwt.encode(Map.of("custom", true));
+    assertThat(jwt.verify(token))
+        .containsEntry("custom", true)
+        .doesNotContainKeys("iss", "aud", "exp", "tenantId");
+  }
+
+  @Test
+  void rejectsWrongSignatureExpiredNotYetValidAndMalformedTokens() {
+    String valid = jwt.encode(Map.of("value", "test"));
+    var other =
+        new JwtTokenProvider("another-generic-signing-secret-with-at-least-thirty-two-bytes");
+    assertThatThrownBy(() -> other.verify(valid)).isInstanceOf(RuntimeException.class);
+    String expired = jwt.encode(Map.of("exp", Date.from(Instant.now().minusSeconds(5))));
+    String future = jwt.encode(Map.of("nbf", Date.from(Instant.now().plusSeconds(60))));
+    assertThatThrownBy(() -> jwt.verify(expired)).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> jwt.verify(future)).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> jwt.decode("invalid")).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> jwt.verify(null)).isInstanceOf(RuntimeException.class);
+  }
+
+  @Test
+  void autoConfigurationOnlyConfiguresCryptographicKey() {
+    new ApplicationContextRunner()
         .withUserConfiguration(JwtAutoConfiguration.class)
-        .withPropertyValues(
-            "vishop.security.jwt.secret=" + secret,
-            "vishop.security.jwt.access-expiration-ms=123000")
+        .withPropertyValues("vishop.security.jwt.secret=" + secret)
         .run(
             context -> {
               var provider = context.getBean(JwtTokenProvider.class);
-              String token =
-                  provider.generateIamAccessToken(
-                      UUID.randomUUID(), null, SystemRole.USER.name(), null, java.util.Set.of());
-              var claims = provider.parseClaims(token);
-              assertThat(claims.getExpiration().getTime() - claims.getIssuedAt().getTime())
-                  .isEqualTo(123000);
+              assertThat(provider.verify(provider.encode(Map.of("custom", 42))))
+                  .containsEntry("custom", 42);
             });
   }
 
   @Test
-  void rejectsMissingSecret() {
-    org.assertj.core.api.Assertions.assertThatThrownBy(() -> new JwtTokenProvider("", 3600000))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void rejectsSignedTokensWithoutTenantOrExpiration() {
-    var key =
-        io.jsonwebtoken.security.Keys.hmacShaKeyFor(
-            secret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    String noTenant =
-        io.jsonwebtoken.Jwts.builder()
-            .subject(UUID.randomUUID().toString())
-            .expiration(new java.util.Date(System.currentTimeMillis() + 60000))
-            .signWith(key)
-            .compact();
-    String noExpiration =
-        io.jsonwebtoken.Jwts.builder()
-            .subject(UUID.randomUUID().toString())
-            .claim("tenantId", UUID.randomUUID().toString())
-            .signWith(key)
-            .compact();
-    assertThat(jwtTokenProvider.validateToken(noTenant)).isFalse();
-    assertThat(jwtTokenProvider.validateToken(noExpiration)).isFalse();
-  }
-
-  private JwtTokenProvider jwtTokenProvider;
-  private final String secret = "vishop-platform-super-secret-key-that-is-at-least-256-bits-long";
-
-  @BeforeEach
-  void setUp() {
-    jwtTokenProvider = new JwtTokenProvider(secret, 3600000L); // 1 hour
-  }
-
-  @Test
-  @DisplayName("Should generate valid token and extract claims correctly")
-  void shouldGenerateAndExtractClaims() {
-    UUID userId = UUID.randomUUID();
-    UUID tenantId = UUID.randomUUID();
-    String email = "admin@vishop.vn";
-    String fullName = "System Admin";
-    String tenantRole = "OWNER";
-    List<String> permissions = List.of("tenant.view", "tenant.create");
-
-    String token =
-        jwtTokenProvider.generateAccessToken(
-            userId, tenantId, email, fullName, tenantRole, permissions);
-
-    assertThat(token).isNotBlank();
-    assertThat(jwtTokenProvider.validateToken(token)).isTrue();
-    assertThat(jwtTokenProvider.extractUserId(token)).isEqualTo(userId);
-    assertThat(jwtTokenProvider.extractTenantId(token)).isEqualTo(tenantId);
-    assertThat(jwtTokenProvider.extractEmail(token)).isEqualTo(email);
-    assertThat(jwtTokenProvider.extractFullName(token)).isEqualTo(fullName);
-    assertThat(jwtTokenProvider.extractTenantRole(token)).isEqualTo(tenantRole);
-    assertThat(jwtTokenProvider.extractPermissions(token)).containsExactlyElementsOf(permissions);
-  }
-
-  @Test
-  @DisplayName("Should reject invalid or expired token")
-  void shouldRejectInvalidToken() {
-    assertThat(jwtTokenProvider.validateToken(null)).isFalse();
-    assertThat(jwtTokenProvider.validateToken("")).isFalse();
-    assertThat(jwtTokenProvider.validateToken("invalid.token.here")).isFalse();
-
-    // Expired token
-    JwtTokenProvider shortLivedProvider = new JwtTokenProvider(secret, -1000L); // expired 1s ago
-    String expiredToken =
-        shortLivedProvider.generateAccessToken(
-            UUID.randomUUID(), UUID.randomUUID(), "test@vishop.vn", "Test", null, List.of());
-    assertThat(jwtTokenProvider.validateToken(expiredToken)).isFalse();
+  void rejectsMissingKey() {
+    assertThatThrownBy(() -> new JwtTokenProvider("")).isInstanceOf(IllegalArgumentException.class);
   }
 }

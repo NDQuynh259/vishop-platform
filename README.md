@@ -146,18 +146,20 @@ accounts, system roles, tenants, memberships, tenant roles and permissions in `v
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
 
-IAM uses stateless JWT access and refresh tokens stored only in HttpOnly cookies; JSON
-responses contain user/tenant grants, never credentials. Browser requests use
-`credentials: 'include'` and `X-Requested-With: XMLHttpRequest` for POST/PUT/PATCH/DELETE.
-Gateway verifies the access cookie locally and forwards Bearer access internally, without
-session storage, Redis or IAM introspection. Refresh reads its cookie with no body;
-switch-tenant accepts only `{tenantId}`. Logout clears both cookies. Issued JWTs remain
-valid until expiry. Production cookies use `AUTH_COOKIE_SECURE=true` and HTTPS.
-CMS requires PLATFORM_ADMIN; tenant OWNER does not grant CMS access.
+IAM issues access/refresh JWTs through HttpOnly cookies; JSON never returns credentials.
+Gateway verifies user JWTs, resolves current tenant permissions from dedicated Auth Redis,
+and forwards signed context to IAM/audit/subscription. Backends reject direct user JWTs
+and authorize tenant resources locally. See [gateway authorization](docs/core-architecture/gateway-authorization.md).
 
-Configure a random JWT_SECRET (at least 32 bytes),
-database credentials and exact ALLOWED_ORIGINS. JWT_SECRET is shared by IAM, gateway and
-downstream verification. IAM does not expose an internal introspection endpoint.
+Browser requests use credentials: include and X-Requested-With: XMLHttpRequest on writes.
+Refresh reads its cookie with no body; switch-tenant accepts only {tenantId}. Logout clears
+cookies. Credential/status/system-role changes revoke tokens through tokenVersion; role and
+membership changes update current Redis grants. Production uses Secure cookies and HTTPS.
+
+Configure JWT_SECRET in IAM/gateway, separate GATEWAY_{IAM,AUDIT,SUBSCRIPTION}_CONTEXT_SECRET
+values, Auth Redis connectivity, database credentials and exact ALLOWED_ORIGINS. CMS requires
+PLATFORM_ADMIN; tenant OWNER does not grant CMS access. Apply IAM migration V9 before the
+coordinated gateway/backend rollout.
 
 
 Public registration accepts email, password and fullName; tenantId/role assignment is

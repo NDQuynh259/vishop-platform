@@ -6,7 +6,7 @@ import com.vishop.subscription.modules.payment.application.query.*;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
-import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.*;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,7 +25,7 @@ public class PaymentCmsController {
   @GetMapping("/payments/review")
   @PreAuthorize("@subscriptionAuthorization.isCms(authentication)")
   public ListEnvelope<PaymentReviewView> payments(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
     if (pagination.hasCursor()) throw new BadRequestException("Use page/limit");
     return ListEnvelope.from(
@@ -38,7 +38,7 @@ public class PaymentCmsController {
   @GetMapping("/webhooks/review")
   @PreAuthorize("@subscriptionAuthorization.isCms(authentication)")
   public ListEnvelope<InboxReviewView> webhooks(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
     if (pagination.hasCursor()) throw new BadRequestException("Use page/limit");
     return ListEnvelope.from(

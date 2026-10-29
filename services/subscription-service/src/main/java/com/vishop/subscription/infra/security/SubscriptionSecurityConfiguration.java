@@ -1,7 +1,7 @@
 package com.vishop.subscription.infra.security;
 
 import io.github.coreplatform.common.domain.constants.ApiPaths;
-import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
+import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import org.springframework.context.annotation.*;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,7 +15,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SubscriptionSecurityConfiguration {
   @Bean
-  SecurityFilterChain billingSecurity(HttpSecurity http, JwtTokenProvider tokens) throws Exception {
+  SecurityFilterChain billingSecurity(HttpSecurity http, GatewayContextCodec tokens)
+      throws Exception {
     return http.csrf(AbstractHttpConfigurer::disable)
         .formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)

@@ -1,0 +1,6 @@
+
+---
+vishop:
+  security:
+    context:
+      secret: ${GATEWAY_AUDIT_CONTEXT_SECRET}

@@ -70,6 +70,8 @@ management:
 
 vishop:
   security:
+    context:
+      secret: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:dev_gateway_subscription_context_secret_at_least_32_bytes}
     jwt:
       secret: ${JWT_SECRET:vishop_platform_dev_jwt_secret_key_at_least_32_bytes_long!}
 

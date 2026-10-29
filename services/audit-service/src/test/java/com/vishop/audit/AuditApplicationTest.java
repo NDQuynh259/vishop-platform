@@ -179,11 +179,27 @@ class AuditApplicationTest {
         .isTrue();
   }
 
-  @Autowired JwtTokenProvider tokens;
+  private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
+
+  @Autowired
+  void tokenFixture(JwtTokenProvider provider) {
+    tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
+  }
+
+  @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;
 
   private ResponseEntity<JsonNode> cmsGet(String path, String token) {
     var headers = new HttpHeaders();
-    if (token != null) headers.setBearerAuth(token);
+    if (token != null) {
+      try {
+        var actor = tokens.access(token);
+        headers.set(
+            "X-Gateway-Context",
+            gateway.sign(actor, actor.tenantId() == null ? null : new UUID(0, 1), "GET", path));
+      } catch (RuntimeException invalid) {
+        headers.setBearerAuth(token);
+      }
+    }
     return http.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
   }
 

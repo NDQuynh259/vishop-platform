@@ -47,12 +47,12 @@ tenant isolation, CQRS dispatch, and dependency rules between architecture layer
 
 `GET /api/v1/cms/audit-logs` through the gateway (port 8000).
 
-Only a signed IAM access JWT with `systemRole=PLATFORM_ADMIN` can read this endpoint.
+Only gateway-authenticated context with systemRole=PLATFORM_ADMIN can read this endpoint.
 A tenant OWNER or a tenant role named PLATFORM_ADMIN does not grant CMS access.
-No selected tenant is required. Gateway forwards the HttpOnly access cookie as a Bearer
-token; direct service calls require `Authorization: Bearer <access-token>`.
-Authorization uses the signed access claims and follows the existing stateless JWT expiry
-policy; audit does not query IAM to revalidate the current role on every request.
+No selected tenant is required. Gateway verifies the user JWT and resolves current grants
+from Auth Redis, then signs context for audit-service. Audit rejects direct Bearer tokens
+and unsigned identity headers; it does not query IAM/Redis on ordinary requests.
+See [authorization contract](../../docs/core-architecture/gateway-authorization.md).
 
 The query handler also checks CMS authority before reading the persistence port.
 Gateway's specific CMS audit route precedes the general CMS route to IAM.
@@ -102,7 +102,7 @@ GET /api/v1/cms/audit-logs?page=1&limit=20&eventType=UserRegistered&from=2026-10
 
 - `200`: matching page, including an empty page when no records match.
 - `400`: invalid filters, UUIDs, timestamps or pagination.
-- `401`: missing/invalid/expired JWT or refresh token used as an access token.
+- `401`: missing, invalid or expired gateway context.
 - `403`: authenticated user without PLATFORM_ADMIN system role.
 
 The endpoint is read-only and reflects events already consumed from Kafka; newly completed

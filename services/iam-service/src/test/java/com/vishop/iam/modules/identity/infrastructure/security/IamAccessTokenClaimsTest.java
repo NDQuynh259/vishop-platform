@@ -1,9 +1,10 @@
-package io.github.coreplatform.common.security.jwt;
+package com.vishop.iam.modules.identity.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -13,9 +14,10 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-class VerifiedAccessTokenTest {
+class IamAccessTokenClaimsTest {
   private static final String SECRET = "test-signing-secret-with-at-least-thirty-two-bytes";
-  private final JwtTokenProvider tokens = new JwtTokenProvider(SECRET, 900000);
+  private final io.github.coreplatform.common.test.security.IamTokenFixture tokens =
+      new io.github.coreplatform.common.test.security.IamTokenFixture(new JwtTokenProvider(SECRET));
   private final UUID user = UUID.randomUUID(), tenant = UUID.randomUUID();
 
   @Test
@@ -23,7 +25,7 @@ class VerifiedAccessTokenTest {
     String jwt =
         tokens.generateIamAccessToken(
             user, tenant, SystemRole.USER.name(), "OWNER", Set.of("order.view"));
-    var access = VerifiedAccessToken.verify(tokens, jwt);
+    var access = IamAccessTokenClaims.verify(tokens.provider(), jwt);
     assertThat(access.systemRole()).isEqualTo(SystemRole.USER.name());
     assertThat(access.tenantRole()).isEqualTo("OWNER");
     assertThat(access.permissions()).containsExactly("order.view");
@@ -31,8 +33,8 @@ class VerifiedAccessTokenTest {
         .containsEntry("tenantRole", "OWNER")
         .doesNotContainKey("roles");
     var global =
-        VerifiedAccessToken.verify(
-            tokens,
+        IamAccessTokenClaims.verify(
+            tokens.provider(),
             tokens.generateIamAccessToken(
                 user, null, SystemRole.PLATFORM_ADMIN.name(), null, Set.of()));
     assertThat(global.tenantId()).isNull();
@@ -66,7 +68,7 @@ class VerifiedAccessTokenTest {
   }
 
   private void assertRejected(String jwt) {
-    assertThatThrownBy(() -> VerifiedAccessToken.verify(tokens, jwt))
+    assertThatThrownBy(() -> IamAccessTokenClaims.verify(tokens.provider(), jwt))
         .isInstanceOf(RuntimeException.class);
   }
 }

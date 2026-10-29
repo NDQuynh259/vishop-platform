@@ -7,7 +7,7 @@ import com.vishop.audit.modules.auditlog.presentation.rest.mapper.AuditLogRespon
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
-import io.github.coreplatform.common.security.jwt.VerifiedAccessToken;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.ListEnvelope;
 import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,7 +31,7 @@ public class CmsAuditLogController {
       description =
           "PLATFORM_ADMIN only. Optional tenant/event/aggregate filters. occurredAt range is [from, to). Offset pagination uses system defaults and normalization.")
   public ListEnvelope<AuditLogResponse> list(
-      @AuthenticationPrincipal VerifiedAccessToken actor,
+      @AuthenticationPrincipal GatewayPrincipal actor,
       @RequestParam(required = false) UUID tenantId,
       @RequestParam(required = false) String eventType,
       @RequestParam(required = false) String aggregateType,
