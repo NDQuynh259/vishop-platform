@@ -231,7 +231,17 @@ as authorization keys. System roles remain separate from tenant roles.
 V9 transactionally maintains authorization_outbox through PostgreSQL triggers. Role edits
 update one tenant-scoped role snapshot; no per-member invalidation. Credential/status/system-role
 changes increment tokenVersion. Commit wakes the Redis relay, with a scheduled retry fallback.
+V10 also increments the affected user's tokenVersion on membership role/status changes,
+soft deletion or physical removal. This revokes old access and refresh tokens across all
+tenants and requires login again. Unchanged membership updates and role permission edits
+do not revoke credentials. Apply V10 before relying on membership-triggered revocation.
 Cache freshness defaults to 30 seconds; failures never fall back to old JWT permissions.
+
+New access JWTs contain `sub` (userId), `tenantId`, `roleId`, `tenantRole`, `systemRole`
+and `tokenVersion`, plus standard credential metadata. Permissions are omitted to keep
+tokens compact. Login, refresh and tenant switch resolve the role ID from the active
+membership. Permission lists remain in authentication responses and signed gateway
+context; gateway authorization continues to resolve current permissions from Auth Redis.
 
 Login prefers users.last_tenant_id if membership and tenant remain ACTIVE, otherwise selects
 the only active membership or leaves tenant null. Switch tenant accepts only {tenantId} and

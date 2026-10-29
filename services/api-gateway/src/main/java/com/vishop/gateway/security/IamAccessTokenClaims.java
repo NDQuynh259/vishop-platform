@@ -3,7 +3,10 @@ package com.vishop.gateway.security;
 import io.jsonwebtoken.Claims;
 import java.util.UUID;
 
-/** Gateway's accepted IAM credential contract. Authorization grants come from Redis. */
+/**
+ * Gateway's accepted IAM credential contract. Authorization grants come from
+ * Redis.
+ */
 record IamAccessTokenClaims(UUID userId, UUID tenantId, long tokenVersion) {
   static IamAccessTokenClaims from(Claims claims) {
     if (!"iam-service".equals(claims.getIssuer())

@@ -155,7 +155,18 @@ class IamApplicationTest {
             .findFirst()
             .orElseThrow();
     var claims = tokens.parseClaims(access.getValue());
-    assertThat(claims).doesNotContainKey("roles");
+    assertThat(claims).doesNotContainKeys("roles", "permissions");
+    assertThat(claims.getSubject()).isEqualTo(response.path("user").path("id").asText());
+    String tenantId = claims.get("tenantId", String.class);
+    if (tenantId == null) assertThat(claims.get("roleId")).isNull();
+    else
+      assertThat(claims.get("roleId", String.class))
+          .isEqualTo(
+              db.queryForObject(
+                  "SELECT role_id::text FROM tenant_members WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+                  String.class,
+                  tenantId,
+                  claims.getSubject()));
     assertThat(claims.get("tenantRole", String.class))
         .isEqualTo(
             response.path("tenantRole").isNull() ? null : response.path("tenantRole").asText());
@@ -318,6 +329,8 @@ class IamApplicationTest {
         owner.id(),
         inactive);
 
+    owner = fresh(owner);
+
     http.perform(authorized(get("/api/v1/tenants").param("sort", "name:asc"), owner.token()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.object").value("list"))
@@ -439,6 +452,8 @@ class IamApplicationTest {
         "UPDATE tenant_members SET status='INACTIVE' WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
         inactive,
         user.id());
+
+    user = fresh(user);
 
     for (int page = 1; page <= 2; page++) {
       http.perform(
@@ -665,6 +680,9 @@ class IamApplicationTest {
         first,
         second,
         user.id());
+    http.perform(authorized(get("/api/v1/tenants"), user.token()))
+        .andExpect(status().isUnauthorized());
+    user = fresh(user);
     http.perform(
             authorized(
                 get("/api/v1/tenants")
@@ -1418,6 +1436,9 @@ class IamApplicationTest {
     Account owner = register("owner@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
     String selected = select(owner, tenant).accessToken();
+    var resolved = queries.dispatch(new AuthenticateQuery(selected, true));
+    assertThat(resolved.tenantId()).isEqualTo(UUID.fromString(tenant));
+    assertThat(resolved.permissions()).contains("tenant.view");
     db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", admin.id());
     admin = fresh(admin);
     http.perform(
@@ -1433,8 +1454,8 @@ class IamApplicationTest {
                     selected),
                 Map.of("tenantId", tenant)))
         .andExpect(status().isUnauthorized());
-    var resolved = queries.dispatch(new AuthenticateQuery(selected, true));
-    assertThat(resolved.tenantId()).isEqualTo(UUID.fromString(tenant));
+    assertThatThrownBy(() -> queries.dispatch(new AuthenticateQuery(selected, true)))
+        .isInstanceOf(io.github.coreplatform.common.domain.exception.UnauthorizedException.class);
     http.perform(
             payload(
                 authorized(patch("/api/v1/cms/users/" + owner.id() + "/status"), admin.token()),
@@ -1457,7 +1478,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void memberRemovalStopsAuthorizationAndRoleChangesAffectExistingCredentials() throws Exception {
+  void memberRemovalAndRoleChangesRevokeAccessAndRefreshCredentials() throws Exception {
     Account owner = register("owner@example.com");
     Account member = register("member@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
@@ -1472,8 +1493,9 @@ class IamApplicationTest {
                     tenantToken(owner, tenant)),
                 Map.of("roleId", role(tenant, "ACCOUNTING"))))
         .andExpect(status().isNoContent());
-    var refreshed =
-        cookieAuth(http.perform(refreshRequest(refresh)).andExpect(status().isOk()).andReturn());
+    http.perform(authorized(get("/api/v1/auth/me"), old)).andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(refresh)).andExpect(status().isUnauthorized());
+    var refreshed = login(member);
     assertThat(refreshed.path("permissions").toString())
         .doesNotContain("order.create")
         .contains("finance.reconciliation");
@@ -1484,7 +1506,131 @@ class IamApplicationTest {
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/tenants/" + tenant), old))
         .andExpect(status().isUnauthorized());
-    http.perform(refreshRequest(refresh)).andExpect(status().isForbidden());
+    http.perform(authorized(get("/api/v1/auth/me"), refreshed.accessToken()))
+        .andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(refreshed.refreshToken())).andExpect(status().isUnauthorized());
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {
+        "role",
+        "systemRole",
+        "status",
+        "inactiveMember",
+        "deletedMember",
+        "softDeletedMember"
+      })
+  void securityChangesIncrementVersionAndPublishRevocation(String change) throws Exception {
+    Account owner = register("owner@example.com");
+    String tenant = createTenant(owner, "versioned-tenant").path("id").asText();
+    var credentials = select(owner, tenant);
+    long before =
+        db.queryForObject(
+            "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id());
+    switch (change) {
+      case "role" ->
+          db.update(
+              "UPDATE tenant_members SET role_id=CAST(? AS uuid) WHERE user_id=CAST(? AS uuid)",
+              role(tenant, "ACCOUNTING"),
+              owner.id());
+      case "systemRole" ->
+          db.update(
+              "UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", owner.id());
+      case "status" ->
+          db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", owner.id());
+      case "inactiveMember" ->
+          db.update(
+              "UPDATE tenant_members SET status='INACTIVE' WHERE user_id=CAST(? AS uuid)",
+              owner.id());
+      case "deletedMember" ->
+          db.update("DELETE FROM tenant_members WHERE user_id=CAST(? AS uuid)", owner.id());
+      case "softDeletedMember" ->
+          db.update(
+              "UPDATE tenant_members SET deleted_at=now() WHERE user_id=CAST(? AS uuid)",
+              owner.id());
+      default -> throw new IllegalArgumentException(change);
+    }
+    assertThat(
+            db.queryForObject(
+                "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id()))
+        .isEqualTo(before + 1);
+    assertThat(
+            db.queryForObject(
+                "SELECT (payload->>'tokenVersion')::bigint FROM authorization_outbox WHERE state_key=? AND pending=true",
+                Long.class,
+                "auth:user:" + owner.id()))
+        .isEqualTo(before + 1);
+    http.perform(authorized(get("/api/v1/auth/me"), credentials.accessToken()))
+        .andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(credentials.refreshToken())).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void membershipRevocationRollsBackAndCommittedChangesRevokeOtherTenantCredentials(
+      @Autowired org.springframework.transaction.PlatformTransactionManager manager)
+      throws Exception {
+    Account owner = register("owner@example.com");
+    String first = createTenant(owner, "first-tenant").path("id").asText();
+    String second = createTenant(owner, "second-tenant").path("id").asText();
+    var credentials = select(owner, second);
+    long before =
+        db.queryForObject(
+            "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id());
+    var transactions = new org.springframework.transaction.support.TransactionTemplate(manager);
+    transactions.executeWithoutResult(
+        transaction -> {
+          db.update(
+              "DELETE FROM tenant_members WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+              first,
+              owner.id());
+          assertThat(
+                  db.queryForObject(
+                      "SELECT token_version FROM users WHERE id=CAST(? AS uuid)",
+                      Long.class,
+                      owner.id()))
+              .isEqualTo(before + 1);
+          transaction.setRollbackOnly();
+        });
+    assertThat(
+            db.queryForObject(
+                "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id()))
+        .isEqualTo(before);
+    assertThat(
+            db.queryForObject(
+                "SELECT (payload->>'tokenVersion')::bigint FROM authorization_outbox WHERE state_key=?",
+                Long.class,
+                "auth:user:" + owner.id()))
+        .isEqualTo(before);
+    http.perform(refreshRequest(credentials.refreshToken())).andExpect(status().isOk());
+    db.update(
+        "DELETE FROM tenant_members WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
+        first,
+        owner.id());
+    http.perform(authorized(get("/api/v1/auth/me"), credentials.accessToken()))
+        .andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(credentials.refreshToken())).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void unchangedMembershipAndRolePermissionEditsKeepCredentialsValid() throws Exception {
+    Account owner = register("owner@example.com");
+    String tenant = createTenant(owner, "unchanged-tenant").path("id").asText();
+    var credentials = select(owner, tenant);
+    long before =
+        db.queryForObject(
+            "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id());
+    db.update(
+        "UPDATE tenant_members SET role_id=role_id,status=status,updated_at=now() WHERE user_id=CAST(? AS uuid)",
+        owner.id());
+    db.update("DELETE FROM role_permissions WHERE role_id=CAST(? AS uuid)", role(tenant, "OWNER"));
+    assertThat(
+            db.queryForObject(
+                "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id()))
+        .isEqualTo(before);
+    http.perform(authorized(get("/api/v1/auth/me"), credentials.accessToken()))
+        .andExpect(status().isOk());
+    http.perform(refreshRequest(credentials.refreshToken())).andExpect(status().isOk());
   }
 
   @Test

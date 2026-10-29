@@ -11,9 +11,21 @@ Gateway verifies user JWTs and resolves current tenant permissions from dedicate
 Backends accept signed gateway context and authorize tenant resources locally. IAM maintains
 transactional versioned snapshots and retries cache delivery through authorization_outbox.
 
+JWT verification at the gateway does not make plain identity headers trustworthy on
+direct backend requests. The current contract requires backends to verify signed
+`X-Gateway-Context`; standalone user, tenant and role headers are not authorization
+credentials. Removing context signatures requires an enforced gateway-only backend
+boundary through network policy/firewall or mTLS caller authorization, while retaining
+header sanitization and local tenant/resource permission checks. See the
+[header trust boundary](core-architecture/gateway-authorization.md#ranh-giới-tin-cậy-khi-truyền-context-qua-header)
+for the alternatives and their deployment requirements.
+
 Access and refresh tokens are HttpOnly cookies, never JSON credentials. Refresh has no body,
 checks current tokenVersion and grants, and preserves the absolute refresh deadline. Logout
 clears cookies; password/account/system-role changes revoke old credentials through versioning.
+V10 extends versioning to membership role/status changes and membership removal, including
+soft deletion. These changes revoke the user's old access and refresh tokens across all
+tenants; editing a role's permission list alone does not require login again.
 Rotation/reuse tracking and owner-issued temporary-password flows remain unimplemented.
 
 The scanning tools below are source-project guidance; verify scripts exist in this checkout

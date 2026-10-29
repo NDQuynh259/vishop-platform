@@ -28,7 +28,8 @@ class IamAccessTokenClaimsTest {
     var access = IamAccessTokenClaims.verify(tokens.provider(), jwt);
     assertThat(access.systemRole()).isEqualTo(SystemRole.USER.name());
     assertThat(access.tenantRole()).isEqualTo("OWNER");
-    assertThat(access.permissions()).containsExactly("order.view");
+    assertThat(access.roleId()).isNotNull();
+    assertThat(access.tokenVersion()).isEqualTo(1);
     assertThat(tokens.parseClaims(jwt))
         .containsEntry("tenantRole", "OWNER")
         .doesNotContainKey("roles");
@@ -58,6 +59,25 @@ class IamAccessTokenClaimsTest {
         tokens.generateIamAccessToken(user, tenant, SystemRole.USER.name(), null, Set.of()));
     assertRejected(
         tokens.generateIamAccessToken(user, null, SystemRole.USER.name(), "OWNER", Set.of()));
+  }
+
+  @Test
+  void acceptsPermissionFreeClaimsAndRejectsMissingRoleIdentityOrVersion() {
+    var claims =
+        new HashMap<String, Object>(
+            tokens.parseClaims(
+                tokens.generateIamAccessToken(
+                    user, tenant, "USER", "OWNER", Set.of("order.view"))));
+    claims.remove("permissions");
+    assertThat(IamAccessTokenClaims.verify(tokens.provider(), sign(claims)).tenantId())
+        .isEqualTo(tenant);
+    for (String field : List.of("roleId", "tokenVersion")) {
+      var missing = new HashMap<String, Object>(claims);
+      missing.remove(field);
+      assertRejected(sign(missing));
+    }
+    claims.put("roleId", "invalid-uuid");
+    assertRejected(sign(claims));
   }
 
   private String sign(java.util.Map<String, Object> claims) {

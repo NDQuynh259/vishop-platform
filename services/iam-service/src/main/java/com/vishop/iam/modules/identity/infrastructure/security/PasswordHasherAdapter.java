@@ -12,10 +12,12 @@ public class PasswordHasherAdapter implements PasswordHasherPort {
     this.passwords = passwords;
   }
 
+  @Override
   public String encode(String raw) {
     return passwords.encode(raw);
   }
 
+  @Override
   public boolean matches(String raw, String encoded) {
     return passwords.matches(raw, encoded);
   }

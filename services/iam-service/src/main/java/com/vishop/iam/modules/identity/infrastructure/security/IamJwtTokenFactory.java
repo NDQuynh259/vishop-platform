@@ -22,27 +22,39 @@ public class IamJwtTokenFactory {
     this.accessExpirationMs = accessExpirationMs;
   }
 
-  public String access(AuthenticatedUser actor, long tokenVersion) {
+  public String access(AuthenticatedUser actor, UUID roleId, long tokenVersion) {
+    var identity =
+        new IamAccessTokenClaims(
+            actor.userId(),
+            actor.tenantId(),
+            roleId,
+            actor.systemRole(),
+            actor.tenantRole(),
+            tokenVersion);
     Instant issuedAt = Instant.now();
     var claims =
         base(
-            actor.userId(),
-            actor.tenantId(),
-            "access",
-            "vishop-api",
+            identity.userId(),
+            identity.tenantId(),
+            IamTokenClaims.Purpose.ACCESS,
             issuedAt,
             issuedAt.plusMillis(accessExpirationMs),
             tokenVersion);
-    claims.put("systemRole", actor.systemRole());
-    claims.put("tenantRole", actor.tenantRole());
-    claims.put("permissions", actor.permissions());
+    claims.put("systemRole", identity.systemRole());
+    claims.put("tenantRole", identity.tenantRole());
+    claims.put("roleId", identity.roleId() == null ? null : identity.roleId().toString());
     return jwt.encode(claims);
   }
 
   public String refresh(UUID userId, UUID tenantId, Instant expiresAt, long tokenVersion) {
     return jwt.encode(
         base(
-            userId, tenantId, "refresh", "vishop-refresh", Instant.now(), expiresAt, tokenVersion));
+            userId,
+            tenantId,
+            IamTokenClaims.Purpose.REFRESH,
+            Instant.now(),
+            expiresAt,
+            tokenVersion));
   }
 
   public long accessExpirationMs() {
@@ -52,19 +64,18 @@ public class IamJwtTokenFactory {
   private Map<String, Object> base(
       UUID userId,
       UUID tenantId,
-      String use,
-      String audience,
+      IamTokenClaims.Purpose purpose,
       Instant issuedAt,
       Instant expiry,
       long version) {
     var claims = new HashMap<String, Object>();
     claims.put("sub", userId.toString());
-    claims.put("iss", "iam-service");
-    claims.put("aud", List.of(audience));
+    claims.put("iss", IamTokenClaims.ISSUER);
+    claims.put("aud", List.of(purpose.audience));
     claims.put("jti", UUID.randomUUID().toString());
     claims.put("iat", Date.from(issuedAt));
     claims.put("exp", Date.from(expiry));
-    claims.put("token_use", use);
+    claims.put("token_use", purpose.use);
     claims.put("tokenVersion", version);
     claims.put("tenantId", tenantId == null ? null : tenantId.toString());
     return claims;

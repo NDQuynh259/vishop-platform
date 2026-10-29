@@ -16,7 +16,7 @@ public interface IdentityApi {
     Optional<TenantGrant> activeGrant(UUID userId, UUID tenantId);
   }
 
-  record TenantGrant(String roleKey, Set<String> permissions) {
+  record TenantGrant(UUID roleId, String roleKey, Set<String> permissions) {
     public TenantGrant {
       permissions = Set.copyOf(permissions);
     }

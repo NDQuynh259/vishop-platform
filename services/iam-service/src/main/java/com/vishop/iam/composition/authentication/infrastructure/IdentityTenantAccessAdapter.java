@@ -24,6 +24,6 @@ public class IdentityTenantAccessAdapter implements TenantAccessPort {
   public Optional<TenantGrant> activeGrant(UUID userId, UUID tenantId) {
     return tenants
         .activeGrant(userId, tenantId)
-        .map(grant -> new TenantGrant(grant.roleKey(), grant.permissions()));
+        .map(grant -> new TenantGrant(grant.roleId(), grant.roleKey(), grant.permissions()));
   }
 }

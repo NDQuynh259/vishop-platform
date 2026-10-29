@@ -11,7 +11,7 @@ public interface TokenPort {
 
   RefreshIdentity verifyRefresh(String credential);
 
-  String issue(AuthenticatedUser actor);
+  String issue(AuthenticatedUser actor, UUID roleId);
 
   String issueRefresh(UUID userId, UUID tenantId, Instant expiresAt);
 

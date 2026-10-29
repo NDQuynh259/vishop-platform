@@ -66,9 +66,10 @@ public class TokenService {
   }
 
   private AuthResponse response(User user, UUID selected, Instant refreshExpiry) {
-    var actor = principal(user, selected);
+    var identity = principal(user, selected);
+    var actor = identity.actor();
     return new AuthResponse(
-        tokens.issue(actor),
+        tokens.issue(actor, identity.roleId()),
         tokens.issueRefresh(user.id(), selected, refreshExpiry),
         UserViewMapper.from(user),
         selected,
@@ -77,7 +78,9 @@ public class TokenService {
         refreshExpiry.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
   }
 
-  private AuthenticatedUser principal(User user, UUID tenant) {
+  private record TokenIdentity(AuthenticatedUser actor, UUID roleId) {}
+
+  private TokenIdentity principal(User user, UUID tenant) {
     if (tenant != null) {
       var grant =
           access
@@ -86,9 +89,12 @@ public class TokenService {
                   () ->
                       new io.github.coreplatform.common.domain.exception.ForbiddenException(
                           "Active tenant membership is required"));
-      return new AuthenticatedUser(
-          user.id(), tenant, user.systemRole().name(), grant.roleKey(), grant.permissions());
+      return new TokenIdentity(
+          new AuthenticatedUser(
+              user.id(), tenant, user.systemRole().name(), grant.roleKey(), grant.permissions()),
+          grant.roleId());
     }
-    return new AuthenticatedUser(user.id(), null, user.systemRole().name(), null, Set.of());
+    return new TokenIdentity(
+        new AuthenticatedUser(user.id(), null, user.systemRole().name(), null, Set.of()), null);
   }
 }

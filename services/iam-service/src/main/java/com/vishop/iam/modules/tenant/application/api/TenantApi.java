@@ -17,7 +17,7 @@ public interface TenantApi {
     ARCHIVED
   }
 
-  record Grant(String roleKey, Set<String> permissions) {
+  record Grant(UUID roleId, String roleKey, Set<String> permissions) {
     public Grant {
       permissions = Set.copyOf(permissions);
     }

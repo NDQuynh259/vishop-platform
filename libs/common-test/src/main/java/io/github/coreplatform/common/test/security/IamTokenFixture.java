@@ -34,6 +34,13 @@ public final class IamTokenFixture {
         base(user, tenant, "access", "vishop-api", Instant.now().plusMillis(accessExpirationMs));
     claims.put("systemRole", systemRole);
     claims.put("tenantRole", tenantRole);
+    claims.put(
+        "roleId",
+        tenant == null
+            ? null
+            : UUID.nameUUIDFromBytes(
+                    (tenant + ":" + tenantRole).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .toString());
     claims.put("permissions", permissions);
     return provider.encode(claims);
   }
@@ -50,7 +57,7 @@ public final class IamTokenFixture {
         || !"access".equals(claims.get("token_use")))
       throw new IllegalArgumentException("Invalid test credential");
     String tenant = claims.get("tenantId", String.class);
-    var permissions = (List<?>) claims.get("permissions");
+    var permissions = claims.get("permissions") instanceof List<?> values ? values : List.of();
     return new GatewayPrincipal(
         UUID.fromString(claims.getSubject()),
         tenant == null ? null : UUID.fromString(tenant),

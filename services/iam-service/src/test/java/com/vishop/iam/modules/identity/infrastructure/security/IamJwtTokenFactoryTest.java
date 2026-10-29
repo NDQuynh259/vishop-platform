@@ -17,11 +17,36 @@ class IamJwtTokenFactoryTest {
   @Test
   void iamControlsAccessLifetimeAndCredentialVersion() {
     var actor = new AuthenticatedUser(UUID.randomUUID(), null, "USER", null, Set.of());
-    var claims = jwt.verify(factory.access(actor, 7));
+    var claims = jwt.verify(factory.access(actor, null, 7));
     assertThat(claims.getExpiration().getTime() - claims.getIssuedAt().getTime()).isEqualTo(123000);
     assertThat(claims).containsEntry("token_use", "access").containsEntry("tokenVersion", 7);
     assertThat(claims.getIssuer()).isEqualTo("iam-service");
     assertThat(claims.getAudience()).containsExactly("vishop-api");
+    assertThat(claims).doesNotContainKey("permissions");
+  }
+
+  @Test
+  void accessIncludesTenantRoleIdentityWithoutEmbeddingPermissions() {
+    UUID user = UUID.randomUUID(), tenant = UUID.randomUUID(), role = UUID.randomUUID();
+    var permissions =
+        java.util.stream.IntStream.range(0, 1000)
+            .mapToObj(i -> "resource." + i + ".view")
+            .collect(java.util.stream.Collectors.toSet());
+    var actor = new AuthenticatedUser(user, tenant, "USER", "OWNER", permissions);
+    var encoded = factory.access(actor, role, 3);
+    var claims = jwt.verify(encoded);
+    assertThat(encoded.length()).isLessThan(1024);
+    assertThat(claims)
+        .containsEntry("sub", user.toString())
+        .containsEntry("tenantId", tenant.toString())
+        .containsEntry("roleId", role.toString())
+        .containsEntry("tenantRole", "OWNER")
+        .containsEntry("systemRole", "USER")
+        .containsEntry("tokenVersion", 3)
+        .doesNotContainKey("permissions");
+    var decoded = IamAccessTokenClaims.verify(jwt, encoded);
+    assertThat(decoded.roleId()).isEqualTo(role);
+    assertThat(decoded.userId()).isEqualTo(user);
   }
 
   @Test

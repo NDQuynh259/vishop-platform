@@ -105,7 +105,7 @@ class TenantApplicationApi implements TenantApi {
             member -> {
               var role = roles.role(tenantId, member.roleId());
               String key = role.builtinKey() != null ? role.builtinKey() : "CUSTOM:" + role.id();
-              return new Grant(key, member.permissions());
+              return new Grant(role.id(), key, member.permissions());
             });
   }
 
