@@ -72,7 +72,9 @@ public class CheckoutService {
             key,
             account.revision(),
             0,
-            PurchaseOrder.State.AWAITING_PAYMENT,
+            com.vishop.subscription.modules.subscription.domain.valueobject.OrderStatus.OPEN,
+            com.vishop.subscription.modules.subscription.domain.valueobject.FulfillmentStatus
+                .PENDING,
             now,
             now.plus(lifetime),
             null,

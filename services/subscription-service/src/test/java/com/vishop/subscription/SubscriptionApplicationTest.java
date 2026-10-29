@@ -103,7 +103,7 @@ class SubscriptionApplicationTest {
             outbox));
     db = new JpaDatabaseFixture(em, transactions);
     db.execute(
-        "TRUNCATE billing_prices,billing_accounts,billing_orders,subscription_terms,sepay_inbox,bank_payments,outbox_events CASCADE");
+        "TRUNCATE subscription_prices,subscriptions,subscription_orders,subscription_terms,sepay_webhook_inbox,payment_transactions,outbox_events CASCADE");
   }
 
   String token(UUID tenant, Set<String> permissions) {
@@ -243,7 +243,7 @@ class SubscriptionApplicationTest {
 
   @Test
   void explicitMigrationsAndStatelessTenantPermissions() throws Exception {
-    assertThat(count("billing_prices")).isZero();
+    assertThat(count("subscription_prices")).isZero();
     http.perform(get("/api/v1/billing/subscription")).andExpect(status().isUnauthorized());
     UUID tenant = UUID.randomUUID();
     String allowed = owner(tenant);
@@ -293,7 +293,7 @@ class SubscriptionApplicationTest {
     String payload =
         raw(1, first.path("order").path("paymentCode").asText(), 100000, "0012345678", "REF1");
     webhook(payload);
-    assertThat(count("sepay_inbox")).isEqualTo(1);
+    assertThat(count("sepay_webhook_inbox")).isEqualTo(1);
     assertThat(count("subscription_terms")).isZero();
     commands.dispatch(new ProcessBankTransferCommand(1));
     webhook(payload);
@@ -306,12 +306,30 @@ class SubscriptionApplicationTest {
     assertThat(count("subscription_terms")).isEqualTo(1);
     webhook(raw(2, first.path("order").path("paymentCode").asText(), 100000, "0012345678", "REF1"));
     commands.dispatch(new ProcessBankTransferCommand(2));
-    assertThat(count("bank_payments")).isEqualTo(1);
+    assertThat(count("payment_transactions")).isEqualTo(1);
+    assertThat(count("payment_allocations")).isEqualTo(1);
+    assertThat(
+            db.queryForObject(
+                "SELECT allocated_vnd FROM payment_transactions WHERE provider_transaction_id=1",
+                Long.class))
+        .isEqualTo(100000L);
     webhook(raw(4, first.path("order").path("paymentCode").asText(), 200000, "0012345678", "REF1"));
     commands.dispatch(new ProcessBankTransferCommand(4));
     http.perform(auth(get("/api/v1/cms/billing/webhooks/review"), admin()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("data[0].reason").value("CONFLICTING_BANK_REFERENCE"));
+    pay(5, first, 10000);
+    http.perform(
+            auth(get("/api/v1/billing/orders/" + first.path("order").path("id").asText()), actor))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("order.orderStatus").value("COMPLETED"))
+        .andExpect(jsonPath("order.paymentStatus").value("OVERPAID"))
+        .andExpect(jsonPath("order.fulfillmentStatus").value("APPLIED"));
+    assertThat(
+            db.queryForObject(
+                "SELECT allocated_vnd FROM payment_transactions WHERE provider_transaction_id=5",
+                Long.class))
+        .isZero();
     var second = checkout(actor, price, "renew");
     pay(3, second, 100000);
     http.perform(auth(get("/api/v1/billing/subscription"), actor))
@@ -339,15 +357,19 @@ class SubscriptionApplicationTest {
     pay(11, order, 70000);
     assertThat(count("subscription_terms")).isZero();
     assertThat(
-            db.queryForObject("SELECT review_reason FROM bank_payments WHERE id=11", String.class))
+            db.queryForObject(
+                "SELECT review_reason FROM payment_transactions WHERE provider_transaction_id=11",
+                String.class))
         .isEqualTo("OVERPAYMENT");
     var late = checkout(actor, price, "late");
     db.update(
-        "UPDATE billing_orders SET expires_at='2026-01-31 02:59:00Z' WHERE id=CAST(? AS uuid)",
+        "UPDATE subscription_orders SET created_at='2026-01-31 02:00:00Z',expires_at='2026-01-31 02:59:00Z' WHERE id=CAST(? AS uuid)",
         late.path("order").path("id").asText());
     pay(12, late, 100000);
     assertThat(
-            db.queryForObject("SELECT review_reason FROM bank_payments WHERE id=12", String.class))
+            db.queryForObject(
+                "SELECT review_reason FROM payment_transactions WHERE provider_transaction_id=12",
+                String.class))
         .isEqualTo("LATE_PAYMENT");
     webhook(raw(13, "VSUNKNOWN", 10000, "0012345678", "REF13"));
     commands.dispatch(new ProcessBankTransferCommand(13));
@@ -377,7 +399,7 @@ class SubscriptionApplicationTest {
                 .header("X-SePay-Signature", signature(old, payload))
                 .content(payload))
         .andExpect(status().isUnauthorized());
-    assertThat(count("sepay_inbox")).isZero();
+    assertThat(count("sepay_webhook_inbox")).isZero();
     webhook(payload);
     String changed = raw(20, "VSTEST", 20000, "0012345678", "REF20");
     http.perform(
@@ -387,7 +409,7 @@ class SubscriptionApplicationTest {
                 .header("X-SePay-Signature", signature(ts, changed))
                 .content(changed))
         .andExpect(status().isConflict());
-    assertThat(count("sepay_inbox")).isEqualTo(1);
+    assertThat(count("sepay_webhook_inbox")).isEqualTo(1);
   }
 
   @Test
@@ -418,7 +440,7 @@ class SubscriptionApplicationTest {
       pool.shutdownNow();
     }
     assertThat(count("subscription_terms")).isEqualTo(1);
-    assertThat(count("bank_payments")).isEqualTo(2);
+    assertThat(count("payment_transactions")).isEqualTo(2);
   }
 
   @Test
@@ -434,8 +456,9 @@ class SubscriptionApplicationTest {
     assertThatThrownBy(() -> commands.dispatch(new ProcessBankTransferCommand(40)))
         .isInstanceOf(RuntimeException.class);
     assertThat(count("subscription_terms")).isZero();
-    assertThat(count("bank_payments")).isZero();
-    assertThat(db.queryForObject("SELECT status FROM sepay_inbox WHERE id=40", String.class))
+    assertThat(count("payment_transactions")).isZero();
+    assertThat(
+            db.queryForObject("SELECT status FROM sepay_webhook_inbox WHERE id=40", String.class))
         .isEqualTo("PENDING");
     org.mockito.Mockito.reset(
         org.springframework.test.util.AopTestUtils.<SubscriptionOutbox>getUltimateTargetObject(
@@ -471,7 +494,9 @@ class SubscriptionApplicationTest {
     pay(51, cancelled, 120000);
     assertThat(count("subscription_terms")).isEqualTo(1);
     assertThat(
-            db.queryForObject("SELECT review_reason FROM bank_payments WHERE id=51", String.class))
+            db.queryForObject(
+                "SELECT review_reason FROM payment_transactions WHERE provider_transaction_id=51",
+                String.class))
         .isEqualTo("PAYMENT_FOR_CLOSED_ORDER");
   }
 }

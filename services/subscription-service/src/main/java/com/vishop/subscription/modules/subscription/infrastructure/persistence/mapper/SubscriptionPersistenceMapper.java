@@ -5,7 +5,7 @@ import com.vishop.subscription.modules.subscription.domain.entity.PurchaseOrder;
 import com.vishop.subscription.modules.subscription.domain.entity.Subscription;
 import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.PlanPriceJpaEntity;
 import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.PurchaseOrderJpaEntity;
-import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.SubscriptionAccountJpaEntity;
+import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.SubscriptionJpaEntity;
 
 public final class SubscriptionPersistenceMapper {
   private SubscriptionPersistenceMapper() {}
@@ -23,7 +23,7 @@ public final class SubscriptionPersistenceMapper {
         e.isActive());
   }
 
-  public static Subscription domain(SubscriptionAccountJpaEntity e) {
+  public static Subscription domain(SubscriptionJpaEntity e) {
     return new Subscription(
         e.getTenantId(),
         e.getPlanCode(),
@@ -53,7 +53,8 @@ public final class SubscriptionPersistenceMapper {
         e.getIdempotencyKey(),
         e.getExpectedRevision(),
         e.getReceivedVnd(),
-        e.getState(),
+        e.getOrderStatus(),
+        e.getFulfillmentStatus(),
         e.getCreatedAt(),
         e.getExpiresAt(),
         e.getTermStartsAt(),
@@ -73,7 +74,7 @@ public final class SubscriptionPersistenceMapper {
     e.setActive(d.active());
   }
 
-  public static void copy(Subscription d, SubscriptionAccountJpaEntity e) {
+  public static void copy(Subscription d, SubscriptionJpaEntity e) {
     e.setTenantId(d.tenantId());
     e.setPlanCode(d.planCode());
     e.setCycle(d.cycle());
@@ -99,7 +100,9 @@ public final class SubscriptionPersistenceMapper {
     e.setIdempotencyKey(d.idempotencyKey());
     e.setExpectedRevision(d.expectedRevision());
     e.setReceivedVnd(d.receivedVnd());
-    e.setState(d.state());
+    e.setOrderStatus(d.orderStatus());
+    e.setPaymentStatus(d.paymentStatus());
+    e.setFulfillmentStatus(d.fulfillmentStatus());
     e.setCreatedAt(d.createdAt());
     e.setExpiresAt(d.expiresAt());
     e.setTermStartsAt(d.termStartsAt());

@@ -22,7 +22,7 @@ public interface SpringDataOrderRepository extends JpaRepository<PurchaseOrderJp
       UUID tenant, UUID actor, String key);
 
   @Query(
-      "select o from PurchaseOrderJpaEntity o where o.tenantId=:tenant and o.state in (com.vishop.subscription.modules.subscription.domain.entity.PurchaseOrder.State.AWAITING_PAYMENT,com.vishop.subscription.modules.subscription.domain.entity.PurchaseOrder.State.PARTIALLY_PAID)")
+      "select o from PurchaseOrderJpaEntity o where o.tenantId=:tenant and o.orderStatus=com.vishop.subscription.modules.subscription.domain.valueobject.OrderStatus.OPEN and o.fulfillmentStatus=com.vishop.subscription.modules.subscription.domain.valueobject.FulfillmentStatus.PENDING")
   Optional<PurchaseOrderJpaEntity> open(@Param("tenant") UUID tenant);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -6,7 +6,7 @@ import java.util.UUID;
 import lombok.*;
 
 @Entity
-@Table(name = "billing_prices")
+@Table(name = "subscription_prices")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -26,4 +26,10 @@ public class PlanPriceJpaEntity {
   private long monthlyOrders;
   private int additionalMembers;
   private boolean active;
+
+  @Column(insertable = false, updatable = false)
+  private java.time.Instant createdAt;
+
+  @Column(nullable = false, length = 3)
+  private String currency = "VND";
 }

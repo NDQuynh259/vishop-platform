@@ -14,7 +14,7 @@ public interface SpringDataInboxRepository extends JpaRepository<SePayInboxJpaEn
   @Modifying
   @Query(
       value =
-          "INSERT INTO sepay_inbox(id,raw_payload,payload_hash,status,received_at) VALUES (:id,:raw,:hash,'PENDING',:now) ON CONFLICT DO NOTHING",
+          "INSERT INTO sepay_webhook_inbox(id,raw_payload,payload_hash,status,received_at) VALUES (:id,:raw,:hash,'PENDING',:now) ON CONFLICT DO NOTHING",
       nativeQuery = true)
   int receive(
       @Param("id") long id,

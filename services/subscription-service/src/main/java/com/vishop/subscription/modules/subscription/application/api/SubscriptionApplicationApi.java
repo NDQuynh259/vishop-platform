@@ -1,6 +1,5 @@
 package com.vishop.subscription.modules.subscription.application.api;
 
-import com.vishop.subscription.modules.subscription.domain.entity.PurchaseOrder;
 import com.vishop.subscription.modules.subscription.domain.port.SubscriptionRepository;
 import com.vishop.subscription.shared.application.port.BusinessEventPort;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
@@ -35,7 +34,7 @@ class SubscriptionApplicationApi implements SubscriptionApi {
     if (!tenantId.equals(order.tenantId())) throw new EntityNotFoundException("Order", orderId);
     boolean previouslyFulfilled = order.termEndsAt() != null;
     order = order.receive(amountVnd, occurredAt);
-    if (order.state() == PurchaseOrder.State.FULFILLED && !previouslyFulfilled) {
+    if (order.readyToFulfill() && !previouslyFulfilled) {
       if (account.revision() != order.expectedRevision())
         order = order.review("SUBSCRIPTION_CHANGED");
       else {
@@ -73,9 +72,6 @@ class SubscriptionApplicationApi implements SubscriptionApi {
     }
     data.save(order);
     return new PaymentOutcome(
-        order.id(),
-        order.tenantId(),
-        order.state() == PurchaseOrder.State.REQUIRES_REVIEW,
-        order.reviewReason());
+        order.id(), order.tenantId(), order.needsReview(), order.reviewReason());
   }
 }

@@ -9,11 +9,11 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class PaymentReadJpaAdapter implements PaymentReadPort {
-  private final SpringDataBankPaymentRepository payments;
+  private final SpringDataPaymentTransactionRepository payments;
   private final SpringDataInboxRepository inbox;
 
   public PaymentReadJpaAdapter(
-      SpringDataBankPaymentRepository payments, SpringDataInboxRepository inbox) {
+      SpringDataPaymentTransactionRepository payments, SpringDataInboxRepository inbox) {
     this.payments = payments;
     this.inbox = inbox;
   }
@@ -30,8 +30,10 @@ public class PaymentReadJpaAdapter implements PaymentReadPort {
             .map(
                 e ->
                     new com.vishop.subscription.modules.payment.application.dto.PaymentReviewView(
+                        e.getProviderTransactionId(),
                         e.getId(),
-                        e.getOrderId(),
+                        e.getAllocatedVnd(),
+                        e.getMatchedOrderId(),
                         e.getBank(),
                         e.getAmountVnd(),
                         e.getStatus(),

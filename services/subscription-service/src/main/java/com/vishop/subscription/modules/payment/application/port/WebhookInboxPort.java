@@ -17,7 +17,7 @@ public interface WebhookInboxPort {
 
   boolean duplicateReference(BankTransfer transfer);
 
-  void record(BankTransfer transfer, UUID orderId, String status, String reason);
+  void record(BankTransfer transfer, UUID orderId, UUID tenantId, String status, String reason);
 
   List<Long> pending(int limit);
 }

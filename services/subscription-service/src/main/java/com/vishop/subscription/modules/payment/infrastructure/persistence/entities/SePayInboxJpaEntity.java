@@ -5,7 +5,7 @@ import java.time.Instant;
 import lombok.*;
 
 @Entity
-@Table(name = "sepay_inbox")
+@Table(name = "sepay_webhook_inbox")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,4 +22,5 @@ public class SePayInboxJpaEntity {
   private String reviewReason;
   private Instant receivedAt;
   private Instant processedAt;
+  private java.util.UUID paymentTransactionId;
 }

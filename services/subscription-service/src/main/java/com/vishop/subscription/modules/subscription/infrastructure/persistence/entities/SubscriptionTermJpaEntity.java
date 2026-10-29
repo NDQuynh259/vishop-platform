@@ -20,4 +20,7 @@ public class SubscriptionTermJpaEntity {
 
   private Instant startsAt;
   private Instant endsAt;
+
+  @Column(insertable = false, updatable = false)
+  private java.time.Instant createdAt;
 }

@@ -7,11 +7,11 @@ import java.util.UUID;
 import lombok.*;
 
 @Entity
-@Table(name = "billing_accounts")
+@Table(name = "subscriptions")
 @Getter
 @Setter
 @NoArgsConstructor
-public class SubscriptionAccountJpaEntity {
+public class SubscriptionJpaEntity {
   @Id
   @Column(nullable = false)
   private UUID tenantId;
@@ -25,4 +25,10 @@ public class SubscriptionAccountJpaEntity {
   private int purchasedCycles;
   private Instant endsAt;
   private long revision;
+
+  @Column(insertable = false, updatable = false)
+  private java.time.Instant createdAt;
+
+  @Column(insertable = false, updatable = false)
+  private java.time.Instant updatedAt;
 }

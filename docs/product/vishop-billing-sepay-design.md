@@ -6,6 +6,11 @@ mua/gia hạn QR, webhook inbox, payment ledger, subscription terms và outbox.
 Các phần quote nâng/hạ gói, add-on/quota enforcement, hóa đơn, hoàn tiền và đối soát
 API ngân hàng trong tài liệu này vẫn là thiết kế lộ trình.
 
+Schema runtime hiện là [Database V2](../../services/subscription-service/docs/database-design.md):
+9 bảng với catalog plan/price, subscription/order/term, canonical payment, allocation
+ledger, webhook inbox và outbox. Tên bảng trong các phần lộ trình bên dưới là mô hình
+dự kiến cho nghiệp vụ mở rộng, không thay thế schema runtime V2.
+
 **Đã chốt:** khách chuyển khoản bằng QR và chủ động mua/gia hạn; không lưu thẻ, không tự trừ tiền.
 **Đơn vị mua gói:** tenant. User là người thao tác/thanh toán, không phải chủ thể sở hữu gói.
 Đây là tiền dịch vụ ViShop thu từ tenant; không phải tiền mua hàng của khách tại shop hoặc đối soát sàn M12.

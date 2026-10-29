@@ -1,10 +1,12 @@
 package com.vishop.subscription;
 
-import com.vishop.subscription.modules.payment.infrastructure.persistence.entities.BankPaymentJpaEntity;
+import com.vishop.subscription.modules.payment.infrastructure.persistence.entities.PaymentAllocationJpaEntity;
+import com.vishop.subscription.modules.payment.infrastructure.persistence.entities.PaymentTransactionJpaEntity;
 import com.vishop.subscription.modules.payment.infrastructure.persistence.entities.SePayInboxJpaEntity;
 import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.PlanPriceJpaEntity;
 import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.PurchaseOrderJpaEntity;
-import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.SubscriptionAccountJpaEntity;
+import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.SubscriptionJpaEntity;
+import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.SubscriptionPlanJpaEntity;
 import com.vishop.subscription.modules.subscription.infrastructure.persistence.entities.SubscriptionTermJpaEntity;
 import io.github.coreplatform.common.persistence.OutboxEventEntity;
 import io.github.coreplatform.common.persistence.OutboxEventRepository;
@@ -33,11 +35,13 @@ public class SubscriptionApplication {
   PersistenceManagedTypes subscriptionManagedTypes() {
     return PersistenceManagedTypes.of(
         PlanPriceJpaEntity.class.getName(),
-        SubscriptionAccountJpaEntity.class.getName(),
+        SubscriptionPlanJpaEntity.class.getName(),
+        PaymentAllocationJpaEntity.class.getName(),
+        SubscriptionJpaEntity.class.getName(),
         PurchaseOrderJpaEntity.class.getName(),
         SubscriptionTermJpaEntity.class.getName(),
         SePayInboxJpaEntity.class.getName(),
-        BankPaymentJpaEntity.class.getName(),
+        PaymentTransactionJpaEntity.class.getName(),
         OutboxEventEntity.class.getName());
   }
 

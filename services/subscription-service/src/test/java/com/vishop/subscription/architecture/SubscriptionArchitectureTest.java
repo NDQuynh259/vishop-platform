@@ -102,17 +102,21 @@ class SubscriptionArchitectureTest {
   void persistenceTablesBelongToTheirBusinessModule() {
     Map<String, String> owners =
         Map.of(
-            "billing_prices",
+            "subscription_plans",
             "subscription",
-            "billing_accounts",
+            "payment_allocations",
+            "payment",
+            "subscription_prices",
             "subscription",
-            "billing_orders",
+            "subscriptions",
+            "subscription",
+            "subscription_orders",
             "subscription",
             "subscription_terms",
             "subscription",
-            "sepay_inbox",
+            "sepay_webhook_inbox",
             "payment",
-            "bank_payments",
+            "payment_transactions",
             "payment");
     Set<String> seen = new HashSet<>();
     for (var type : CLASSES) {

@@ -48,7 +48,7 @@ public class ProcessBankTransferCommandHandler
           !"in".equals(transfer.transferType())
               ? "OUTGOING_TRANSFER"
               : !parser.destinationMatches(transfer) ? "WRONG_DESTINATION" : "UNKNOWN_PAYMENT_CODE";
-      inbox.record(transfer, null, "REVIEW", reason);
+      inbox.record(transfer, null, null, "REVIEW", reason);
       inbox.complete(transfer.id());
       events.append(
           "BillingPaymentNeedsReview",
@@ -63,7 +63,7 @@ public class ProcessBankTransferCommandHandler
             ref.id(), ref.tenantId(), transfer.amountVnd(), transfer.occurredAt());
     String state = outcome.review() ? "REVIEW" : "ALLOCATED";
     // A unique bank reference is the final race guard; any conflict rolls back subscription too.
-    inbox.record(transfer, outcome.orderId(), state, outcome.reviewReason());
+    inbox.record(transfer, outcome.orderId(), outcome.tenantId(), state, outcome.reviewReason());
     inbox.complete(transfer.id());
     events.append(
         "BillingPaymentReceived",

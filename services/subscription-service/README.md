@@ -45,25 +45,32 @@ ghi tiền, cấp kỳ, cập nhật inbox và outbox rollback cùng nhau. QR đ
 Service không phụ thuộc source, repository hay database của IAM.
 `tenantId` và `actorId` là external reference.
 
-API `/api/v1/billing/**`, quyền `billing.*`, DB `vishop_billing`, bảng và topic
-`vishop.billing.events` tiếp tục là các hợp đồng nghiệp vụ đang dùng. Producer mới
-là `subscription-service`. Flyway V1 giữ nguyên nội dung/checksum; không cần đổi tên
-DB hoặc migrate dữ liệu chỉ vì đổi tên runtime và chia module.
+API `/api/v1/billing/**`, quyền `billing.*`, DB `vishop_billing` và topic
+`vishop.billing.events` tiếp tục là các hợp đồng nghiệp vụ đang dùng. Producer là
+`subscription-service`. Schema mới dùng Flyway V2; V1 giữ nguyên checksum.
+V2 rename/backfill các bảng cũ, không đổi tên database.
 
 | Bảng | Mục đích |
 | --- | --- |
-| `billing_prices` | Phiên bản giá và hạn mức, số nguyên VND |
-| `billing_accounts` | Gói, calendar anchor, paid horizon và revision theo tenant |
-| `billing_orders` | Snapshot giá, mã thanh toán, idempotency và trạng thái đơn |
+| `subscription_plans` | Catalog FREE/BASIC/PRO/BUSINESS |
+| `subscription_prices` | Phiên bản giá và hạn mức, snapshot bất biến, số nguyên VND |
+| `subscriptions` | Gói, calendar anchor, paid horizon và revision theo tenant |
+| `subscription_orders` | Snapshot mua, mã thanh toán, idempotency; trạng thái đơn/tiền/cấp kỳ riêng |
 | `subscription_terms` | Kỳ được cấp, unique theo order để chống cộng hạn hai lần |
-| `sepay_inbox` | Body gốc của webhook đã xác thực; worker phục hồi sau restart |
-| `bank_payments` | Sự thật tiền nhận và các trường hợp cần kiểm tra |
+| `sepay_webhook_inbox` | Body gốc và liên kết giao dịch canonical; worker phục hồi sau restart |
+| `payment_transactions` | Giao dịch canonical UUID riêng, giữ ID SePay và sự thật tiền nhận |
+| `payment_allocations` | Tiền thực sự phân bổ cho đơn; DB chống phân bổ vượt tiền nhận |
 | `outbox_events` | Event ghi cùng transaction với thay đổi nghiệp vụ |
 
 Billing hiện chỉ publish Kafka, không cần `consumed_messages`. Inbox chống trùng
 webhook theo SePay transaction ID; bank reference không rỗng được chống trùng thêm
 theo ngân hàng/tài khoản. Cùng ID nhưng khác số tiền, account, code hoặc dữ kiện
 giao dịch trả 409. Thay đổi format JSON không làm xử lý lại giao dịch.
+
+Order trả thêm `orderStatus`, `paymentStatus`, `fulfillmentStatus`; trường `status`
+cũ vẫn được suy ra để tương thích. Order đã cấp kỳ nhận thêm tiền vẫn giữ APPLIED,
+chỉ đánh dấu review khoản phát sinh. `payment_transactions.allocated_vnd` được DB
+duy trì từ allocation ledger; JPA không ghi đè counter này.
 
 ## Quyền truy cập
 
@@ -159,6 +166,10 @@ Dev/prod Compose, image build scripts, Prometheus và gateway đã có subscript
 Chạy migration IAM và Billing trên đúng môi trường trước khi khởi động service.
 Production chỉ expose gateway; subscription-service chạy trong network nội bộ.
 
+Triển khai V2 cần dừng runtime/writer V1 trước khi migrate rồi chạy JAR mới vì có
+rename bảng. Migration giữ dữ liệu hiện có và rollback nếu vi phạm ràng buộc mới;
+xem [hướng dẫn nâng schema](docs/database-design.md#8-nâng-từ-v1-và-triển-khai).
+
 Các biến `BILLING_DB_URL/USER/PASSWORD` cũ vẫn được đọc làm fallback cho app/CLI.
 Canonical name mới là `SUBSCRIPTION_DB_*`, `SUBSCRIPTION_PORT`,
 `SUBSCRIPTION_DEBUG_PORT` và `SUBSCRIPTION_SERVICE_URL`. Cấu hình riêng của service
@@ -206,6 +217,8 @@ Nguồn đối chiếu: [HMAC](https://developer.sepay.vn/vi/sepay-webhooks/xac-
 Nâng/hạ gói khi còn hạn cần quote riêng; hiện trả 409 nếu đổi plan/cycle đang active.
 Chưa triển khai prorate, add-on/quota enforcement ở service nghiệp vụ, hóa đơn,
 hoàn tiền, tự đối soát qua API ngân hàng hoặc thao tác CMS phân bổ lại tiền review.
+V2 đã có allocation ledger và tự ghi phân bổ hợp lệ; chưa có API chia/điều chuyển
+phân bổ thủ công giữa nhiều đơn.
 Review hiện cung cấp dữ liệu tra cứu; cần xử lý vận hành có kiểm soát. Webhook bị mất
 cần replay từ SePay; tiền review không tự cấp gói. Không đưa luồng tiền thật vào vận
 hành trước khi cấu hình, kiểm thử tài khoản SePay thực tế và quy trình đối soát.
