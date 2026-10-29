@@ -1,7 +1,8 @@
 package com.vishop.iam.composition.members.infrastructure.persistence;
 
-import com.vishop.iam.composition.members.application.port.TenantMemberReadPort;
-import com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto;
+import com.vishop.iam.modules.tenant.application.api.TenantApi.MemberReadPort;
+import com.vishop.iam.modules.tenant.application.dto.MemberView;
+import com.vishop.iam.modules.tenant.application.dto.TenantMemberResponseDto;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Tuple;
 import java.util.Arrays;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Repository;
 
 /** JPA native read projection within IAM; writes remain owned by each business module. */
 @Repository
-public class JpaTenantMemberReadAdapter implements TenantMemberReadPort {
+public class JpaTenantMemberReadAdapter implements MemberReadPort {
   private final EntityManager entityManager;
 
   public JpaTenantMemberReadAdapter(EntityManager entityManager) {
@@ -57,5 +58,52 @@ public class JpaTenantMemberReadAdapter implements TenantMemberReadPort {
             row.get("role", String.class),
             row.get("status", String.class),
             Set.copyOf(Arrays.asList(row.get("permissions", String[].class)))));
+  }
+
+  @Override
+  public List<MemberView> members(UUID tenant) {
+    List<?> rows =
+        entityManager
+            .createNativeQuery(
+                """
+    SELECT m.id,m.user_id,u.email,u.full_name,m.role_id,coalesce(r.builtin_key,r.name) AS role,m.status
+    FROM tenant_members m JOIN users u ON u.id=m.user_id
+    JOIN roles r ON r.id=m.role_id AND r.tenant_id=m.tenant_id
+    WHERE m.tenant_id=:tenant ORDER BY u.email
+    """,
+                Tuple.class)
+            .setParameter("tenant", tenant)
+            .getResultList();
+    return rows.stream()
+        .map(
+            value -> {
+              var r = (Tuple) value;
+              return new MemberView(
+                  r.get("id", UUID.class),
+                  r.get("user_id", UUID.class),
+                  r.get("email", String.class),
+                  r.get("full_name", String.class),
+                  r.get("role_id", UUID.class),
+                  r.get("role", String.class),
+                  r.get("status", String.class));
+            })
+        .toList();
+  }
+
+  @Override
+  public int activeOwners(UUID tenantId) {
+    return ((Number)
+            entityManager
+                .createNativeQuery(
+                    """
+        SELECT count(*) FROM tenant_members m
+        JOIN roles r ON r.id=m.role_id AND r.tenant_id=m.tenant_id
+        JOIN users u ON u.id=m.user_id
+        WHERE m.tenant_id=:tenant AND m.status='ACTIVE'
+          AND r.builtin_key='OWNER' AND u.status='ACTIVE'
+        """)
+                .setParameter("tenant", tenantId)
+                .getSingleResult())
+        .intValue();
   }
 }

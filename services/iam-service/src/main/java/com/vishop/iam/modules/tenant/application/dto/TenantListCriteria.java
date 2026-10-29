@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.tenant.application.dto;
 
-import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
+import com.vishop.iam.modules.tenant.application.api.TenantApi.Status;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import java.time.Instant;
 import java.util.Locale;
@@ -11,7 +11,7 @@ public record TenantListCriteria(
     UUID id,
     String code,
     String name,
-    TenantStatus status,
+    Status status,
     Instant createdFrom,
     Instant createdTo,
     String sortBy,
@@ -42,7 +42,7 @@ public record TenantListCriteria(
       UUID id,
       String code,
       String name,
-      TenantStatus status,
+      Status status,
       Instant createdFrom,
       Instant createdTo,
       String sort) {

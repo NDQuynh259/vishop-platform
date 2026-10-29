@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.tenant.infrastructure.persistence.repositories;
 
+import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.entities.TenantJpaEntity;
 import jakarta.persistence.LockModeType;
 import java.util.List;
@@ -21,4 +22,15 @@ public interface SpringDataTenantRepository
       value = "SELECT * FROM tenants ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset",
       nativeQuery = true)
   List<TenantJpaEntity> findWindow(@Param("limit") int limit, @Param("offset") int offset);
+
+  @Query(
+      """
+      select t.id from TenantJpaEntity t
+      where t.status=:status and exists (
+          select m.id from MembershipJpaEntity m
+          where m.tenantId=t.id and m.userId=:userId and m.status='ACTIVE')
+      order by t.name,t.id
+      """)
+  List<UUID> findActiveTenantIds(
+      @Param("userId") UUID userId, @Param("status") TenantStatus status);
 }

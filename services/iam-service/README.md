@@ -13,7 +13,7 @@ history to reference their original schemas during data migration.
   A user can belong to several tenants with different roles. System administrators
   do not automatically have tenant membership; tenant owners do not get CMS access.
 * Creating a tenant creates its four default roles and OWNER membership in one database
-  transaction. The OWNER role has all 34 current `CommonPermissions` keys.
+  transaction. The OWNER role has all 36 current `CommonPermissions` keys.
 * Composite foreign keys prevent cross-tenant role assignment. Repository SQL includes
   explicit tenant predicates. The schema does not enable RLS.
 * Tenant mutation transactions lock the tenant row. Concurrent changes cannot demote or
@@ -23,112 +23,80 @@ history to reference their original schemas during data migration.
 
 ## Code structure
 
-The service follows the [domain module architecture](../../docs/core-architecture/domain-module-anatomy.md):
-
 ```text
 com/vishop/iam/
-├── IamApplication.java
-├── composition/
-│   ├── onboarding/ # Cross-module tenant creation workflow and its REST entry point
-│   └── members/    # Cross-module user/tenant/role/permission read projection
-├── modules/
-│   ├── identity/    # Global users, authentication, JWT tokens, system roles, user CMS
-│   ├── tenant/      # Tenant information/lifecycle, tenant CMS
-│   └── access/      # Memberships, tenant roles/permissions, invitations
-├── infra/          # Shared IAM security, JPA outbox relay and migration CLI
-└── shared/         # Framework-independent actor context, event interface and ports
+|-- modules/
+|   |-- identity/  # Users, passwords/JWTs, system roles and user CMS
+|   `-- tenant/    # Tenant lifecycle, memberships, roles/permissions and invitations
+|       |-- domain/          # Tenant, Membership, Role, Invitation, policies and ports
+|       |-- application/
+|       |   |-- api/         # TenantApi and its package-private implementation
+|       |   |-- command/    # tenant/, member/, role/, invitation/
+|       |   |-- query/      # tenant/, member/, role/
+|       |   `-- dto/port/service/mapper/
+|       |-- infrastructure/ # Owning JPA entities/repositories and integration adapters
+|       `-- presentation/   # Tenant, CMS, member, role and invitation endpoints
+|-- composition/
+|   |-- authentication/ # Implements identity's outbound port using TenantApi
+|   `-- members/        # User + tenant member/detail/active-owner read projections
+|-- infra/              # HTTP security/CORS, OpenAPI, relay and migration CLI
+`-- shared/             # Framework-independent actor/event contracts and ports
 ```
 
-Business features live under `modules/`. Each feature has its own `domain`,
-`application`, `infrastructure` and
-`presentation/rest` packages. `application/command` and `application/query` contain the
-use cases and transaction boundaries; `application/dto` contains use-case results and
-shared application contracts. HTTP request bodies and their validation annotations live
-in `presentation/rest/dto`. Domain packages use singular names: `entity`, `valueobject`,
-`port`, `service` and `event`.
-Domain models remain independent of frameworks and are mapped to HTTP response DTOs.
+Tenant and access are one module: there is no separate `modules/access` or `AccessApi`.
+Tenant owns `tenants`, `tenant_members`, `roles`, `role_permissions` and
+`tenant_invitations`. Identity owns `users`, password/JWT adapters and system roles.
+Tenant-scoped permissions do not grant `PLATFORM_ADMIN`; system administrators do not
+implicitly gain tenant membership.
 
-Feature interactions use interfaces in `modules/<feature>/application/api` and public
-immutable DTOs in that module's `application/dto`. Public interfaces and DTOs have no
-dependency on module internals or frameworks. Implementations also live in
-`application/api` as package-private Spring components, so other packages cannot import
-or inject their concrete classes. Spring injects the public API interfaces instead. DTO mapping lives in
-`application/mapper`. These dependencies can be
-bidirectional at the feature level; API methods must not introduce circular bean
-dependencies or recursive calls across features.
+Tenant use cases and HTTP entry points stay in tenant. `TenantController` handles
+creation, listing, detail and rename; tenant CMS, membership, role and invitation
+controllers also live in this module. Commands are grouped into `tenant`, `member`,
+`role` and `invitation` packages. Tenant creation and owner initialization share one
+transaction with default roles and outbox events; tenant locking, final-owner and
+role-assignment rules retain their existing behavior.
 
-Public module interfaces and DTOs:
+CMS updates a tenant through `PUT /api/v1/cms/tenants/{id}` with the complete mutable
+representation, for example `{"name":"Updated tenant","status":"SUSPENDED"}`.
+Both fields are required; statuses are `ACTIVE`, `SUSPENDED` and `ARCHIVED`.
+Only an access JWT carrying system role `PLATFORM_ADMIN` can use this endpoint. `id`, `code` and
+`createdAt` remain immutable. Name and status updates share one transaction and
+outbox publication; repeating an unchanged update emits no additional domain events.
+Archived tenants cannot be reactivated. This replaces the tenant status-only PATCH endpoint.
+Each endpoint in `TenantCmsController` declares `@PreAuthorize` using
+`iamAuthorization.canAccessCms(authentication)`, which checks the verified JWT
+principal without database or IAM calls. Handlers retain the same claims-based
+authorization for non-HTTP callers.
 
-* `IdentityApi` exposes current account data/status and system administration checks.
-* `TenantApi` exposes tenant creation, status, a public tenant view and locking inside an existing
-  transaction. Access never imports tenant entities or its repository.
-* `AccessApi` exposes resolved grants, active tenant IDs and OWNER initialization inside
-  an existing transaction. Identity never imports membership/role repositories.
-* The exported DTOs are `UserView`, `TenantResponseDto` and `TenantMemberResponseDto`.
-  Architecture tests permit these types and the API interfaces across module boundaries;
-  implementation classes, other DTOs, entities and repositories remain internal.
+`TenantApi` replaces the former tenant/access facades. Its implementation is
+package-private and keeps mutation APIs inside the caller's transaction. `Grant`
+represents tenant role/permissions. The tenant-owned `MemberReadPort` groups user/member
+projections and active-owner counting; composition implements it without exposing
+identity repositories or entities to tenant.
 
-`IamArchitectureTest` enforces these boundaries for all three modules and composition:
-foreign repository/read ports, entities and implementation classes are forbidden. It also
-requires public API interfaces and package-private `@Component` implementations.
-These are local Java calls using the same transaction manager, not HTTP calls to IAM.
+Identity depends only on its own `IdentityApi.TenantAccessPort`. The adapter in
+`composition/authentication` implements that port through `TenantApi`, so tenant can
+check `IdentityApi` without introducing a module dependency cycle. Calls are local Java
+calls within IAM's datasource/transaction manager, not HTTP requests. The service-wide
+security filter uses `IdentityApi.authenticate`.
 
-`composition/onboarding/application/command/CreateTenantCommandHandler` checks `IdentityApi`, calls
-`TenantApi.create` to persist the aggregate and its outbox events, then calls
-`AccessApi.initializeOwner`, all in one transaction. The composition layer uses only module
-contracts; modules never depend on composition. Any failure rolls back the tenant,
-default roles, OWNER membership and outbox together.
-The domain owner policy uses its own `UserDirectoryPort`; an integration adapter calls
-`IdentityApi` to resolve global account status.
+The tenant list uses the actual owning `TenantJpaEntity` and `MembershipJpaEntity`
+with a correlated JPA `EXISTS`, Spring Data specifications, sort and offset/keyset
+pagination. No intermediate ID query or duplicate tenant/membership read-model entities
+are needed. Token issuance obtains active tenant IDs through a tenant-owned JPQL query.
+Only reads that still combine user data with tenant data remain in composition's JPA
+member projection. All writes stay in the owning module.
 
-All business persistence uses Spring Data JPA entities/repositories with versioning and
-explicit locks. Identity/access own their entity mappings, permission collections and
-repositories. Database-clock invitation checks use native Spring Data queries.
-All five IAM entities declare UUID ID, audit/soft-delete timestamps and optimistic
-version mappings directly, without entity inheritance. Membership, role and invitation
-also declare immutable `tenantId`. Lombok generates getters/setters and protected JPA
-constructors. Each entity defines its own `@PrePersist`/`@PreUpdate` callbacks: inserts
-preserve domain-provided `createdAt` and fill missing timestamps; updates refresh `updatedAt`.
-There is no shared audit interface/listener. Native bulk updates still maintain
-timestamps/version in SQL.
-`deleted_at` is nullable metadata added by V6 to all five IAM entity tables. Adding this
-column does not enable automatic query filtering or change deletion endpoints.
-Each feature owns its mappings and
-read port. Access read projections may join user/tenant tables in the shared database;
-mutations go through the owning feature. JPA/native queries share the same datasource and transaction.
-Flyway SQL owns all schema changes; Hibernate only validates mappings with `generate-ddl: false`
-and `ddl-auto: validate`. Spring SQL initialization and automatic Flyway startup are disabled. Run `:services:iam-service:migrate` before starting the application. See the platform
-[persistence standard](../../docs/core-architecture/persistence.md).
+Public contracts are `IdentityApi`, `TenantApi`, their nested ports/value types, and
+explicit immutable DTOs (`UserView`, `TenantResponseDto`, `MemberView`,
+`TenantMemberResponseDto`). Modules do not import composition or another module's
+internal entities, repositories or implementations. `IamArchitectureTest` enforces
+these boundaries, acyclic dependencies, table ownership and absence of the old access
+module. Domain and shared packages remain framework-independent.
 
-`TenantOnboardingController` and `CreateTenantRequest` live in `composition/onboarding` and handle
-`POST /api/v1/tenants`. `TenantController` handles tenant reads and renames.
-`composition/members` owns the member detail and self-service read endpoints through
-`TenantMemberController`. Membership writes and the existing member list remain in access.
-`UserCmsController` belongs to identity and `TenantCmsController` to tenant. Tenant
-membership/role endpoints belong to access's `TenantAccessController`. All HTTP paths are
-preserved. Controllers dispatch through `CommandBus`/`QueryBus`.
-
-Shared components have no dependency on business features, frameworks or infrastructure.
-They retain IAM-specific ports and the domain-event interface; reusable domain/CQRS
-primitives continue to come from `libs/common-*`. `AuthenticatedUser` holds only request
-identity/context, never a User entity or identity response DTO. Password hashing, JWTs and
-the authentication filter/configuration remain under `modules/identity/infrastructure/security`.
-Generic opaque tokens and the Spring Security principal live under
-`infra/security`; the JPA outbox relay and migration CLI live under
-`infra/messaging` and `infra/database`.
-
-This layout adapts the source project's library boundaries inside the IAM microservice.
-It does not introduce a second platform core or move service-specific code into the
-platform libraries. Each feature keeps its own persistence/security adapters in
-`modules/<feature>/infrastructure`. Cross-module synchronous checks use contract APIs;
-tenant creation keeps its transaction boundary in a thin CQRS composition handler.
-
-Architecture tests prevent domain dependencies on frameworks or outer layers, application
-dependencies on concrete adapters, controllers bypassing the CQRS boundary, foreign feature
-internals, shared components depending on frameworks/infrastructure, and common
-infrastructure depending on module internals. Integration
-tests cover cross-module JPA rollback when event publication fails, tenant version updates, existing
-authorization/concurrency rules, and the unchanged HTTP/event contracts.
+Database tables, HTTP paths, JSON contracts, JWT cookies, pagination/filter/sort,
+transaction boundaries and outbox events are preserved. This merge requires no schema
+migration. Flyway still owns schema changes; JPA only validates mappings.
 
 ## List the current user's tenants
 
@@ -137,18 +105,38 @@ authorization/concurrency rules, and the unchanged HTTP/event contracts.
 parameter. It returns active tenants in which that user has an active membership,
 ordered by creation time and ID by default. Use `GET /api/v1/tenants?page=1&limit=20`; the endpoint uses
 the shared `PaginationRequest` normalization (default page 1, limit 20, maximum 100).
-It supports offset pagination only; a nonblank `cursor` returns 400.
+Offset pagination is the default. Use `paginationMode=cursor` for the first cursor
+page; supplying a nonblank `cursor` automatically selects cursor mode and takes
+precedence over `page`. Other `paginationMode` values return 400.
 
 The response is the system `ListEnvelope`: `{object, url, data, pageInfo}`. Each item
-in `data` contains `{id, code, name, status, createdAt}`. `pageInfo` contains `page`,
-`limit`, `total`, `totalPages`, and `hasNextPage`. The database filters by the current
-user and active statuses before applying LIMIT/OFFSET; the count uses the same filters.
+in `data` contains `{id, code, name, status, createdAt}`. In offset mode, `pageInfo`
+contains `page`, `limit`, `total`, `totalPages`, and `hasNextPage`. The database filters
+by the current user and active statuses before applying LIMIT/OFFSET; the count uses
+the same filters. Cursor mode returns `hasNextPage` and, when another page exists,
+`nextCursor`; it does not count totals or return page numbers.
 
-The handler obtains the current user's active tenant IDs through the public `AccessApi`.
+```http
+GET /api/v1/tenants?paginationMode=cursor&limit=20&name=shop&sort=createdAt:desc
+GET /api/v1/tenants?cursor={nextCursor}&limit=20&name=shop&sort=createdAt:desc
+```
+
+Keep the same filter and sort parameters on each cursor request. The token is bound
+to the authenticated user and normalized criteria; a malformed token or a mismatch
+returns 400. The page size may change. Tokens preserve the exact last sort value and
+ID, including microsecond timestamps, and remain usable if the anchor row is deleted.
+Changing a sort value while browsing can move a row across the cursor boundary;
+separate HTTP requests do not share a database snapshot.
+
+The handler passes the authenticated user ID directly to `TenantReadPort`.
 `TenantReadAdapter` uses `SpringDataTenantRepository` / `JpaSpecificationExecutor` with
-`Specification`, `PageRequest`, and `Sort`; it does not build SQL or use `EntityManager`
-directly. Membership authorization remains inside the access module. Text searches use
-case-normalized JPA `LIKE` with escaped wildcard characters.
+`Specification`, `PageRequest`, and `Sort` for offset pages, or Spring Data keyset
+scrolling (`ScrollPosition` / `Window`) for cursor pages. A correlated JPA `EXISTS` checks the current
+user's active membership inside the tenant query; no intermediate tenant ID list is
+loaded into Java. The same predicate is used for the count query when needed.
+The query uses the owning `TenantJpaEntity` and `MembershipJpaEntity` inside the
+merged tenant module. It adds no table or migration. Text searches use case-normalized
+JPA `LIKE` with escaped wildcard characters.
 
 Optional field filters are combined with AND:
 
@@ -178,8 +166,10 @@ GET /api/v1/tenants?page=1&limit=20&name=shop&sort=createdAt:desc
 Client-supplied user IDs or identity headers cannot select another user's tenants.
 System admins also receive only their own memberships on this endpoint.
 The caller must still be active in the database. Missing/invalid credentials return
-401. A user without active tenants receives empty `data` and total 0. A page beyond
-the last page also has empty `data` while retaining the matching total.
+401. A user without active tenants receives empty `data`, with total 0 in offset
+mode or `hasNextPage: false` in cursor mode. A page beyond the last offset page also
+has empty `data` while retaining the matching total. Active user and membership
+checks are repeated for every request, including cursor requests.
 Tenant and membership reads share a read-only REPEATABLE READ transaction.
 
 The list returns tenant information rather than the old membership projection with
@@ -194,8 +184,9 @@ with `{"name":"New name"}`, requiring active membership and `tenant.manage`.
 The response contains `id` (membership ID), `tenantId`, `userId`, `email`, `fullName`,
 `roleId`, `role`, membership `status`, and the assigned role's `permissions` array.
 Built-in roles use their key; custom roles use their name. Inspecting another user
-requires `tenant.member.view`. Reading yourself requires active tenant access. Both
-routes retain user/tenant/membership/MFA checks and return `Cache-Control: no-store`.
+requires `tenant.member.view` in the JWT. Reading yourself requires a tenant-scoped
+JWT. Both routes require the URL tenant to match the JWT tenant and return
+`Cache-Control: no-store`.
 Authorized managers can inspect inactive memberships; their assigned permissions do
 not imply that the member can currently exercise them. Missing target memberships
 return 404 after authorization; callers without tenant access receive 403.
@@ -203,8 +194,8 @@ return 404 after authorization; callers without tenant access receive 403.
 ```text
 TenantMemberController
   -> GetTenantMemberQueryHandler
-       -> AccessApi.requireAccess (authorization)
-       -> TenantMemberReadPort
+       -> TenantApi.requireAccess (authorization)
+       -> TenantApi.MemberReadPort
             -> JpaTenantMemberReadAdapter (EntityManager native query)
 ```
 
@@ -215,8 +206,10 @@ within the IAM datasource. It aggregates grants into one result; a LEFT JOIN pre
 roles with no permissions. Joins use tenant/role/user IDs, never role names. Authorization
 and projection share a read-only REPEATABLE READ transaction. The handler imports only
 public module contracts and its own read port, not module entities or repositories.
-Grants come from the database, not cached token claims. The requested tenant is checked
-independently of the JWT's selected tenant.
+The returned membership and grants are current database data, not a replacement for
+the request's signed authorization claims. Authorization uses only the JWT snapshot;
+the requested tenant must match its selected tenant. Switch tenant before accessing
+another tenant, even when the user belongs to both.
 
 This adapter depends on the local IAM schema, so migrations must preserve the projection
 or update it alongside the schema. It performs no writes and does not query other
@@ -247,7 +240,24 @@ Browsers authenticate with the access cookie. Gateway converts verified access t
 from business requests; only IAM auth routes receive refresh cookies. Gateway and services
 verify signature, issuer, audience, token use and expiry locally. JWTs have no `sid`,
 session version or Redis projection. Identity routes allow a null tenant; business APIs
-require a tenant context. Domain use cases still check current user/membership permissions.
+require a tenant context. Controllers and handlers authorize using signed `systemRole`,
+`tenantRole` and `permissions` claims only; they do not query IAM, a database or Redis
+to reconstruct the caller's grants. Permission authorities remain separate from roles.
+Custom tenant roles use `CUSTOM:{roleId}` in the token so a role named `OWNER` cannot
+impersonate the built-in owner. Membership projection responses still expose display names.
+
+Role/permission changes, membership removal, account suspension and logout do not
+revoke previously issued access JWTs. Existing access remains valid until expiry
+(15 minutes by default). Login, refresh and tenant switching read current account,
+tenant, membership and MFA requirements before issuing new claims. Removed members
+and suspended accounts cannot refresh their old grants. No session, denylist or
+per-request IAM introspection is used.
+
+Stateless authorization does not remove business persistence: profile and membership
+reads return current data; tenant/member/role writes still load and lock their targets,
+enforce final-owner/final-admin and grant-assignment rules, and write outbox events.
+Invitation acceptance also validates the invitation, recipient email and current issuer
+grants as part of redeeming that stored invitation, not as request authentication.
 
 `POST /api/v1/auth/refresh` has no body and reads the HttpOnly refresh cookie, without requiring
 a valid access token. It validates the refresh JWT and current account/tenant grants, then sets
@@ -412,7 +422,8 @@ for the selected tenant, separate from the user's `systemRole`. Role catalogs an
 JWT access claims and login/register/refresh/switch-tenant responses use `tenantRole`
 instead of the previous `roles` array. Without a selected tenant, `tenantRole` is null
 (the null JWT claim may be omitted). With a selected tenant it is the membership's
-role key/name. Permission grants remain a collection.
+built-in role key or `CUSTOM:{roleId}` for a custom role. Membership/detail APIs return
+the custom role's display name separately. Permission grants remain a collection.
 
 ```json
 {

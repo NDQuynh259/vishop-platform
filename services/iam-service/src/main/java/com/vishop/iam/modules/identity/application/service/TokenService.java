@@ -1,6 +1,6 @@
 package com.vishop.iam.modules.identity.application.service;
 
-import com.vishop.iam.modules.access.application.api.AccessApi;
+import com.vishop.iam.modules.identity.application.api.IdentityApi.TenantAccessPort;
 import com.vishop.iam.modules.identity.application.dto.AuthResponse;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.port.AccessTokenPort;
@@ -14,13 +14,13 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class TokenService {
-  private final AccessApi access;
+  private final TenantAccessPort access;
   private final IdentityAuthorizationService identities;
   private final AccessTokenPort tokens;
   private final UserRepositoryPort users;
 
   public TokenService(
-      AccessApi access,
+      TenantAccessPort access,
       IdentityAuthorizationService identities,
       AccessTokenPort tokens,
       UserRepositoryPort users) {
@@ -79,7 +79,6 @@ public class TokenService {
 
   private AuthenticatedUser principal(User user, UUID tenant) {
     if (tenant != null) {
-      access.requireAccess(user.id(), tenant, null);
       var grant =
           access
               .activeGrant(user.id(), tenant)

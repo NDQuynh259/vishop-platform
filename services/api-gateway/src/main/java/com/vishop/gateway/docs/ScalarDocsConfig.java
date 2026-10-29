@@ -17,14 +17,22 @@ public class ScalarDocsConfig {
         RequestPredicates.GET("/docs").or(RequestPredicates.GET("/scalar")),
         request -> {
           String service = request.queryParam("service").orElse("iam");
+          boolean isSubscription =
+              "subscription".equalsIgnoreCase(service) || "billing".equalsIgnoreCase(service);
           boolean isAudit = "audit".equalsIgnoreCase(service);
-          String specUrl = isAudit ? "/v3/api-docs/audit-service" : "/v3/api-docs/iam-service";
+          String specUrl =
+              isSubscription
+                  ? "/v3/api-docs/subscription-service"
+                  : isAudit ? "/v3/api-docs/audit-service" : "/v3/api-docs/iam-service";
           String title =
-              isAudit
-                  ? "ViShop - Audit Service API Reference"
-                  : "ViShop - IAM Service API Reference";
-          String iamClass = isAudit ? "" : "active";
+              isSubscription
+                  ? "ViShop - Subscription Service API Reference"
+                  : isAudit
+                      ? "ViShop - Audit Service API Reference"
+                      : "ViShop - IAM Service API Reference";
+          String iamClass = isAudit || isSubscription ? "" : "active";
           String auditClass = isAudit ? "active" : "";
+          String subscriptionClass = isSubscription ? "active" : "";
 
           String gatewayUrl = "http://localhost:8000";
           var hostHeader = request.headers().firstHeader("Host");
@@ -60,6 +68,7 @@ public class ScalarDocsConfig {
                     <div class="vishop-tabs">
                       <a class="vishop-tab %s" href="/docs?service=iam">IAM Service</a>
                       <a class="vishop-tab %s" href="/docs?service=audit">Audit Service</a>
+                      <a class="vishop-tab %s" href="/docs?service=subscription">Subscription Service</a>
                     </div>
                   </div>
                   <div id="api-reference"></div>
@@ -78,7 +87,7 @@ public class ScalarDocsConfig {
                 </body>
               </html>
               """
-                  .formatted(title, iamClass, auditClass, specUrl, gatewayUrl);
+                  .formatted(title, iamClass, auditClass, subscriptionClass, specUrl, gatewayUrl);
 
           return ServerResponse.ok().contentType(MediaType.TEXT_HTML).bodyValue(html);
         });

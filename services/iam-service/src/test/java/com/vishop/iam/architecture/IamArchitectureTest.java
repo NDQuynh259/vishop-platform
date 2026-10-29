@@ -2,13 +2,22 @@ package com.vishop.iam.architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import jakarta.persistence.Table;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+import org.hibernate.annotations.Immutable;
+import org.springframework.data.jpa.repository.Query;
 
 @AnalyzeClasses(packages = "com.vishop.iam", importOptions = ImportOption.DoNotIncludeTests.class)
 class IamArchitectureTest {
@@ -85,7 +94,7 @@ class IamArchitectureTest {
           .resideInAnyPackage(
               "com.vishop.iam.modules.identity..",
               "com.vishop.iam.modules.tenant..",
-              "com.vishop.iam.modules.access..",
+              "com.vishop.iam.modules.tenant..",
               "com.vishop.iam.composition..");
 
   @ArchTest
@@ -109,25 +118,92 @@ class IamArchitectureTest {
               "io.jsonwebtoken..");
 
   @ArchTest
-  static final ArchRule common_infrastructure_uses_no_module_internals =
+  static final ArchRule service_infrastructure_uses_only_module_contracts =
+      noClasses()
+          .that()
+          .resideInAPackage("com.vishop.iam.infra..")
+          .should()
+          .dependOnClassesThat(moduleInternals("identity", "tenant"));
+
+  @ArchTest
+  static final ArchRule business_modules_have_no_dependency_cycles =
+      slices().matching("com.vishop.iam.modules.(*)..").should().beFreeOfCycles();
+
+  @ArchTest
+  static final ArchRule composition_entity_mappings_are_read_only =
+      classes()
+          .that()
+          .resideInAPackage("com.vishop.iam.composition..infrastructure.persistence.entities")
+          .should()
+          .beAnnotatedWith(Immutable.class)
+          .allowEmptyShould(true);
+
+  @ArchTest
+  static final ArchRule service_infrastructure_does_not_use_composition =
       noClasses()
           .that()
           .resideInAPackage("com.vishop.iam.infra..")
           .should()
           .dependOnClassesThat()
-          .resideInAnyPackage("com.vishop.iam.modules..", "com.vishop.iam.composition..");
+          .resideInAPackage("com.vishop.iam.composition..");
+
+  @ArchTest
+  static void modules_map_and_query_only_owned_tables(JavaClasses classes) {
+    Map<String, Set<String>> tables =
+        Map.of(
+            "identity", Set.of("users"),
+            "tenant",
+                Set.of(
+                    "tenants",
+                    "tenant_members",
+                    "roles",
+                    "role_permissions",
+                    "tenant_invitations"));
+    Set<String> iamTables =
+        tables.values().stream().flatMap(Set::stream).collect(java.util.stream.Collectors.toSet());
+    var tableReference = Pattern.compile("(?i)\\b(?:from|join|update|into)\\s+([a-z_][a-z_0-9]*)");
+    for (JavaClass type : classes) {
+      for (var module : tables.entrySet()) {
+        if (!type.getPackageName().startsWith("com.vishop.iam.modules." + module.getKey() + "."))
+          continue;
+        if (type.isAnnotatedWith(Table.class)) {
+          assertThat(module.getValue())
+              .as("Tables owned by %s: %s", module.getKey(), type.getName())
+              .contains(type.getAnnotationOfType(Table.class).name());
+        }
+        for (var method : type.getMethods()) {
+          if (!method.isAnnotatedWith(Query.class)) continue;
+          Query query = method.getAnnotationOfType(Query.class);
+          if (!query.nativeQuery()) continue;
+          var references = tableReference.matcher(query.value() + " " + query.countQuery());
+          while (references.find()) {
+            String table = references.group(1).toLowerCase(java.util.Locale.ROOT);
+            if (iamTables.contains(table)) {
+              assertThat(module.getValue())
+                  .as("SQL table ownership: %s", method.getFullName())
+                  .contains(table);
+            }
+          }
+        }
+      }
+    }
+  }
 
   @ArchTest
   static final ArchRule identity_uses_public_feature_contracts =
-      publicContractsOnly("identity", "tenant", "access");
+      publicContractsOnly("identity", "tenant");
 
   @ArchTest
   static final ArchRule tenant_uses_public_feature_contracts =
-      publicContractsOnly("tenant", "identity", "access");
+      publicContractsOnly("tenant", "identity");
 
   @ArchTest
-  static final ArchRule access_uses_public_feature_contracts =
-      publicContractsOnly("access", "identity", "tenant");
+  static final ArchRule access_is_merged_into_tenant =
+      classes()
+          .that()
+          .resideInAPackage("com.vishop.iam.modules..")
+          .should()
+          .resideOutsideOfPackage("com.vishop.iam.modules.access..");
 
   @ArchTest
   static final ArchRule module_api_implementations_are_not_public =
@@ -164,6 +240,7 @@ class IamArchitectureTest {
               new DescribedPredicate<JavaClass>("be JDK, shared, or public module API/DTO types") {
                 @Override
                 public boolean test(JavaClass type) {
+                  while (type.isArray()) type = type.getComponentType();
                   return type.isPrimitive()
                       || type.getPackageName().startsWith("java.")
                       || type.getPackageName().startsWith("com.vishop.iam.shared.")
@@ -186,7 +263,7 @@ class IamArchitectureTest {
           .that()
           .resideInAPackage("com.vishop.iam.composition..")
           .should()
-          .dependOnClassesThat(moduleInternals("identity", "tenant", "access"));
+          .dependOnClassesThat(moduleInternals("identity", "tenant"));
 
   @ArchTest
   static final ArchRule composition_has_no_domain_models =
@@ -196,12 +273,12 @@ class IamArchitectureTest {
           .should()
           .resideOutsideOfPackage("com.vishop.iam.composition..domain..");
 
-  private static ArchRule publicContractsOnly(String source, String first, String second) {
+  private static ArchRule publicContractsOnly(String source, String... targets) {
     return noClasses()
         .that()
         .resideInAPackage("com.vishop.iam.modules." + source + "..")
         .should()
-        .dependOnClassesThat(moduleInternals(first, second));
+        .dependOnClassesThat(moduleInternals(targets));
   }
 
   private static DescribedPredicate<JavaClass> moduleInternals(String... modules) {
@@ -230,7 +307,7 @@ class IamArchitectureTest {
 
   private static boolean isPublicApiType(JavaClass type) {
     String name = type.getName();
-    for (String module : new String[] {"identity", "tenant", "access"}) {
+    for (String module : new String[] {"identity", "tenant"}) {
       String api =
           "com.vishop.iam.modules."
               + module
@@ -242,6 +319,7 @@ class IamArchitectureTest {
     }
     return name.equals("com.vishop.iam.modules.identity.application.dto.UserView")
         || name.equals("com.vishop.iam.modules.tenant.application.dto.TenantResponseDto")
-        || name.equals("com.vishop.iam.modules.access.application.dto.TenantMemberResponseDto");
+        || name.equals("com.vishop.iam.modules.tenant.application.dto.MemberView")
+        || name.equals("com.vishop.iam.modules.tenant.application.dto.TenantMemberResponseDto");
   }
 }

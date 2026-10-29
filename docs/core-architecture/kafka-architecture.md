@@ -292,6 +292,7 @@ DLT    → {topic nguồn}.DLT
 | --- | --- |
 | `vishop.tenant.events` | IAM phát; Audit nhận |
 | `vishop.user.events` | IAM phát; Audit nhận |
+| `vishop.billing.events` | Billing phát qua outbox; Audit nhận |
 | `vishop.audit.events` | Có trong script khởi tạo; Audit hiện không phát hoặc nghe topic này |
 
 **Event role và thành viên hiện cũng có thể nằm trên topic tenant.** Ví dụ `RoleCreated` và `MemberInvited` dùng `aggregateType = Tenant`, `aggregateId = tenantId`; đối tượng chi tiết nằm trong payload `subjectId`. Không suy tên topic trực tiếp từ tên event.

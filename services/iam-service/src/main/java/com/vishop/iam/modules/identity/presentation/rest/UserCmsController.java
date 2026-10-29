@@ -15,6 +15,7 @@ import jakarta.validation.constraints.*;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -32,6 +33,7 @@ public class UserCmsController {
   }
 
   @GetMapping("/users")
+  @PreAuthorize("@iamAuthorization.canAccessCms(authentication)")
   public List<UserView> users(
       @AuthenticationPrincipal IamPrincipal actor,
       @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
@@ -40,6 +42,7 @@ public class UserCmsController {
   }
 
   @PatchMapping("/users/{id}/system-role")
+  @PreAuthorize("@iamAuthorization.canAccessCms(authentication)")
   public ResponseEntity<Void> role(
       @AuthenticationPrincipal IamPrincipal actor,
       @PathVariable UUID id,
@@ -49,6 +52,7 @@ public class UserCmsController {
   }
 
   @PatchMapping("/users/{id}/status")
+  @PreAuthorize("@iamAuthorization.canAccessCms(authentication)")
   public ResponseEntity<Void> userStatus(
       @AuthenticationPrincipal IamPrincipal actor,
       @PathVariable UUID id,

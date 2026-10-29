@@ -56,6 +56,7 @@ Each service has its own command file, equivalent to a per-service `package.json
 services/
   iam-service/build.gradle.kts
   audit-service/build.gradle.kts
+  subscription-service/build.gradle.kts
   api-gateway/build.gradle.kts
 ```
 
@@ -68,7 +69,7 @@ services/
 | `npm test` | `.\gradlew.bat :services:iam-service:test` |
 | `npm run migrate` | `.\gradlew.bat :services:iam-service:migrate` |
 
-Replace `iam-service` with `audit-service` or `api-gateway` to run another service.
+Replace `iam-service` with `subscription-service`, `audit-service` or `api-gateway` to run another service.
 Gateway has no migration command. `dev` starts the selected service with Spring profile
 `dev`; `start` runs it with profile `prod`, using database URLs and credentials from the
 environment. These commands run on the current machine and accept BootRun's `--args` option.
@@ -82,7 +83,7 @@ The per-service `commands` listing also includes all standard build and diagnost
 | Verify | `test`, `check`, `spotlessApply`, `spotlessCheck` |
 | Inspect build | `tasks --all`, `dependencies`, `dependencyInsight` |
 | Inspect JVM | `javaVersion`, `javaProcesses`, `threadDump`, `heapInfo` |
-| Database | `migrate` for IAM and Audit |
+| Database | `migrate` for IAM, Audit and Billing |
 
 JDK commands are shared through [gradle/jvm-tools.gradle.kts](gradle/jvm-tools.gradle.kts)
 and use the project's Java 21 toolchain. Diagnostics require the explicit process ID of a
@@ -119,9 +120,11 @@ list for root shortcuts and aggregate operations. List available commands with:
 | `runIam` | Start IAM on port 8080 |
 | `runGateway` | Start Gateway on port 8000 |
 | `runAudit` | Start Audit on port 8082 |
+| `runSubscription` | Start Subscription on port 8083 |
 | `migrateIam` | Migrate IAM using `IAM_DB_URL`, `IAM_DB_USER`, `IAM_DB_PASSWORD` |
 | `migrateAudit` | Migrate Audit using `AUDIT_DB_URL`, `AUDIT_DB_USER`, `AUDIT_DB_PASSWORD` |
-| `packageAll` | Build boot JARs for all three services |
+| `migrateSubscription` | Migrate Subscription using `SUBSCRIPTION_DB_URL`, `SUBSCRIPTION_DB_USER`, `SUBSCRIPTION_DB_PASSWORD` |
+| `packageAll` | Build boot JARs for all four services |
 | `buildAll` | Build and check all projects |
 | `compileAll` | Compile Java sources across all projects |
 | `classesAll` | Compile and process resources across all projects |
@@ -134,11 +137,11 @@ list for root shortcuts and aggregate operations. List available commands with:
 
 Run any command as `.\gradlew.bat <command>`. Start each service in its own terminal.
 Database migration commands run independently of services; see the [IAM](services/iam-service/README.md)
-and [Audit](services/audit-service/README.md) guides for database configuration.
+, [Audit](services/audit-service/README.md) and [Subscription](services/subscription-service/README.md) guides for database configuration.
 
 ## Services and access
 
-Active runtimes are `iam-service`, `api-gateway` and `audit-service`. IAM owns global
+Active runtimes are `iam-service`, `api-gateway`, `audit-service` and `subscription-service`. IAM owns global
 accounts, system roles, tenants, memberships, tenant roles and permissions in `vishop_iam`.
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
@@ -170,3 +173,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for Conventional Commit messages, branch 
 ## Architecture documentation
 
 Start with the [Core Architecture index](docs/core-architecture/README.md) for all architecture documents and the reusable core module boundaries. Original architecture documents remain preserved under `docs/architecture/`; product documentation and other guides remain in their existing locations.
+
+Subscription service handles tenant subscription purchases and manual renewals through SePay QR. See the [Billing API and setup guide](services/subscription-service/README.md). Configure actual prices in CMS and enable SePay explicitly; no commercial prices are seeded.

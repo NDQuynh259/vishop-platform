@@ -2,6 +2,7 @@ package com.vishop.iam.modules.tenant.infrastructure.persistence.adapters;
 
 import com.vishop.iam.modules.tenant.domain.entity.Tenant;
 import com.vishop.iam.modules.tenant.domain.port.TenantRepositoryPort;
+import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.entities.TenantJpaEntity;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.repositories.SpringDataTenantRepository;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
@@ -34,5 +35,10 @@ public class TenantRepositoryAdapter implements TenantRepositoryPort {
 
   public void save(Tenant tenant) {
     tenants.saveAndFlush(TenantJpaEntity.fromDomain(tenant));
+  }
+
+  @Override
+  public List<UUID> activeTenantIds(UUID userId) {
+    return tenants.findActiveTenantIds(userId, TenantStatus.ACTIVE);
   }
 }

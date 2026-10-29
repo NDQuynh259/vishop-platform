@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $rootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$services = @("api-gateway", "iam-service", "audit-service")
+$services = @("api-gateway", "iam-service", "audit-service", "subscription-service")
 
 Push-Location $rootDir
 try {

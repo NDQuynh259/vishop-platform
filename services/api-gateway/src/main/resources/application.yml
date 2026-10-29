@@ -22,6 +22,11 @@ spring:
         # ---------------------------------------------------------------------
         # 1. Identity, tenants and CMS share IAM
         # ---------------------------------------------------------------------
+        - id: subscription-service
+          uri: ${SUBSCRIPTION_SERVICE_URL:${BILLING_SERVICE_URL:http://localhost:8083}}
+          predicates:
+            - Path=/api/v1/billing/**,/api/v1/cms/billing/**
+
         - id: iam-service
           uri: ${IAM_SERVICE_URL:http://localhost:8080}
           predicates:
@@ -38,6 +43,13 @@ spring:
         # ---------------------------------------------------------------------
         # 4. OpenAPI Specification Routing
         # ---------------------------------------------------------------------
+        - id: subscription-service-docs
+          uri: ${SUBSCRIPTION_SERVICE_URL:${BILLING_SERVICE_URL:http://localhost:8083}}
+          predicates:
+            - Path=/v3/api-docs/subscription-service,/v3/api-docs/billing-service
+          filters:
+            - SetPath=/v3/api-docs
+
         - id: iam-service-docs
           uri: ${IAM_SERVICE_URL:http://localhost:8080}
           predicates:

@@ -6,11 +6,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommand;
-import com.vishop.iam.composition.onboarding.application.command.CreateTenantCommandHandler;
 import com.vishop.iam.database.JpaDatabaseFixture;
 import com.vishop.iam.modules.identity.application.query.AuthenticateQuery;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
+import com.vishop.iam.modules.tenant.application.command.tenant.CreateTenantCommand;
+import com.vishop.iam.modules.tenant.application.command.tenant.CreateTenantCommandHandler;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import io.github.coreplatform.common.domain.constants.SystemRole;
@@ -205,6 +205,15 @@ class IamApplicationTest {
             .andReturn());
   }
 
+  private String tenantToken(Account account, String tenant) throws Exception {
+    return select(account, tenant).accessToken();
+  }
+
+  private Account fresh(Account account) throws Exception {
+    var auth = login(account);
+    return new Account(account.email(), account.id(), auth.accessToken(), auth.refreshToken());
+  }
+
   private String role(String tenant, String key) {
     return db.queryForObject(
         "SELECT id::text FROM roles WHERE tenant_id=CAST(? AS uuid) AND builtin_key=?",
@@ -216,7 +225,9 @@ class IamApplicationTest {
   private String invite(Account owner, String tenant, String email, String role) throws Exception {
     return body(http.perform(
                 payload(
-                    authorized(post("/api/v1/tenants/" + tenant + "/invitations"), owner.token()),
+                    authorized(
+                        post("/api/v1/tenants/" + tenant + "/invitations"),
+                        tenantToken(owner, tenant)),
                     Map.of("email", email, "roleId", role)))
             .andExpect(status().isCreated())
             .andReturn())
@@ -313,7 +324,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void listingTenantsUsesPrincipalAndRequiresAnActiveUser() throws Exception {
+  void listingTenantsUsesVerifiedPrincipalWithoutRecheckingAccountStatus() throws Exception {
     Account user = register("user@example.com");
     Account other = register("other@example.com");
     createTenant(other, "other-shop");
@@ -332,8 +343,8 @@ class IamApplicationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.length()").value(0));
     db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", user.id());
-    http.perform(authorized(get("/api/v1/tenants"), user.token()))
-        .andExpect(status().isUnauthorized());
+    http.perform(authorized(get("/api/v1/tenants"), user.token())).andExpect(status().isOk());
+    http.perform(refreshRequest(user.refreshToken())).andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -505,6 +516,130 @@ class IamApplicationTest {
   }
 
   @Test
+  void tenantCursorPaginationSupportsAllSortsAndExactTimestampTieBreaks() throws Exception {
+    Account user = register("cursor@example.com");
+    Account other = register("cursor-other@example.com");
+    String first = createTenant(user, "cursor-alpha").path("id").asText();
+    String second = createTenant(user, "cursor-beta").path("id").asText();
+    String third = createTenant(user, "cursor-gamma").path("id").asText();
+    createTenant(other, "cursor-delta");
+    db.update(
+        "UPDATE tenants SET name='Same',created_at='2026-10-01T00:00:00.123456Z' WHERE id IN (CAST(? AS uuid),CAST(? AS uuid))",
+        first,
+        second);
+    db.update(
+        "UPDATE tenants SET name='Same',created_at='2026-10-01T00:00:00.123457Z' WHERE id=CAST(? AS uuid)",
+        third);
+    for (String field : List.of("id", "code", "name", "status", "createdAt")) {
+      for (String direction : List.of("asc", "desc")) {
+        List<String> expected = List.of(first, second, third);
+        if (direction.equals("desc")) {
+          if (field.equals("id") || field.equals("code")) expected = List.of(third, second, first);
+          if (field.equals("createdAt")) expected = List.of(third, first, second);
+        }
+        String cursor = null;
+        for (int index = 0; index < 3; index++) {
+          var request =
+              get("/api/v1/tenants")
+                  .param("limit", "1")
+                  .param("code", "cursor-")
+                  .param("sort", field + ":" + direction);
+          if (cursor == null) request.param("paginationMode", "cursor");
+          else request.param("cursor", cursor).param("page", "999");
+          var result =
+              http.perform(authorized(request, user.token()))
+                  .andExpect(status().isOk())
+                  .andExpect(jsonPath("$.data.length()").value(1))
+                  .andExpect(jsonPath("$.data[0].id").value(expected.get(index)))
+                  .andExpect(jsonPath("$.pageInfo.hasNextPage").value(index < 2))
+                  .andExpect(jsonPath("$.pageInfo.page").doesNotExist())
+                  .andExpect(jsonPath("$.pageInfo.total").doesNotExist())
+                  .andExpect(jsonPath("$.pageInfo.totalPages").doesNotExist())
+                  .andReturn();
+          var next = body(result).path("pageInfo").path("nextCursor");
+          if (index < 2) {
+            assertThat(next.asText()).isNotBlank();
+            cursor = next.asText();
+          } else {
+            assertThat(next.isMissingNode() || next.isNull()).isTrue();
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  void tenantCursorIsBoundToUserFiltersAndSortAndRechecksMembership() throws Exception {
+    Account user = register("cursor-context@example.com");
+    Account other = register("cursor-context-other@example.com");
+    String first = createTenant(user, "context-alpha").path("id").asText();
+    String second = createTenant(user, "context-beta").path("id").asText();
+    String third = createTenant(user, "context-gamma").path("id").asText();
+    var firstPage =
+        http.perform(
+                authorized(
+                    get("/api/v1/tenants")
+                        .param("paginationMode", "cursor")
+                        .param("limit", "1")
+                        .param("code", "context-")
+                        .param("sort", "code:asc"),
+                    user.token()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].id").value(first))
+            .andReturn();
+    String cursor = body(firstPage).path("pageInfo").path("nextCursor").asText();
+    for (var changed :
+        List.of(
+            Map.entry("code", "different"),
+            Map.entry("sort", "code:desc"),
+            Map.entry("name", "Changed"))) {
+      var request =
+          get("/api/v1/tenants")
+              .param("cursor", cursor)
+              .param("code", changed.getKey().equals("code") ? changed.getValue() : "context-")
+              .param("sort", changed.getKey().equals("sort") ? changed.getValue() : "code:asc");
+      if (changed.getKey().equals("name")) request.param("name", changed.getValue());
+      http.perform(authorized(request, user.token())).andExpect(status().isBadRequest());
+    }
+    http.perform(
+            authorized(
+                get("/api/v1/tenants")
+                    .param("cursor", cursor)
+                    .param("code", "context-")
+                    .param("sort", "code:asc"),
+                other.token()))
+        .andExpect(status().isBadRequest());
+    db.update(
+        "UPDATE tenant_members SET status='INACTIVE' WHERE tenant_id IN (CAST(? AS uuid),CAST(? AS uuid)) AND user_id=CAST(? AS uuid)",
+        first,
+        second,
+        user.id());
+    http.perform(
+            authorized(
+                get("/api/v1/tenants")
+                    .param("cursor", cursor)
+                    .param("code", "context-")
+                    .param("sort", "code:asc")
+                    .param("limit", "1"),
+                user.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].id").value(third))
+        .andExpect(jsonPath("$.pageInfo.hasNextPage").value(false));
+    http.perform(
+            authorized(get("/api/v1/tenants").param("paginationMode", "cursor"), other.token()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(0))
+        .andExpect(jsonPath("$.pageInfo.hasNextPage").value(false));
+    for (String invalid : List.of("unsupported", "bnVsbA", "x".repeat(4097))) {
+      http.perform(authorized(get("/api/v1/tenants").param("cursor", invalid), user.token()))
+          .andExpect(status().isBadRequest());
+    }
+    http.perform(
+            authorized(get("/api/v1/tenants").param("paginationMode", "invalid"), user.token()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void startupDoesNotRegisterAnAutomaticFlywayMigrator() {
     assertThat(context.getBeansOfType(org.flywaydb.core.Flyway.class)).isEmpty();
   }
@@ -671,7 +806,8 @@ class IamApplicationTest {
         body(
             http.perform(
                     authorized(
-                        get("/api/v1/tenants/" + first + "/members/" + member.id()), owner.token()))
+                        get("/api/v1/tenants/" + first + "/members/" + member.id()),
+                        tenantToken(owner, first)))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.tenantId").value(first))
@@ -697,7 +833,9 @@ class IamApplicationTest {
                 "SELECT permission_key FROM role_permissions WHERE role_id=CAST(? AS uuid)",
                 String.class,
                 operations));
-    http.perform(authorized(get("/api/v1/tenants/" + second + "/members/me"), member.token()))
+    http.perform(
+            authorized(
+                get("/api/v1/tenants/" + second + "/members/me"), tenantToken(member, second)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.tenantId").value(second))
         .andExpect(jsonPath("$.role").value("ACCOUNTING"));
@@ -719,7 +857,8 @@ class IamApplicationTest {
               http.perform(
                       payload(
                           authorized(
-                              post("/api/v1/tenants/" + entry.getKey() + "/roles"), owner.token()),
+                              post("/api/v1/tenants/" + entry.getKey() + "/roles"),
+                              tenantToken(owner, entry.getKey())),
                           Map.of("name", "Reader", "permissions", List.of(entry.getValue()))))
                   .andExpect(status().isCreated())
                   .andReturn());
@@ -730,7 +869,9 @@ class IamApplicationTest {
     select(member, first);
     for (var entry : permissionsByTenant.entrySet()) {
       http.perform(
-              authorized(get("/api/v1/tenants/" + entry.getKey() + "/members/me"), member.token()))
+              authorized(
+                  get("/api/v1/tenants/" + entry.getKey() + "/members/me"),
+                  tenantToken(member, entry.getKey())))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.tenantId").value(entry.getKey()))
           .andExpect(jsonPath("$.userId").value(member.id()))
@@ -750,28 +891,32 @@ class IamApplicationTest {
         body(
             http.perform(
                     payload(
-                        authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
+                        authorized(
+                            post("/api/v1/tenants/" + tenant + "/roles"),
+                            tenantToken(owner, tenant)),
                         Map.of("name", "Observer", "permissions", List.of())))
                 .andExpect(status().isCreated())
                 .andReturn());
     String roleId = custom.path("id").asText();
     accept(member, invite(owner, tenant, member.email(), roleId));
+    String memberAccess = tenantToken(member, tenant);
     for (String user : List.of("me", member.id())) {
-      http.perform(
-              authorized(get("/api/v1/tenants/" + tenant + "/members/" + user), member.token()))
+      http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/" + user), memberAccess))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.role").value("Observer"))
           .andExpect(jsonPath("$.permissions").isEmpty());
     }
     http.perform(
-            authorized(get("/api/v1/tenants/" + tenant + "/members/" + owner.id()), member.token()))
+            authorized(get("/api/v1/tenants/" + tenant + "/members/" + owner.id()), memberAccess))
         .andExpect(status().isForbidden());
     http.perform(
             payload(
-                authorized(put("/api/v1/tenants/" + tenant + "/roles/" + roleId), owner.token()),
+                authorized(
+                    put("/api/v1/tenants/" + tenant + "/roles/" + roleId),
+                    tenantToken(owner, tenant)),
                 Map.of("name", "Order reader", "permissions", List.of("order.view"))))
         .andExpect(status().isOk());
-    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), member.token()))
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), memberAccess))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.role").value("Order reader"))
         .andExpect(jsonPath("$.permissions.length()").value(1))
@@ -788,14 +933,18 @@ class IamApplicationTest {
         body(
             http.perform(
                     payload(
-                        authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
+                        authorized(
+                            post("/api/v1/tenants/" + tenant + "/roles"),
+                            tenantToken(owner, tenant)),
                         Map.of(
                             "name", "Member viewer", "permissions", List.of("tenant.member.view"))))
                 .andExpect(status().isCreated())
                 .andReturn());
     accept(viewer, invite(owner, tenant, viewer.email(), role.path("id").asText()));
     http.perform(
-            authorized(get("/api/v1/tenants/" + tenant + "/members/" + owner.id()), viewer.token()))
+            authorized(
+                get("/api/v1/tenants/" + tenant + "/members/" + owner.id()),
+                tenantToken(viewer, tenant)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.role").value("OWNER"));
     http.perform(
@@ -819,30 +968,51 @@ class IamApplicationTest {
     String second = createTenant(owner, "scoped-details-second").path("id").asText();
     accept(member, invite(owner, second, member.email(), role(second, "WAREHOUSE")));
     for (String user : List.of(member.id(), UUID.randomUUID().toString())) {
-      http.perform(authorized(get("/api/v1/tenants/" + first + "/members/" + user), owner.token()))
+      http.perform(
+              authorized(
+                  get("/api/v1/tenants/" + first + "/members/" + user), tenantToken(owner, first)))
           .andExpect(status().isNotFound())
           .andExpect(content().contentTypeCompatibleWith("application/problem+json"));
     }
   }
 
   @Test
-  void inactiveMembersCannotReadTheirPermissionsAndManagersCanSeeTheirStatus() throws Exception {
+  void existingJwtSurvivesRemovalAndSuspensionButCannotIssueNewGrants() throws Exception {
     Account owner = register("inactive-details-owner@example.com");
     Account member = register("inactive-details-member@example.com");
     String tenant = createTenant(owner, "inactive-details").path("id").asText();
     accept(member, invite(owner, tenant, member.email(), role(tenant, "WAREHOUSE")));
+    String memberAccess = tenantToken(member, tenant);
+    String ownerAccess = tenantToken(owner, tenant);
     http.perform(
             authorized(
-                delete("/api/v1/tenants/" + tenant + "/members/" + member.id()), owner.token()))
+                delete("/api/v1/tenants/" + tenant + "/members/" + member.id()), ownerAccess))
         .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), member.token()))
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), memberAccess))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("INACTIVE"));
+    http.perform(
+            payload(
+                authorized(
+                    post("/api/v1/auth/switch-tenant")
+                        .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, member.refreshToken())),
+                    memberAccess),
+                Map.of("tenantId", tenant)))
         .andExpect(status().isForbidden());
     http.perform(
-            authorized(get("/api/v1/tenants/" + tenant + "/members/" + member.id()), owner.token()))
+            authorized(get("/api/v1/tenants/" + tenant + "/members/" + member.id()), ownerAccess))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("INACTIVE"));
     db.update("UPDATE tenants SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", tenant);
-    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), owner.token()))
+    http.perform(authorized(get("/api/v1/tenants/" + tenant + "/members/me"), ownerAccess))
+        .andExpect(status().isOk());
+    http.perform(
+            payload(
+                authorized(
+                    post("/api/v1/auth/switch-tenant")
+                        .cookie(new Cookie(AuthCookies.REFRESH_TOKEN, owner.refreshToken())),
+                    ownerAccess),
+                Map.of("tenantId", tenant)))
         .andExpect(status().isForbidden());
   }
 
@@ -853,7 +1023,9 @@ class IamApplicationTest {
     Account owner = register("invalid-details-owner@example.com");
     String tenant = createTenant(owner, "invalid-details").path("id").asText();
     http.perform(
-            authorized(get("/api/v1/tenants/" + tenant + "/members/not-a-uuid"), owner.token()))
+            authorized(
+                get("/api/v1/tenants/" + tenant + "/members/not-a-uuid"),
+                tenantToken(owner, tenant)))
         .andExpect(status().isBadRequest());
   }
 
@@ -1011,8 +1183,8 @@ class IamApplicationTest {
                 "SELECT count(*) FROM role_permissions WHERE role_id=CAST(? AS uuid)",
                 Integer.class,
                 role(tenant, "OWNER")))
-        .isEqualTo(34);
-    http.perform(authorized(get("/api/v1/tenants/" + tenant), owner.token()))
+        .isEqualTo(36);
+    http.perform(authorized(get("/api/v1/tenants/" + tenant), tenantToken(owner, tenant)))
         .andExpect(status().isOk());
     http.perform(
             payload(
@@ -1087,6 +1259,7 @@ class IamApplicationTest {
         .andExpect(status().isForbidden());
     Account admin = register("admin@example.com");
     db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", admin.id());
+    admin = fresh(admin);
     http.perform(authorized(get("/api/v1/cms/tenants"), admin.token())).andExpect(status().isOk());
     http.perform(authorized(get("/api/v1/tenants/" + tenant), admin.token()))
         .andExpect(status().isForbidden());
@@ -1108,6 +1281,8 @@ class IamApplicationTest {
                     patch("/api/v1/cms/users/" + admin.id() + "/system-role"), admin.token()),
                 Map.of("systemRole", SystemRole.USER.name())))
         .andExpect(status().isNoContent());
+    http.perform(authorized(get("/api/v1/cms/tenants"), admin.token())).andExpect(status().isOk());
+    admin = fresh(admin);
     http.perform(authorized(get("/api/v1/cms/tenants"), admin.token()))
         .andExpect(status().isForbidden());
   }
@@ -1132,16 +1307,71 @@ class IamApplicationTest {
   }
 
   @Test
+  void cmsCanUpdateTenantNameAndStatusAtomically() throws Exception {
+    Account admin = register("admin@example.com");
+    Account owner = register("owner@example.com");
+    String tenant = createTenant(owner, "owned-tenant").path("id").asText();
+    String endpoint = "/api/v1/cms/tenants/" + tenant;
+    var update = Map.of("name", "Updated tenant", "status", "SUSPENDED");
+
+    http.perform(payload(authorized(put(endpoint), owner.token()), update))
+        .andExpect(status().isForbidden());
+    db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", admin.id());
+    admin = fresh(admin);
+    http.perform(payload(authorized(put(endpoint), admin.token()), update))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("name").value("Updated tenant"))
+        .andExpect(jsonPath("status").value("SUSPENDED"))
+        .andExpect(jsonPath("code").value("owned-tenant"));
+    long events = db.queryForObject("SELECT count(*) FROM outbox_events", Long.class);
+    http.perform(payload(authorized(put(endpoint), admin.token()), update))
+        .andExpect(status().isOk());
+    assertThat(db.queryForObject("SELECT count(*) FROM outbox_events", Long.class))
+        .isEqualTo(events);
+
+    for (var invalid :
+        List.of(
+            Map.of("status", "ACTIVE"),
+            Map.of("name", "Updated tenant"),
+            Map.of("name", " ", "status", "ACTIVE"))) {
+      http.perform(payload(authorized(put(endpoint), admin.token()), invalid))
+          .andExpect(status().isUnprocessableEntity());
+    }
+    http.perform(
+            payload(
+                authorized(put(endpoint), admin.token()),
+                Map.of("name", "Archived tenant", "status", "ARCHIVED")))
+        .andExpect(status().isOk());
+    events = db.queryForObject("SELECT count(*) FROM outbox_events", Long.class);
+    http.perform(
+            payload(
+                authorized(put(endpoint), admin.token()),
+                Map.of("name", "Must roll back", "status", "ACTIVE")))
+        .andExpect(status().isBadRequest());
+    assertThat(
+            db.queryForObject(
+                "SELECT name FROM tenants WHERE id=CAST(? AS uuid)", String.class, tenant))
+        .isEqualTo("Archived tenant");
+    assertThat(db.queryForObject("SELECT count(*) FROM outbox_events", Long.class))
+        .isEqualTo(events);
+    http.perform(
+            payload(
+                authorized(put("/api/v1/cms/tenants/" + UUID.randomUUID()), admin.token()), update))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
   void suspendedUsersAndTenantsCannotIssueNewTokens() throws Exception {
     Account admin = register("admin@example.com");
     Account owner = register("owner@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
     String selected = select(owner, tenant).accessToken();
     db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", admin.id());
+    admin = fresh(admin);
     http.perform(
             payload(
-                authorized(patch("/api/v1/cms/tenants/" + tenant + "/status"), admin.token()),
-                Map.of("status", "SUSPENDED")))
+                authorized(put("/api/v1/cms/tenants/" + tenant), admin.token()),
+                Map.of("name", "Suspended tenant", "status", "SUSPENDED")))
         .andExpect(status().isOk());
     http.perform(
             payload(
@@ -1159,7 +1389,8 @@ class IamApplicationTest {
                 Map.of("status", "SUSPENDED")))
         .andExpect(status().isNoContent());
     http.perform(authorized(get("/api/v1/auth/me"), owner.token()))
-        .andExpect(status().isUnauthorized());
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("status").value("SUSPENDED"));
     http.perform(
             payload(
                 authorized(patch("/api/v1/cms/users/" + owner.id() + "/status"), admin.token()),
@@ -1174,7 +1405,7 @@ class IamApplicationTest {
   }
 
   @Test
-  void memberRemovalAndRoleChangesInvalidateOldGrants() throws Exception {
+  void memberRemovalAndRoleChangesAffectNewTokensWhileExistingJwtRemainsValid() throws Exception {
     Account owner = register("owner@example.com");
     Account member = register("member@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
@@ -1186,7 +1417,7 @@ class IamApplicationTest {
             payload(
                 authorized(
                     put("/api/v1/tenants/" + tenant + "/members/" + member.id() + "/role"),
-                    owner.token()),
+                    tenantToken(owner, tenant)),
                 Map.of("roleId", role(tenant, "ACCOUNTING"))))
         .andExpect(status().isNoContent());
     var refreshed =
@@ -1196,10 +1427,10 @@ class IamApplicationTest {
         .contains("finance.reconciliation");
     http.perform(
             authorized(
-                delete("/api/v1/tenants/" + tenant + "/members/" + member.id()), owner.token()))
+                delete("/api/v1/tenants/" + tenant + "/members/" + member.id()),
+                tenantToken(owner, tenant)))
         .andExpect(status().isNoContent());
-    http.perform(authorized(get("/api/v1/tenants/" + tenant), old))
-        .andExpect(status().isForbidden());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant), old)).andExpect(status().isOk());
     http.perform(refreshRequest(refresh)).andExpect(status().isForbidden());
   }
 
@@ -1212,7 +1443,8 @@ class IamApplicationTest {
     String second = createTenant(owner, "second-tenant").path("id").asText();
     http.perform(
             payload(
-                authorized(post("/api/v1/tenants/" + first + "/invitations"), owner.token()),
+                authorized(
+                    post("/api/v1/tenants/" + first + "/invitations"), tenantToken(owner, first)),
                 Map.of("email", member.email(), "roleId", role(second, "OWNER"))))
         .andExpect(status().isNotFound());
     String token = invite(owner, first, member.email(), role(first, "WAREHOUSE"));
@@ -1241,7 +1473,9 @@ class IamApplicationTest {
         body(
             http.perform(
                     payload(
-                        authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
+                        authorized(
+                            post("/api/v1/tenants/" + tenant + "/roles"),
+                            tenantToken(owner, tenant)),
                         Map.of(
                             "name",
                             SystemRole.PLATFORM_ADMIN.name(),
@@ -1260,13 +1494,72 @@ class IamApplicationTest {
         .andExpect(status().isForbidden());
     http.perform(
             payload(
-                authorized(post("/api/v1/tenants/" + tenant + "/roles"), owner.token()),
+                authorized(
+                    post("/api/v1/tenants/" + tenant + "/roles"), tenantToken(owner, tenant)),
                 Map.of("name", "Unknown", "permissions", List.of("system.admin"))))
         .andExpect(status().isBadRequest());
     http.perform(
             payload(
                 authorized(
                     put("/api/v1/tenants/" + tenant + "/members/" + member.id() + "/role"), token),
+                Map.of("roleId", role(tenant, "OWNER"))))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void tenantJwtCannotAccessAnotherTenantEvenWithMembershipInBoth() throws Exception {
+    Account owner = register("tenant-context@example.com");
+    String first = createTenant(owner, "context-first").path("id").asText();
+    String second = createTenant(owner, "context-second").path("id").asText();
+    String firstAccess = tenantToken(owner, first);
+    http.perform(authorized(get("/api/v1/tenants/" + first), firstAccess))
+        .andExpect(status().isOk());
+    http.perform(
+            authorized(get("/api/v1/tenants/" + second).header("X-Tenant-Id", second), firstAccess))
+        .andExpect(status().isForbidden());
+    http.perform(
+            payload(
+                authorized(patch("/api/v1/tenants/" + second), firstAccess),
+                Map.of("name", "Wrong tenant")))
+        .andExpect(status().isForbidden());
+    http.perform(authorized(get("/api/v1/tenants/" + second), tenantToken(owner, second)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("name").value("context-second"));
+  }
+
+  @Test
+  void customRoleNamedOwnerDoesNotAcquireBuiltinOwnerAuthority() throws Exception {
+    Account owner = register("builtin-owner@example.com");
+    Account member = register("custom-owner@example.com");
+    String tenant = createTenant(owner, "owner-role-claims").path("id").asText();
+    // Built-in role display labels may differ from their authorization keys.
+    db.update(
+        "UPDATE roles SET name='Tenant owner' WHERE tenant_id=CAST(? AS uuid) AND builtin_key='OWNER'",
+        tenant);
+    var permissions =
+        db.queryForList(
+            "SELECT permission_key FROM role_permissions WHERE role_id=CAST(? AS uuid)",
+            String.class,
+            role(tenant, "OWNER"));
+    var custom =
+        body(
+            http.perform(
+                    payload(
+                        authorized(
+                            post("/api/v1/tenants/" + tenant + "/roles"),
+                            tenantToken(owner, tenant)),
+                        Map.of("name", "OWNER", "permissions", permissions)))
+                .andExpect(status().isCreated())
+                .andReturn());
+    accept(member, invite(owner, tenant, member.email(), custom.path("id").asText()));
+    var selected = select(member, tenant);
+    assertThat(selected.path("tenantRole").asText())
+        .isEqualTo("CUSTOM:" + custom.path("id").asText());
+    http.perform(
+            payload(
+                authorized(
+                    put("/api/v1/tenants/" + tenant + "/members/" + member.id() + "/role"),
+                    selected.accessToken()),
                 Map.of("roleId", role(tenant, "OWNER"))))
         .andExpect(status().isForbidden());
   }
@@ -1279,7 +1572,8 @@ class IamApplicationTest {
     String warehouse = role(tenant, "WAREHOUSE");
     http.perform(
             authorized(
-                delete("/api/v1/tenants/" + tenant + "/members/" + first.id()), first.token()))
+                delete("/api/v1/tenants/" + tenant + "/members/" + first.id()),
+                tenantToken(first, tenant)))
         .andExpect(status().isConflict());
     accept(second, invite(first, tenant, second.email(), role(tenant, "OWNER")));
     ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -1301,7 +1595,7 @@ class IamApplicationTest {
                                           + "/members/"
                                           + actor.id()
                                           + "/role"),
-                                  actor.token()),
+                                  tenantToken(actor, tenant)),
                               Map.of("roleId", warehouse)))
                       .andReturn()
                       .getResponse()
@@ -1391,11 +1685,13 @@ class IamApplicationTest {
     db.update("UPDATE users SET status='INACTIVE' WHERE id=CAST(? AS uuid)", inactive.id());
     http.perform(
             authorized(
-                delete("/api/v1/tenants/" + tenant + "/members/" + inactive.id()), owner.token()))
+                delete("/api/v1/tenants/" + tenant + "/members/" + inactive.id()),
+                tenantToken(owner, tenant)))
         .andExpect(status().isNoContent());
     http.perform(
             authorized(
-                delete("/api/v1/tenants/" + tenant + "/members/" + owner.id()), owner.token()))
+                delete("/api/v1/tenants/" + tenant + "/members/" + owner.id()),
+                tenantToken(owner, tenant)))
         .andExpect(status().isConflict());
   }
 
@@ -1410,7 +1706,7 @@ class IamApplicationTest {
     assertThatThrownBy(
             () ->
                 context
-                    .getBean(com.vishop.iam.modules.access.application.api.AccessApi.class)
+                    .getBean(com.vishop.iam.modules.tenant.application.api.TenantApi.class)
                     .initializeOwner(UUID.randomUUID(), UUID.randomUUID()))
         .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
     assertThatThrownBy(
@@ -1461,14 +1757,16 @@ class IamApplicationTest {
   }
 
   @Test
-  void tenantOnboardingRollsBackAllModulesWhenOwnerInitializationFails() throws Exception {
+  void tenantCreationRollsBackWhenOwnerInitializationFails() throws Exception {
     Account owner = register("owner-init-rollback@example.com");
     var user =
         context.getBean(UserRepositoryPort.class).user(UUID.fromString(owner.id())).orElseThrow();
     var actor = new AuthenticatedUser(user.id(), null, user.systemRole().name(), null, Set.of());
-    var access = context.getBean(com.vishop.iam.modules.access.application.api.AccessApi.class);
+    var access = context.getBean(com.vishop.iam.modules.tenant.application.api.TenantApi.class);
     var failingAccess =
-        org.mockito.Mockito.mock(com.vishop.iam.modules.access.application.api.AccessApi.class);
+        org.mockito.Mockito.mock(
+            com.vishop.iam.modules.tenant.application.api.TenantApi.class,
+            org.mockito.AdditionalAnswers.delegatesTo(access));
     org.mockito.Mockito.doAnswer(
             invocation -> {
               access.initializeOwner(invocation.getArgument(0), invocation.getArgument(1));
@@ -1483,11 +1781,7 @@ class IamApplicationTest {
             })
         .when(failingAccess)
         .initializeOwner(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
-    var handler =
-        new CreateTenantCommandHandler(
-            context.getBean(com.vishop.iam.modules.identity.application.api.IdentityApi.class),
-            context.getBean(com.vishop.iam.modules.tenant.application.api.TenantApi.class),
-            failingAccess);
+    var handler = new CreateTenantCommandHandler(failingAccess);
     var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     assertThatThrownBy(
             () ->
@@ -1527,7 +1821,7 @@ class IamApplicationTest {
     for (int i = 1; i <= 2; i++) {
       http.perform(
               payload(
-                  authorized(patch("/api/v1/tenants/" + id), owner.token()),
+                  authorized(patch("/api/v1/tenants/" + id), tenantToken(owner, id)),
                   Map.of("name", "Name " + i)))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.name").value("Name " + i));

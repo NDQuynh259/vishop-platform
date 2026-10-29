@@ -244,6 +244,50 @@ services:
       kafka:
         condition: service_healthy
 
+  subscription-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dev
+      args:
+        SERVICE_NAME: subscription-service
+        SERVICE_PORT: 8083
+        DEBUG_PORT: 5004
+    image: vishop/subscription-service:dev
+    container_name: vishop-dev-subscription-service
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "${SUBSCRIPTION_PORT:-8083}:8083"
+      - "${SUBSCRIPTION_DEBUG_PORT:-5004}:5004"
+    environment:
+      SERVER_PORT: 8083
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
+      SEPAY_ENABLED: ${SEPAY_ENABLED:-false}
+      SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
+      SEPAY_BANK: ${SEPAY_BANK:-}
+      SEPAY_ACCOUNT_NUMBER: ${SEPAY_ACCOUNT_NUMBER:-}
+      SEPAY_ACCOUNT_HOLDER: ${SEPAY_ACCOUNT_HOLDER:-}
+      SEPAY_QR_ACCOUNT_NUMBER: ${SEPAY_QR_ACCOUNT_NUMBER:-}
+      SEPAY_SUB_ACCOUNT: ${SEPAY_SUB_ACCOUNT:-}
+      SEPAY_MEMO_PREFIX: ${SEPAY_MEMO_PREFIX:-}
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_billing
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      TRACING_SAMPLING_PROBABILITY: 1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
   # ---------------------------------------------------------------------------
   # 11. API Gateway (HTTP 8000, Debug 5000)
   # ---------------------------------------------------------------------------
@@ -274,6 +318,7 @@ services:
       SPRING_PROFILES_ACTIVE: dev
       IAM_SERVICE_URL: http://iam-service:8080
       AUDIT_SERVICE_URL: http://audit-service:8082
+      SUBSCRIPTION_SERVICE_URL: http://subscription-service:8083
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       TRACING_SAMPLING_PROBABILITY: 1.0
     depends_on:

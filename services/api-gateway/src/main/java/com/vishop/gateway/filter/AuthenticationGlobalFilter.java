@@ -77,17 +77,23 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
     ServerWebExchange exchange = original.mutate().request(request).build();
     // Raw path giữ nguyên phần ký tự percent-encoded; các rule bên dưới so khớp giá trị này.
     String path = request.getURI().getRawPath();
+    // Provider callbacks use raw-body HMAC verified by subscription-service, not browser
+    // credentials.
+    boolean sepayWebhook =
+        request.getMethod() == HttpMethod.POST
+            && path.equals(ApiPaths.V1 + "/billing/webhooks/sepay");
     String origin = request.getHeaders().getOrigin();
     // 2. Nếu có Origin thì phải khớp chính xác cấu hình. Không có Origin vẫn đi tiếp.
     // Kiểm tra này diễn ra trước nhánh OPTIONS/public; đây chưa phải toàn bộ xử lý CORS.
     if (origin != null && !origins.contains(origin)) return error(exchange, 403);
-    if (AuthCookies.requiresRequestHeader(request.getMethod().name())
+    if (!sepayWebhook
+        && AuthCookies.requiresRequestHeader(request.getMethod().name())
         && !AuthCookies.REQUEST_HEADER_VALUE.equals(
             request.getHeaders().getFirst(AuthCookies.REQUEST_HEADER)))
       return error(exchange, 403, "csrf-request-header-required");
     // 3. Cho OPTIONS (thường dùng cho CORS preflight) và public path đi tiếp không cần JWT.
     // chain.filter() chuyển quyền xử lý cho filter kế tiếp trong chuỗi.
-    if (request.getMethod() == HttpMethod.OPTIONS || publicPath(path))
+    if (request.getMethod() == HttpMethod.OPTIONS || sepayWebhook || publicPath(path))
       return chain.filter(exchange.mutate().request(forwardCookies(request, path).build()).build());
 
     // 4. Trình duyệt dùng access cookie HttpOnly; Bearer vẫn phục vụ lời gọi nội bộ.

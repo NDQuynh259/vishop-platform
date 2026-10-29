@@ -290,6 +290,58 @@ services:
       start_period: 30s
     logging: *prod-logging
 
+  subscription-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.prod
+      args:
+        SERVICE_NAME: subscription-service
+        SERVICE_PORT: 8083
+    image: vishop/subscription-service:prod
+    container_name: vishop-prod-subscription-service
+    restart: always
+    expose:
+      - "8083"
+    environment:
+      SERVER_PORT: 8083
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random value of at least 32 bytes}
+      SEPAY_ENABLED: ${SEPAY_ENABLED:-false}
+      SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
+      SEPAY_BANK: ${SEPAY_BANK:-}
+      SEPAY_ACCOUNT_NUMBER: ${SEPAY_ACCOUNT_NUMBER:-}
+      SEPAY_ACCOUNT_HOLDER: ${SEPAY_ACCOUNT_HOLDER:-}
+      SEPAY_QR_ACCOUNT_NUMBER: ${SEPAY_QR_ACCOUNT_NUMBER:-}
+      SEPAY_SUB_ACCOUNT: ${SEPAY_SUB_ACCOUNT:-}
+      SEPAY_MEMO_PREFIX: ${SEPAY_MEMO_PREFIX:-}
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_billing
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          cpus: "0.2"
+          memory: 384M
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *prod-logging
+
   # ---------------------------------------------------------------------------
   # 8. API Gateway (Public Ingress Entrypoint on Host Port 8000)
   # ---------------------------------------------------------------------------
@@ -312,6 +364,7 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       IAM_SERVICE_URL: http://iam-service:8080
       AUDIT_SERVICE_URL: http://audit-service:8082
+      SUBSCRIPTION_SERVICE_URL: http://subscription-service:8083
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
       JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}

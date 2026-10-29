@@ -16,4 +16,5 @@ include(
     "services:iam-service",
     "services:api-gateway",
     "services:audit-service",
+    "services:subscription-service",
 )

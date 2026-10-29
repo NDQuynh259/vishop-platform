@@ -53,6 +53,30 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
+  void sepayPostCallbackReachesProviderAuthenticationWithoutBrowserCredentials() {
+    run(
+        MockServerHttpRequest.post("/api/v1/billing/webhooks/sepay")
+            .header("X-SePay-Timestamp", "1234567890")
+            .header("X-SePay-Signature", "provider-signature")
+            .header("X-User-Id", user.toString())
+            .body("{\"id\":1}"));
+    assertThat(forwarded().getRequest().getHeaders().getFirst("X-SePay-Signature"))
+        .isEqualTo("provider-signature");
+    assertThat(forwarded().getRequest().getHeaders()).doesNotContainKey("X-User-Id");
+    verifyNoInteractions(authentication);
+  }
+
+  @Test
+  void sepayExceptionDoesNotOpenOtherBillingPathsOrHttpMethods() {
+    var exchange = run(MockServerHttpRequest.get("/api/v1/billing/webhooks/sepay").build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    verify(chain, never()).filter(any());
+    var checkout = run(MockServerHttpRequest.post("/api/v1/billing/orders").build());
+    assertThat(checkout.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    verify(chain, never()).filter(any());
+  }
+
+  @Test
   void publicRoutesStripSpoofedIdentityAndInternalSecret() {
     run(
         MockServerHttpRequest.post("/api/v1/auth/login")

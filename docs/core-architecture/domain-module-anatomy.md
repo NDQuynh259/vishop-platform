@@ -10,91 +10,50 @@ IAM chia theo phân hệ trước, chia tầng bên trong mỗi phân hệ. Use 
 
 ```text
 services/iam-service/src/main/java/com/vishop/iam/
-├── IamApplication.java
-├── composition/
-│   ├── onboarding/
-│   │   ├── application/command/              # CreateTenantCommand, CreateTenantCommandHandler
-│   │   └── presentation/rest/                # TenantOnboardingController, dto/CreateTenantRequest
-│   └── members/
-│       ├── application/query/                # GetTenantMemberQuery, GetTenantMemberQueryHandler
-│       ├── application/port/                 # TenantMemberReadPort
-│       ├── infrastructure/persistence/       # JpaTenantMemberReadAdapter
-│       └── presentation/rest/                # TenantMemberController
-├── modules/
-│   ├── tenant/
-│   │   ├── domain/
-│   │   │   ├── entity/Tenant.java
-│   │   │   ├── valueobject/                    # TenantCode, TenantStatus
-│   │   │   ├── port/TenantRepositoryPort.java
-│   │   │   └── event/                          # TenantCreated/Renamed/StatusChangedEvent
-│   │   ├── application/
-│   │   │   ├── api/                           # TenantApi, TenantApplicationApi
-│   │   │   ├── dto/TenantResponseDto.java
-│   │   │   ├── mapper/TenantResponseMapper.java
-│   │   │   ├── command/                        # RenameTenant, ChangeTenantStatus
-│   │   │   └── query/                          # GetTenantById, ListCmsTenants
-│   │   ├── infrastructure/persistence/         # JPA entity, repository và adapter
-│   │   └── presentation/rest/                  # TenantController, TenantCmsController
-│   ├── identity/
-│   │   ├── domain/                             # User, SystemRole, PasswordPolicy, ports
-│   │   ├── application/
-│   │   │   ├── api/                           # IdentityApi, IdentityApplicationApi
-│   │   │   ├── mapper/UserViewMapper.java
-│   │   │   ├── command/                        # Gom theo bộ use case: login/, register/, logout/, switchtenant/, cms/
-│   │   │   │   ├── login/                      # LoginCommand, LoginCommandHandler
-│   │   │   │   ├── register/                   # RegisterUserCommand, RegisterUserCommandHandler
-│   │   │   │   ├── logout/                     # LogoutCommand, LogoutCommandHandler
-│   │   │   │   ├── switchtenant/               # SwitchTenantCommand, SwitchTenantCommandHandler
-│   │   │   │   └── cms/                        # ChangeSystemRole/Status Commands & Handlers
-│   │   │   ├── query/                          # Authenticate, RefreshAccessToken, profile
-│   │   │   ├── service/                        # TokenService, IdentityAuthorizationService
-│   │   │   ├── port/                           # Password/token/UserRead ports
-│   │   │   └── dto/
-│   │   ├── infrastructure/                     # JPA entities/repositories, JWT/password/authentication adapters
-│   │   └── presentation/rest/                  # AuthController, UserCmsController
-│   └── access/
-│       ├── domain/                             # Membership, Role, Invitation, RoleAssignmentPolicy, ports
-│       ├── application/
-│       │   ├── api/                           # AccessApi, AccessApplicationApi
-│       │   ├── command/                        # Role, member và invitation use cases
-│       │   ├── query/                          # ListMyTenants, ListTenantMembers/Roles
-│       │   ├── service/AccessAuthorizationService.java
-│       │   ├── port/AccessReadPort.java
-│       │   └── dto/
-│       ├── infrastructure/
-│       │   ├── persistence/                    # JPA entities, repositories và adapters
-│       │   ├── integration/IdentityUserAdapter.java
-│       │   └── config/IamDomainConfiguration.java
-│       └── presentation/rest/                  # TenantAccessController, InvitationController
-├── infra/
-│   ├── messaging/                          # IamOutbox, IamOutboxRelay
-│   ├── security/                           # IamPrincipal, opaque token utilities/adapter
-│   └── database/IamDatabaseMigration.java
-└── shared/
-    ├── domain/event/IamDomainEvent.java
-    └── application/
-        ├── dto/AuthenticatedUser.java
-        └── port/                           # IamEventPublisherPort, OpaqueTokenPort
+|-- IamApplication.java
+|-- modules/
+|   |-- identity/
+|   |   |-- domain/          # User, password policy, owned ports
+|   |   |-- application/     # IdentityApi, JWT/auth/user-CMS use cases
+|   |   |-- infrastructure/  # User persistence and JWT/password adapters
+|   |   `-- presentation/rest/
+|   `-- tenant/
+|       |-- domain/          # Tenant, Membership, Role, Invitation and policies
+|       |-- application/
+|       |   |-- api/         # TenantApi, Grant, MemberReadPort
+|       |   |-- command/     # tenant/, member/, role/, invitation/
+|       |   |-- query/       # tenant/, member/, role/
+|       |   `-- dto/port/service/mapper/
+|       |-- infrastructure/  # Owning JPA entities/repositories and user integration
+|       `-- presentation/rest/ # Tenant, CMS, member, role and invitation APIs
+|-- composition/
+|   |-- authentication/ # Connects identity's outbound port to TenantApi
+|   `-- members/        # User/member/active-owner read projections
+|-- infra/              # Security/CORS, OpenAPI, outbox relay and migration CLI
+`-- shared/             # Framework-free actor/event contracts and shared ports
 ```
 
 Các HTTP request DTO (`*Request`) và annotation validation đặt trong `presentation/rest/dto` của từng phân hệ. `application/dto` chứa kết quả use case và các contract dùng chung ở tầng application. Package domain dùng tên số ít: `entity`, `valueobject`, `port`, `service`, `event`.
 
-Các interface `AccessApi`, `IdentityApi`, `TenantApi` là contract công khai để Spring inject
+Các interface `TenantApi`, `IdentityApi` là contract công khai để Spring inject
 giữa các phân hệ. Các lớp triển khai `*ApplicationApi` là `@Component` có mức truy cập
-package-private, nên phân hệ khác không thể import trực tiếp. `AccessReadPort` và
-`MembershipRepositoryPort` chỉ phục vụ nội bộ access; `TokenService` dùng `AccessApi`
-để lấy tenant và grants. ArchUnit kiểm tra cả ranh giới phụ thuộc lẫn mức truy cập này.
+package-private, nên phân hệ khác không thể import trực tiếp. `MembershipRepositoryPort`
+chỉ phục vụ nội bộ tenant. `TokenService` dùng `IdentityApi.TenantAccessPort` do identity
+sở hữu; adapter trong composition nối port này với `TenantApi`. Identity không import
+tenant. Các phép đọc join dữ liệu user với tenant thuộc composition; join tenant với
+membership/role là nội bộ module tenant. Projection không thay thế repository ghi
+nghiệp vụ. ArchUnit kiểm tra cả ranh giới phụ thuộc, vòng phụ thuộc và ownership bảng.
 Lời gọi giữa các phân hệ chạy trong cùng JVM, không phát sinh HTTP request.
 
-Cách tổ chức tham khảo `api-vishop/libs` được áp dụng trong phạm vi microservice IAM: `infra` chứa kỹ thuật dùng chung của IAM, còn adapter riêng vẫn ở `modules/<tên>/infrastructure`. `shared` giữ kiểu dữ liệu và abstraction không phụ thuộc framework; các primitive domain/CQRS dùng lại `libs/common-*` của platform. `composition/onboarding` chỉ phối hợp các contract trong transaction, không giữ domain model hay quy tắc nghiệp vụ riêng.
+Cách tổ chức tham khảo `api-vishop/libs` được áp dụng trong phạm vi microservice IAM: `infra` chứa kỹ thuật dùng chung của IAM, còn adapter riêng vẫn ở `modules/<tên>/infrastructure`. `shared` giữ kiểu dữ liệu và abstraction không phụ thuộc framework. Access đã được gộp vào tenant; tạo tenant, role và owner là use case của tenant, không cần `composition/onboarding`. Composition chỉ còn tích hợp identity với tenant và projection cần dữ liệu user.
 
-`resources/application.yml` và `resources/db/migration` vẫn ở cấp service. Đây là các package trong cùng một deployment và database, không phải ba service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.
+`resources/application.yml` và `resources/db/migration` vẫn ở cấp service. Identity và tenant là hai module trong cùng một deployment và database, không phải hai service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.
 
 ---
 
 ## 2. Chi tiết từng tầng và vai trò của từng file
 
-Các đường dẫn ở phần này được hiểu tương đối bên trong phân hệ tương ứng. Ví dụ `entity/Tenant.java` thuộc `modules/tenant/domain`, còn `service/RoleAssignmentPolicy.java` thuộc `modules/access/domain`.
+Các đường dẫn ở phần này được hiểu tương đối bên trong phân hệ tương ứng. Ví dụ `entity/Tenant.java` thuộc `modules/tenant/domain`, còn `service/RoleAssignmentPolicy.java` thuộc `modules/tenant/domain`.
 
 ### 2.1. Tầng Domain (`domain/`)
 
@@ -155,19 +114,19 @@ Tầng điều phối luồng thực thi (Use Cases) theo mô hình **CQRS**.
   - `@Transactional`: Đóng vai trò ranh giới giao dịch (Transaction Boundary), đảm bảo tính nguyên tử giữa việc ghi dữ liệu vào database (như tạo user, đổi quyền) và ghi sự kiện vào Transactional Outbox (`outbox.append`). Nếu có bất kỳ lỗi nào, DB và Outbox cùng rollback 100%.
   - `isolation = Isolation.REPEATABLE_READ`: Dùng cho các use case cấp phát token hoặc quyền hạn để đóng băng snapshot dữ liệu, ngăn ngừa tình trạng token bị ghép quyền cũ với security version mới khi có mutation đồng thời.
 
-#### `composition/onboarding/application/command/CreateTenantCommand.java` & `CreateTenantCommandHandler.java`
+#### `modules/tenant/application/command/tenant/CreateTenantCommand.java` & `CreateTenantCommandHandler.java`
 * `Command` là một record mang dữ liệu đầu vào thực hiện hành động ghi.
 * `CommandHandler` bọc trong transaction (`@Transactional`):
   1. Xác thực actor và kiểm tra tài khoản đang hoạt động. Unique constraint bảo vệ tenant code, kể cả khi có request đồng thời.
   2. Gọi contract `TenantApi.create(...)`. Implementation của tenant tạo aggregate, lưu qua repository và đưa domain event vào outbox; trigger tạo bốn role mặc định khi insert tenant.
-  3. Gọi `AccessApi.initializeOwner(...)` để tạo membership OWNER. Cả hai API ghi đều yêu cầu transaction đang tồn tại.
+  3. Gọi `TenantApi.initializeOwner(...)` để tạo membership OWNER. Cả hai API ghi đều yêu cầu transaction đang tồn tại.
   4. Trả về `TenantResponseDto`. Tenant, role mặc định, membership và outbox cùng rollback khi có lỗi; relay gửi Kafka bất đồng bộ sau commit.
 
-Composition chỉ dùng contract công khai; không truy cập domain, repository hay implementation của các module. Module không phụ thuộc ngược vào composition.
+Tạo tenant và membership OWNER nằm trong cùng module và transaction. Composition chỉ dùng contract công khai; module không phụ thuộc ngược vào composition.
 
 #### Truy vấn tổng hợp trong `composition/members`
 
-`TenantMemberController` nhận `GET /api/v1/tenants/{tenantId}/members/{userId}` và `/members/me`, gửi query qua `QueryBus`. Handler kiểm tra quyền qua `AccessApi`, rồi đọc qua `TenantMemberReadPort`. `JpaTenantMemberReadAdapter` dùng JPA `EntityManager` chạy native query có bind parameter, JOIN năm bảng `users`, `tenants`, `tenant_members`, `roles`, `role_permissions` trong datasource IAM và gom permissions thành một projection. Kết quả `Tuple` được map trực tiếp sang DTO, không tải entity graph. LEFT JOIN giữ được role chưa có permission; mọi liên kết dùng ID và tenant scope.
+`TenantMemberController` nhận `GET /api/v1/tenants/{tenantId}/members/{userId}` và `/members/me`, gửi query qua `QueryBus`. Handler kiểm tra quyền qua `TenantApi`, rồi đọc qua `TenantApi.MemberReadPort`. `JpaTenantMemberReadAdapter` dùng JPA `EntityManager` chạy native query có bind parameter, JOIN năm bảng `users`, `tenants`, `tenant_members`, `roles`, `role_permissions` trong datasource IAM và gom permissions thành một projection. Kết quả `Tuple` được map trực tiếp sang DTO, không tải entity graph. LEFT JOIN giữ được role chưa có permission; mọi liên kết dùng ID và tenant scope.
 
 Kiểm tra quyền và đọc projection chạy trong cùng transaction read-only `REPEATABLE_READ`. Composition có thể sở hữu query handler, read port và SQL adapter của luồng tổng hợp; nó không sở hữu domain model hay truy cập repository/entity Java nội bộ module. Adapter phụ thuộc schema IAM nên phải được cập nhật và kiểm thử khi schema đổi. Nó không ghi dữ liệu hoặc JOIN database của microservice khác; tổng hợp liên service dùng API hoặc read model nhận sự kiện.
 
@@ -202,7 +161,7 @@ Hiện thực hóa các Ports của Domain bằng các công nghệ cụ thể.
 
 Giao tiếp với client bên ngoài (REST API, Webhook).
 
-#### `composition/onboarding/presentation/rest/TenantOnboardingController.java`
+#### `modules/tenant/presentation/rest/TenantController.java`
 * Nhận HTTP Request, validate cú pháp với `@Valid`.
 * **Tuyệt đối không gọi trực tiếp repository hay domain methods**.
 * Chỉ giao tiếp với Application Layer qua `CommandBus` và `QueryBus`:
@@ -221,16 +180,22 @@ Giao tiếp với client bên ngoài (REST API, Webhook).
 ## 3. Giao tiếp giữa các phân hệ
 
 - `IdentityApi`: kiểm tra tài khoản, quyền CMS và cung cấp user view hiện tại.
-- `TenantApi`: tạo tenant, kiểm tra trạng thái, trả tenant view và lấy khóa trong transaction của use case.
-- `AccessApi`: cung cấp quyền tenant hiện tại, danh sách tenant ID và khởi tạo OWNER. Identity dùng API này để cấp JWT theo tenant; composition dùng để hoàn tất onboarding.
-- `UserDirectoryPort` thuộc access domain; `IdentityUserAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
+- `TenantApi`: quản lý tenant, membership OWNER, grant và quyền trong tenant. Command handler của tenant giữ kiểm tra quyền và khóa tenant trước khi ghi. `TenantApi.MemberReadPort` gom đọc member/detail và đếm owner còn active, do composition triển khai khi cần join dữ liệu user.
+- `IdentityApi.TenantAccessPort`: outbound contract của identity; adapter trong composition nối với `TenantApi`, tránh vòng phụ thuộc tenant–identity.
+- `UserDirectoryPort` thuộc tenant domain; `IdentityUserAdapter` gọi `IdentityApi` để policy kiểm tra user còn hoạt động mà không phụ thuộc identity entity/repository.
 
-Interface công khai nằm trong `modules/<tên>/application/api`, DTO công khai nằm trong `application/dto` của chính module: `UserView`, `TenantResponseDto`, `TenantMemberResponseDto`. Các kiểu công khai này không phụ thuộc framework, infra hay nội bộ module. Implementation cùng nằm trong `application/api` nhưng chỉ được dùng nội bộ; việc map domain sang DTO nằm trong `application/mapper`. Phân hệ khác và composition chỉ dùng interface công khai và ba DTO được phép, không gọi implementation, repository, handler, service nội bộ hay adapter của nhau. Các SQL projection của access có thể join bảng user/tenant để đọc trong database chung; cập nhật thuộc phân hệ sở hữu. `shared` không phụ thuộc các module, composition, hạ tầng hay framework.
+Interface công khai nằm trong `modules/<tên>/application/api`, DTO được xuất công khai gồm `UserView`, `TenantResponseDto`, `MemberView`, `TenantMemberResponseDto`. Các kiểu này không phụ thuộc framework, infra hay nội bộ module. Implementation là package-private; mapper domain thuộc `application/mapper`. Tenant chỉ dùng contract identity; identity dùng outbound port của chính nó nên không có vòng phụ thuộc. Query tenant/membership dùng trực tiếp entity thuộc tenant, không cần read model trùng mapping. Projection cần dữ liệu user nằm trong `composition/members`. `shared` không phụ thuộc module, composition, hạ tầng hay framework.
 
-`AuthenticatedUser` chỉ chứa user ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password/authentication adapter thuộc identity; opaque token và principal chung nằm trong `infra/security`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
+`AuthenticatedUser` chỉ chứa user ID, tenant ID, system role và grant của request; không chứa User entity hoặc UserView. JWT/password adapter thuộc identity; authentication filter, filter-chain/CORS và principal chung nằm trong `infra/security`. Filter chỉ gọi contract `IdentityApi.authenticate`. Outbox và relay ở `infra/messaging`, dùng entity/repository JPA của `common-persistence`; migration CLI ở `infra/database`.
 
 JWT issuance uses `TokenService` and verification uses `AccessTokenPort`.
-Authentication has no session persistence or Redis security projection.
+Authentication has no session persistence or Redis security projection. Request authorization
+uses only verified JWT `systemRole`, `tenantRole` and permission claims; it does not read
+the caller's current grants from a database or call IAM. Tenant URLs must match the JWT's
+tenant. Controllers declare `@PreAuthorize`; application handlers enforce the same claims
+for non-HTTP calls. Login, refresh and tenant switching read current grants when issuing tokens.
+Existing access JWTs retain their snapshot until expiry. Business reads/writes, final-owner
+and final-admin invariants still use persistence and transaction locks.
 
 ## 4. Kiểm tra ranh giới kiến trúc
 

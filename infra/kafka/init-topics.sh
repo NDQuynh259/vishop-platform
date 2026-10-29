@@ -13,6 +13,7 @@ TOPICS=(
   "vishop.tenant.events:3:1"
   "vishop.user.events:3:1"
   "vishop.audit.events:3:1"
+  "vishop.billing.events:3:1"
 )
 
 echo "Creating core Kafka topics..."

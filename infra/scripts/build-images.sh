@@ -16,6 +16,7 @@ services=(
   "api-gateway:infra/docker/Dockerfile.api-gateway"
   "iam-service:infra/docker/Dockerfile.iam-service"
   "audit-service:infra/docker/Dockerfile.audit-service"
+  "subscription-service:infra/docker/Dockerfile.subscription-service"
 )
 
 cd "${ROOT_DIR}"

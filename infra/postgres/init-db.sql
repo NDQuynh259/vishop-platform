@@ -2,6 +2,7 @@
 \getenv db_owner POSTGRES_USER
 CREATE DATABASE vishop_iam OWNER :"db_owner";
 CREATE DATABASE vishop_audit OWNER :"db_owner";
+CREATE DATABASE vishop_billing OWNER :"db_owner";
 
 \connect vishop_iam
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";

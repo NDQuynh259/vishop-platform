@@ -5,16 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.audit.modules.auditlog.application.command.RecordAuditLogCommand;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.events.EventEnvelope;
-
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
-import lombok.extern.slf4j.Slf4j;
 
-/**
- * Inbound adapter: translates the integration event into an application
- * command.
- */
+/** Inbound adapter: translates the integration event into an application command. */
 @Component
 @Slf4j
 public class AuditKafkaListener {
@@ -26,8 +22,11 @@ public class AuditKafkaListener {
     this.commands = commands;
   }
 
-  @KafkaListener(topics = { "vishop.tenant.events",
-      "vishop.user.events" }, groupId = "audit-service", autoStartup = "${spring.kafka.listener.auto-startup:true}", containerFactory = "kafkaListenerContainerFactory")
+  @KafkaListener(
+      topics = {"vishop.tenant.events", "vishop.user.events", "vishop.billing.events"},
+      groupId = "audit-service",
+      autoStartup = "${spring.kafka.listener.auto-startup:true}",
+      containerFactory = "kafkaListenerContainerFactory")
   public void onEvent(ConsumerRecord<String, String> record) {
     try {
       EventEnvelope event = json.readValue(record.value(), EventEnvelope.class);

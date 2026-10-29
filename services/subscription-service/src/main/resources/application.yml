@@ -1,0 +1,86 @@
+server:
+  port: 8083
+
+spring:
+  output:
+    ansi:
+      enabled: ALWAYS
+  application:
+    name: subscription-service
+
+  datasource:
+    url: ${SUBSCRIPTION_DB_URL:${BILLING_DB_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_billing}}}
+    username: ${SUBSCRIPTION_DB_USER:${BILLING_DB_USER:${SPRING_DATASOURCE_USERNAME:vishop}}}
+    password: ${SUBSCRIPTION_DB_PASSWORD:${BILLING_DB_PASSWORD:${SPRING_DATASOURCE_PASSWORD:vishop_secret}}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    open-in-view: false
+    generate-ddl: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  flyway:
+    enabled: false
+    baseline-on-migrate: false
+    clean-disabled: true
+
+  sql:
+    init:
+      mode: never
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    propagation:
+      type: W3C,B3
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+vishop:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:vishop_platform_dev_jwt_secret_key_at_least_32_bytes_long!}
+
+  subscription:
+    checkout-lifetime: ${SUBSCRIPTION_CHECKOUT_LIFETIME:${BILLING_CHECKOUT_LIFETIME:PT30M}}
+    sepay:
+      enabled: ${SEPAY_ENABLED:false}
+      webhook-secret: ${SEPAY_WEBHOOK_SECRET:}
+      bank: ${SEPAY_BANK:}
+      account-number: ${SEPAY_ACCOUNT_NUMBER:}
+      account-holder: ${SEPAY_ACCOUNT_HOLDER:}
+      qr-account-number: ${SEPAY_QR_ACCOUNT_NUMBER:}
+      sub-account: ${SEPAY_SUB_ACCOUNT:}
+      memo-prefix: ${SEPAY_MEMO_PREFIX:}

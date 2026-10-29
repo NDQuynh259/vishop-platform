@@ -23,6 +23,8 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Observability](./observability-architecture.md) | Logs, metrics, distributed tracing, and alerting |
 | [Security architecture](./security-architecture.md) | Authentication, RBAC, Edge Gateway Auth, stateless JWT access/refresh and expiry-based logout, and Multi-Tenancy |
 | [Inter-service communication](./inter-service-communication.md) | Protocols: Kafka event-driven, REST/HTTPS, and gRPC decision framework |
+| [Billing and SePay design](../product/vishop-billing-sepay-design.md) | Tenant subscriptions, QR bank transfers, payment idempotency, reconciliation and entitlements (proposed) |
+| [Billing database](../../services/subscription-service/docs/database-design.md) | Current seven-table schema, ERD, snapshots, idempotency, locking, and proposed extensions |
 | [Spring Boot migration plan](./spring-boot-microservices-migration-plan.md) | Migration strategy and operational considerations |
 | [Source project reference](./source-project-architecture-reference.md) | Deep-dive analysis of NestJS `api-vishop` architecture, Prisma schema, Better Auth sessions, and mapping to Java |
 

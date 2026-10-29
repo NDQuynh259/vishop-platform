@@ -110,13 +110,16 @@ fun projectTaskPaths(task: String) = allprojects.map {
 val projectCommands = linkedMapOf(
     "runIam" to ("Start IAM service (:8080)." to listOf(":services:iam-service:dev")),
     "runGateway" to ("Start API gateway (:8000)." to listOf(":services:api-gateway:dev")),
+    "runSubscription" to ("Start subscription service (:8083)." to listOf(":services:subscription-service:dev")),
+    "migrateSubscription" to ("Run subscription migrations; requires SUBSCRIPTION_DB_URL/USER/PASSWORD." to listOf(":services:subscription-service:migrate")),
     "runAudit" to ("Start audit service (:8082)." to listOf(":services:audit-service:dev")),
     "migrateIam" to ("Run IAM migrations; requires IAM_DB_URL/USER/PASSWORD." to listOf(":services:iam-service:migrate")),
     "migrateAudit" to ("Run audit migrations; requires AUDIT_DB_URL/USER/PASSWORD." to listOf(":services:audit-service:migrate")),
-    "packageAll" to ("Package all three service boot JARs." to listOf(
+    "packageAll" to ("Package all four service boot JARs." to listOf(
         ":services:iam-service:bootJar",
         ":services:api-gateway:bootJar",
         ":services:audit-service:bootJar",
+        ":services:subscription-service:bootJar",
     )),
     "buildAll" to ("Build and check every project." to projectTaskPaths("build")),
     "compileAll" to ("Compile Java sources across all projects." to projectTaskPaths("compileJava")),

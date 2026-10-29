@@ -119,6 +119,8 @@ class GatewayApplicationTest {
   static void routing(DynamicPropertyRegistry properties) {
     properties.add("IAM_SERVICE_URL", () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
     properties.add("AUDIT_SERVICE_URL", () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
+    properties.add(
+        "SUBSCRIPTION_SERVICE_URL", () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
   }
 
   @AfterAll
@@ -133,6 +135,47 @@ class GatewayApplicationTest {
   @Autowired private WebTestClient webTestClient;
 
   @Autowired org.springframework.cloud.gateway.route.RouteLocator routes;
+
+  @Test
+  void renamedSubscriptionRuntimeKeepsBillingApiRoutesAndExposesNewDocs() {
+    for (String path : java.util.List.of("/api/v1/billing/orders", "/api/v1/cms/billing/prices")) {
+      var exchange =
+          org.springframework.mock.web.server.MockServerWebExchange.from(
+              org.springframework.mock.http.server.reactive.MockServerHttpRequest.get(path));
+      var route =
+          routes
+              .getRoutes()
+              .filterWhen(candidate -> candidate.getPredicate().apply(exchange))
+              .next()
+              .block();
+      assertThat(route).isNotNull();
+      assertThat(route.getId()).isEqualTo("subscription-service");
+    }
+    webTestClient
+        .get()
+        .uri("/docs?service=subscription")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody(String.class)
+        .value(
+            html ->
+                assertThat(html)
+                    .contains(
+                        "Subscription Service API Reference", "/v3/api-docs/subscription-service"));
+    for (String path :
+        java.util.List.of("/v3/api-docs/subscription-service", "/v3/api-docs/billing-service")) {
+      webTestClient
+          .get()
+          .uri(path)
+          .exchange()
+          .expectStatus()
+          .isOk()
+          .expectBody()
+          .jsonPath("$.openapi")
+          .isEqualTo("3.0.1");
+    }
+  }
 
   @Test
   void cmsAuditMatchesAuditRouteBeforeGeneralIamRouteAndAllowsNoSelectedTenant() {

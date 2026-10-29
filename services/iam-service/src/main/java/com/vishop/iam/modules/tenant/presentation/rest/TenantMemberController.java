@@ -1,0 +1,53 @@
+package com.vishop.iam.modules.tenant.presentation.rest;
+
+import com.vishop.iam.infra.security.IamPrincipal;
+import com.vishop.iam.modules.tenant.application.dto.MemberView;
+import com.vishop.iam.modules.tenant.application.dto.TenantMemberResponseDto;
+import com.vishop.iam.modules.tenant.application.query.member.GetTenantMemberQuery;
+import com.vishop.iam.modules.tenant.application.query.member.ListTenantMembersQuery;
+import io.github.coreplatform.common.domain.constants.ApiPaths;
+import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(ApiPaths.V1 + "/tenants")
+public class TenantMemberController {
+  private final QueryBus queries;
+
+  public TenantMemberController(QueryBus queries) {
+    this.queries = queries;
+  }
+
+  @GetMapping("/{id}/members/me")
+  @PreAuthorize("@iamAuthorization.inTenant(authentication, #id)")
+  public ResponseEntity<TenantMemberResponseDto> me(
+      @AuthenticationPrincipal IamPrincipal actor, @PathVariable UUID id) {
+    return memberResponse(new GetTenantMemberQuery(actor.actor(), id, actor.userId()));
+  }
+
+  @GetMapping("/{id}/members")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW)")
+  public List<MemberView> members(
+      @AuthenticationPrincipal IamPrincipal actor, @PathVariable UUID id) {
+    return queries.dispatch(new ListTenantMembersQuery(actor.actor(), id));
+  }
+
+  @GetMapping("/{id}/members/{user}")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and (#user == principal.userId or hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW))")
+  public ResponseEntity<TenantMemberResponseDto> member(
+      @AuthenticationPrincipal IamPrincipal actor, @PathVariable UUID id, @PathVariable UUID user) {
+    return memberResponse(new GetTenantMemberQuery(actor.actor(), id, user));
+  }
+
+  private ResponseEntity<TenantMemberResponseDto> memberResponse(GetTenantMemberQuery query) {
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(queries.dispatch(query));
+  }
+}

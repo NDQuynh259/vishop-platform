@@ -77,7 +77,7 @@ Tầng Domain và Application không được tự sinh mã lỗi HTTP hay forma
 | **Database Table** | snake_case số nhiều | `tenants`, `outbox_events`, `consumed_messages` |
 | **Database Column** | snake_case | `created_at`, `aggregate_id`, `tenant_id` |
 | **Kafka Topic** | `vishop.{aggregate_kebab_case}.events` | `vishop.tenant.events` |
-| **API Path** | kebab-case số nhiều | `/api/v1/tenants/{id}/status` |
+| **API Path** | kebab-case số nhiều | `/api/v1/cms/tenants/{id}` |
 
 ---
 

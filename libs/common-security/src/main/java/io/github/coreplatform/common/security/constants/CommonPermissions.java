@@ -11,6 +11,13 @@ public final class CommonPermissions {
 
   // #endregion
 
+  public static final class Billing {
+    private Billing() {}
+
+    public static final String VIEW = "billing.view";
+    public static final String MANAGE = "billing.manage";
+  }
+
   public static final class Order {
     // #region Order
     private Order() {}
