@@ -1,6 +1,7 @@
 # Chính sách thay đổi quyền và thu hồi credential
 
-Trạng thái: **đã triển khai trong code**. Hợp đồng runtime được ghi trong
+Trạng thái: **yêu cầu thiết kế được giữ lại**. Implementation IAM trước đã
+[gỡ để viết lại](iam-auth-reset.md). Nội dung bên dưới mô tả thiết kế trước reset trong
 [gateway-authorization.md](gateway-authorization.md). Gateway dùng ba nhóm cache;
 migration V11 ngừng tạo/phát member projection, giữ thu hồi tokenVersion của V10.
 Migration chưa tự được áp dụng lên database đang dùng; cần chạy quy trình triển khai.
@@ -69,7 +70,7 @@ chuỗi tên enum. tokenVersion vẫn là metadata bắt buộc để thu hồi 
 Tên roleId trong API quản lý role, payload cache và context gateway không thay đổi.
 
 File application/dto/IamTokenClaims.java chứa hai record AccessToken và RefreshToken,
-không phụ thuộc JWT/persistence. IamTokenClaimsParser trong infrastructure kiểm tra
+không phụ thuộc JWT/persistence. IamTokenCodec trong infrastructure tạo token, kiểm tra
 chữ ký và metadata dùng chung. Access có thông tin role; Refresh chỉ có userId,
 tenantId, tokenVersion và expiresAt. Không dùng access thay cho refresh hoặc ngược lại.
 

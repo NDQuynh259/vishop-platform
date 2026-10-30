@@ -45,11 +45,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "spring.kafka.listener.auto-startup=false",
-      "management.tracing.enabled=false",
-      "vishop.security.jwt.secret=test-audit-jwt-secret-with-at-least-thirty-two-bytes"
-    })
+    properties = {"spring.kafka.listener.auto-startup=false", "management.tracing.enabled=false"})
 @DirtiesContext
 class AuditApplicationTest {
   private static final EmbeddedPostgres POSTGRES = startPostgres();
@@ -181,9 +177,11 @@ class AuditApplicationTest {
 
   private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
 
-  @Autowired
-  void tokenFixture(JwtTokenProvider provider) {
-    tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
+  @org.junit.jupiter.api.BeforeEach
+  void tokenFixture() {
+    tokens =
+        new io.github.coreplatform.common.test.security.IamTokenFixture(
+            new JwtTokenProvider("test-audit-jwt-secret-with-at-least-thirty-two-bytes"));
   }
 
   @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;

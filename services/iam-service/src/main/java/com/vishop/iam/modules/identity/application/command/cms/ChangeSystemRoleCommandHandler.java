@@ -1,6 +1,5 @@
 package com.vishop.iam.modules.identity.application.command.cms;
 
-import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
@@ -17,15 +16,11 @@ public class ChangeSystemRoleCommandHandler
     implements CommandHandler<ChangeSystemRoleCommand, Void> {
   private final UserRepositoryPort userRepository;
   private final IamEventPublisherPort outbox;
-  private final IdentityAuthorizationService authorization;
 
   public ChangeSystemRoleCommandHandler(
-      UserRepositoryPort userRepository,
-      IamEventPublisherPort outbox,
-      IdentityAuthorizationService authorization) {
+      UserRepositoryPort userRepository, IamEventPublisherPort outbox) {
     this.userRepository = userRepository;
     this.outbox = outbox;
-    this.authorization = authorization;
   }
 
   @Override
@@ -36,7 +31,7 @@ public class ChangeSystemRoleCommandHandler
     var role = command.role();
 
     userRepository.lockSystemRoles();
-    authorization.cms(actor);
+    actor.requireCms();
     User target =
         userRepository.user(user).orElseThrow(() -> new EntityNotFoundException("User", user));
     if (target.systemRole() == SystemRole.PLATFORM_ADMIN

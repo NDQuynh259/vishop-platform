@@ -146,27 +146,16 @@ accounts, system roles, tenants, memberships, tenant roles and permissions in `v
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
 
-IAM issues access/refresh JWTs through HttpOnly cookies; JSON never returns credentials.
-Gateway verifies user JWTs, resolves current tenant permissions from dedicated Auth Redis,
-and forwards signed context to IAM/audit/subscription. Backends reject direct user JWTs
-and authorize tenant resources locally. See [gateway authorization](docs/core-architecture/gateway-authorization.md).
+IAM authentication is currently reset for a fresh implementation. Only the four auth
+endpoint skeletons remain: POST login/register/refresh/logout under /api/v1/auth.
+They return 501 without issuing credentials or changing user data. Existing IAM
+business HTTP endpoints temporarily return 503 until authentication is rebuilt.
+See [reset scope and checks](docs/core-architecture/iam-auth-reset.md).
 
-Browser requests use credentials: include and X-Requested-With: XMLHttpRequest on writes.
-Refresh reads its cookie with no body; switch-tenant accepts only {tenantId}. Logout clears
-cookies. Credential/status/system-role changes revoke tokens through tokenVersion; role and
-membership changes revoke both access and refresh tokens; permission edits update Redis grants. Production uses Secure cookies and HTTPS.
-
-Configure JWT_SECRET in IAM/gateway, separate GATEWAY_{IAM,AUDIT,SUBSCRIPTION}_CONTEXT_SECRET
-values, Auth Redis connectivity, database credentials and exact ALLOWED_ORIGINS. CMS requires
-PLATFORM_ADMIN; tenant OWNER does not grant CMS access. Apply IAM migrations through V11 before the
-coordinated gateway/backend rollout.
-
-
-Public registration accepts email, password and fullName; tenantId/role assignment is
-rejected. Create an organization through POST /api/v1/tenants, then select it through
-POST /api/v1/auth/switch-tenant. The user profile returns systemRole separately from
-tenantRole/permissions in the selected tenant. Existing legacy databases require a planned
-import before deploying the new runtime; source changes do not migrate those records.
+User/tenant models, business use cases, persistence, Kafka outbox and Flyway history
+remain. No database records or migrations were deleted. Gateway/audit/subscription
+retain their separate authentication/context code; IAM currently does not issue
+JWTs or provide the gateway authorization cache-loader.
 
 ## Contribution rules
 

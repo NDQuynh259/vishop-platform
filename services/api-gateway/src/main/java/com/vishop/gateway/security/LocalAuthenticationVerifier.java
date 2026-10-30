@@ -2,6 +2,7 @@ package com.vishop.gateway.security;
 
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
+import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -11,10 +12,10 @@ import reactor.core.publisher.Mono;
 public class LocalAuthenticationVerifier {
   public record Identity(UUID userId, UUID tenantId, UUID roleId, GatewayPrincipal actor) {}
 
-  private final GatewayTokenVerifier tokens;
+  private final JwtTokenProvider tokens;
   private final AuthorizationCacheReader cache;
 
-  public LocalAuthenticationVerifier(GatewayTokenVerifier tokens, AuthorizationCacheReader cache) {
+  public LocalAuthenticationVerifier(JwtTokenProvider tokens, AuthorizationCacheReader cache) {
     this.tokens = tokens;
     this.cache = cache;
   }
@@ -28,15 +29,16 @@ public class LocalAuthenticationVerifier {
 
   /** Verifies the JWT and compares its credential version with the cached user version. */
   Mono<VerifiedAccessToken> verifyAccessToken(String credential) {
-    return Mono.defer(() -> {
-          if (credential == null || credential.isBlank())
-            return Mono.error(new AuthenticationFailure(401, "unauthorized"));
-          return tokens.verify(credential);
-        })
-        .map(claims -> {
-          try { return IamAccessTokenClaims.from(claims); }
-          catch (RuntimeException invalid) { throw new AuthenticationFailure(401, "unauthorized"); }
-        })
+    return Mono.fromCallable(
+            () -> {
+              try {
+                if (credential == null || credential.isBlank())
+                  throw new IllegalArgumentException();
+                return IamAccessTokenClaims.from(tokens.verify(credential));
+              } catch (RuntimeException invalid) {
+                throw new AuthenticationFailure(401, "unauthorized");
+              }
+            })
         .flatMap(
             claims -> {
               String key = AuthorizationSnapshot.user(claims.userId());

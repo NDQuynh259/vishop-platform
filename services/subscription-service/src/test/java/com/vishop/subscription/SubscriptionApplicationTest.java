@@ -41,8 +41,7 @@ import org.springframework.transaction.PlatformTransactionManager;
       "vishop.subscription.sepay.webhook-secret=test-sepay-signing-secret-at-least-32-bytes",
       "vishop.subscription.sepay.bank=Vietcombank",
       "vishop.subscription.sepay.account-number=0012345678",
-      "vishop.subscription.sepay.account-holder=VISHOP",
-      "vishop.security.jwt.secret=test-billing-jwt-secret-at-least-32-bytes"
+      "vishop.subscription.sepay.account-holder=VISHOP"
     })
 @AutoConfigureMockMvc
 @Import(SubscriptionApplicationTest.TimeConfiguration.class)
@@ -91,9 +90,11 @@ class SubscriptionApplicationTest {
   @Autowired ObjectMapper json;
   private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
 
-  @Autowired
-  void tokenFixture(JwtTokenProvider provider) {
-    tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
+  @org.junit.jupiter.api.BeforeEach
+  void tokenFixture() {
+    tokens =
+        new io.github.coreplatform.common.test.security.IamTokenFixture(
+            new JwtTokenProvider("test-billing-jwt-secret-at-least-32-bytes"));
   }
 
   @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;

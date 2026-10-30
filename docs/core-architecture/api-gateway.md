@@ -1,5 +1,9 @@
 # API Gateway
 
+IAM authentication hiện đã [reset](iam-auth-reset.md): bốn auth endpoint chỉ trả
+501, các API nghiệp vụ IAM trả 503. Phần routing gateway vẫn giữ; mô tả xác thực
+IAM cũ bên dưới là tham chiếu trước reset.
+
 Gateway dùng Spring Cloud Gateway/WebFlux, chạy ở cổng 8000. Các route được định nghĩa
 trong [application.yml](../../services/api-gateway/src/main/resources/application.yml).
 
@@ -147,7 +151,8 @@ Trong hệ thống **ViShop Platform**, cả hai công nghệ được phối h�
 
 ## Khởi chạy
 
-Đặt `IAM_SERVICE_URL` cho routing, `JWT_SECRET` và `ALLOWED_ORIGINS` phù hợp rồi chạy:
+Đặt `IAM_SERVICE_URL` cho routing, `JWT_ACCESS_SECRET` giống IAM và `ALLOWED_ORIGINS` phù hợp rồi chạy.
+IAM hiện không cấp token mới; xem [trạng thái reset](iam-auth-reset.md):
 
 ```powershell
 .\gradlew.bat :services:api-gateway:bootRun

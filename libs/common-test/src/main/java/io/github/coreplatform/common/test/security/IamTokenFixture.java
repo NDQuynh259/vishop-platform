@@ -9,6 +9,7 @@ import java.util.*;
 /** Test-only IAM credential examples; no production service depends on this policy. */
 public final class IamTokenFixture {
   private final JwtTokenProvider provider;
+  private final JwtTokenProvider refreshProvider;
   private final long accessExpirationMs;
 
   public IamTokenFixture(JwtTokenProvider provider) {
@@ -16,8 +17,26 @@ public final class IamTokenFixture {
   }
 
   public IamTokenFixture(JwtTokenProvider provider, long accessExpirationMs) {
-    this.provider = provider;
+    this(provider, provider, accessExpirationMs);
+  }
+
+  public IamTokenFixture(JwtTokenProvider accessProvider, JwtTokenProvider refreshProvider) {
+    this(accessProvider, refreshProvider, 900000);
+  }
+
+  public IamTokenFixture(
+      JwtTokenProvider accessProvider, JwtTokenProvider refreshProvider, long accessExpirationMs) {
+    this.provider = accessProvider;
+    this.refreshProvider = refreshProvider;
     this.accessExpirationMs = accessExpirationMs;
+  }
+
+  public JwtTokenProvider refreshProvider() {
+    return refreshProvider;
+  }
+
+  public Claims parseRefreshClaims(String token) {
+    return refreshProvider.verify(token);
   }
 
   public JwtTokenProvider provider() {
@@ -46,7 +65,7 @@ public final class IamTokenFixture {
   }
 
   public String generateRefreshToken(UUID user, UUID tenant, Instant expiry) {
-    return provider.encode(base(user, tenant, "refresh", "vishop-refresh", expiry));
+    return refreshProvider.encode(base(user, tenant, "refresh", "vishop-refresh", expiry));
   }
 
   public GatewayPrincipal access(String token) {

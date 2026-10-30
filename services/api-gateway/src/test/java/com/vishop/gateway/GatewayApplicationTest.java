@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.AuthCookies;
-import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,10 +16,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "vishop.security.jwt.secret=test-jwt-secret-with-at-least-thirty-two-bytes",
-      "management.health.redis.enabled=false"
-    })
+    properties = {"management.health.redis.enabled=false"})
 class GatewayApplicationTest {
   private static final java.util.concurrent.atomic.AtomicReference<com.sun.net.httpserver.Headers>
       FORWARDED = new java.util.concurrent.atomic.AtomicReference<>();
@@ -131,7 +127,7 @@ class GatewayApplicationTest {
   private io.github.coreplatform.common.test.security.IamTokenFixture tokens;
 
   @Autowired
-  void tokenFixture(JwtTokenProvider provider) {
+  void tokenFixture(io.github.coreplatform.common.security.jwt.JwtTokenProvider provider) {
     tokens = new io.github.coreplatform.common.test.security.IamTokenFixture(provider);
   }
 

@@ -2,11 +2,51 @@
 
 ## JWT
 
+`jwt/JwtTokenService` dùng để sinh access/refresh token bằng hai key HS256 khác nhau:
+
+```yaml
+# Cấu hình trong application.yml của service sử dụng lib.
+vishop:
+  security:
+    jwt:
+      access-token-secret: ${JWT_ACCESS_SECRET}
+      refresh-token-secret: ${JWT_REFRESH_SECRET}
+```
+
+Khi có đủ hai cấu hình, auto-configuration tạo bean `JwtTokenService` để inject:
+
+```java
+String access = tokens.generateAccessToken(accessClaims, Duration.ofMinutes(15));
+String refresh = tokens.generateRefreshToken(refreshClaims, Duration.ofDays(7));
+
+Claims accessClaimsVerified = tokens.verifyAccessToken(access);
+Claims refreshClaimsVerified = tokens.verifyRefreshToken(refresh);
+```
+
+- Mỗi key tối thiểu 32 byte UTF-8 và hai key phải khác nhau.
+- Service tự chọn claims và thời hạn; common không tự thêm issuer, audience, userId,
+  tenantId, role, permissions hay token_use.
+- Thời hạn tối thiểu một giây, tính ở độ chính xác giây của JWT. Common đặt `iat` và
+  `exp` theo thời hạn truyền vào, ghi đè hai trường này nếu có trong map đầu vào.
+- Giữ `jti` do service cung cấp hoặc tự tạo UUID nếu thiếu. Không sửa map đầu vào.
+- Verify dùng đúng key tương ứng và bắt buộc có `iat`/`exp` hợp lệ; không thử key còn
+  lại. Việc đối chiếu DB/cache hoặc kiểm tra claims nghiệp vụ nằm ở service.
+- Không có cấu hình JWT thì không tự tạo token bean. `enabled=false` tắt toàn bộ
+  auto-configuration này. IAM hiện vẫn exclude auto-config trong giai đoạn reset.
+
 `jwt/JwtTokenProvider` chỉ phụ trách thao tác JWT tổng quát:
 
 - `encode(claims)`: tạo JWT và ký bằng key đã cấu hình.
 - `verify(token)`: kiểm tra chữ ký và các ràng buộc chuẩn `exp`/`nbf` nếu có, trả claims.
 - `decode(token)`: đọc claims sau khi verify; không cung cấp claims chưa xác minh.
+
+Provider chỉ hỗ trợ HS256 với một secret cho mỗi instance. Gateway vẫn dùng provider
+cấu hình của nó. IAM authentication hiện đã [reset](../../docs/core-architecture/iam-auth-reset.md),
+không còn tạo provider access/refresh. Ứng dụng có thể tắt bean mặc định bằng
+`vishop.security.jwt.enabled=false` hoặc exclude JwtAutoConfiguration.
+
+Bean một-key `JwtTokenProvider` chỉ được tạo khi có `vishop.security.jwt.secret`.
+Cấu hình hai-key ở trên không yêu cầu khai báo thêm thuộc tính này.
 
 Thư viện không quy định issuer, audience, subject là UUID, thời hạn access/refresh,
 tenant, role, permission hoặc tokenVersion. Việc bắt buộc có `exp`, `iat` hay claim
@@ -18,15 +58,8 @@ Claims claims = jwt.verify(token);
 // Service kiểm tra hợp đồng claims của mình sau bước xác minh chữ ký.
 ```
 
-IAM quản lý payload phát hành trong `IamJwtTokenFactory`. Hai hợp đồng claims nằm
-chung trong `IamTokenClaims.java`: `IamTokenClaims.AccessToken` và `IamTokenClaims.RefreshToken`.
-File DTO này nằm trong application/dto và không phụ thuộc thư viện JWT. Parser trong
-infrastructure xác minh chữ ký/metadata và trả DTO. verifyAccessToken của IAM đối
-chiếu DB: user active/chưa xóa, tokenVersion, systemRole, tenant/membership/role hiện tại.
-Việc kiểm tra tenant đi qua port của module tenant và không tải permissions. Hàm
-vẫn trả claims, không dựng AuthenticatedUser. Refresh kiểm tra user/version hiện tại
-để không cấp lại credential đã bị thu hồi. Thư viện JWT chung không tự đọc DB.
-Gateway có hợp đồng nhận credential IAM riêng và lấy quyền hiện tại từ Redis.
+IAM đã gỡ codec/adapter/claims DTO của luồng đăng nhập trước để viết lại. Thư viện JWT
+chung vẫn độc lập với dữ liệu nghiệp vụ và không tự đọc DB.
 
 ## Principal và filter
 

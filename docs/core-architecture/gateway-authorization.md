@@ -1,5 +1,9 @@
 # Gateway authentication và phân quyền Redis
 
+IAM đã [gỡ implementation xác thực để viết lại](iam-auth-reset.md). Gateway còn code
+verifier/cache cũ, nhưng IAM không cấp token mới và không còn cache-loader. Nội dung
+luồng bên dưới là tham chiếu trước reset, không phải runtime IAM hiện tại.
+
 Chính sách đã chốt được ghi trong [authorization-policy.md](authorization-policy.md):
 đổi role/khóa/xóa membership hoặc đổi mật khẩu thì bắt đăng nhập lại; khóa tài khoản
 thì chặn truy cập và đăng nhập; sửa permissions thì dùng quyền mới từ Redis, không

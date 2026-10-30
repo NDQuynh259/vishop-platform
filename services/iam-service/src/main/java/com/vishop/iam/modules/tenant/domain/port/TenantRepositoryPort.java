@@ -12,8 +12,6 @@ public interface TenantRepositoryPort {
 
   List<Tenant> tenants(int limit, int offset);
 
-  List<UUID> activeTenantIds(UUID userId);
-
   default boolean isActive(UUID tenantId) {
     return tenant(tenantId).status() == TenantStatus.ACTIVE;
   }

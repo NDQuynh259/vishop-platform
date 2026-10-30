@@ -1,6 +1,0 @@
-
----
-vishop:
-  security:
-    context:
-      secret: ${GATEWAY_IAM_CONTEXT_SECRET}

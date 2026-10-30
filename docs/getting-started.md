@@ -15,10 +15,10 @@ Trên volume mới, PostgreSQL tự tạo `vishop_iam` và `vishop_audit` tại 
 (user `vishop`, mật khẩu local `vishop_secret`). Volume cũ cần tạo database IAM
 riêng; không xóa volume để áp dụng lại init script.
 
-Thiết lập `JWT_SECRET`, database credentials và
-`ALLOWED_ORIGINS` theo [hướng dẫn IAM](../services/iam-service/README.md).
-Gateway and downstream use `JWT_SECRET` for local verification; authentication does not
-require Redis or IAM introspection.
+Thiết lập database credentials theo [hướng dẫn IAM](../services/iam-service/README.md).
+IAM authentication đã [reset để viết lại](core-architecture/iam-auth-reset.md): bốn auth
+endpoint trả 501 và các API nghiệp vụ IAM trả 503. IAM hiện không cần JWT/Redis/context
+secrets. Gateway vẫn giữ cấu hình riêng của luồng trước.
 
 ## Build và kiểm thử
 

@@ -69,6 +69,42 @@ class JwtTokenProviderTest {
   }
 
   @Test
+  void disabledAutoConfigurationDoesNotRequireOrCreateASigningKey() {
+    new ApplicationContextRunner()
+        .withUserConfiguration(JwtAutoConfiguration.class)
+        .withPropertyValues("vishop.security.jwt.enabled=false")
+        .run(context -> assertThat(context).doesNotHaveBean(JwtTokenProvider.class));
+  }
+
+  @Test
+  void usesOnlyHs256EvenForLongSecrets() {
+    String longSecret = "a-long-random-test-key-".repeat(4);
+    var provider = new JwtTokenProvider(longSecret);
+    var key =
+        io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+            longSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    var parsed =
+        io.jsonwebtoken.Jwts.parser()
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(provider.encode(Map.of("custom", true)));
+    assertThat(parsed.getHeader().getAlgorithm()).isEqualTo("HS256");
+    assertThat(parsed.getHeader().getKeyId()).isNull();
+    String hs384 =
+        io.jsonwebtoken.Jwts.builder()
+            .subject("test")
+            .signWith(key, io.jsonwebtoken.Jwts.SIG.HS384)
+            .compact();
+    String hs512 =
+        io.jsonwebtoken.Jwts.builder()
+            .subject("test")
+            .signWith(key, io.jsonwebtoken.Jwts.SIG.HS512)
+            .compact();
+    assertThatThrownBy(() -> provider.verify(hs384)).isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> provider.verify(hs512)).isInstanceOf(RuntimeException.class);
+  }
+
+  @Test
   void rejectsMissingKey() {
     assertThatThrownBy(() -> new JwtTokenProvider("")).isInstanceOf(IllegalArgumentException.class);
   }

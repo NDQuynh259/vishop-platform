@@ -3,11 +3,6 @@ spring:
     url: ${SUBSCRIPTION_DB_URL:${BILLING_DB_URL:${SPRING_DATASOURCE_URL}}}
     username: ${SUBSCRIPTION_DB_USER:${BILLING_DB_USER:${SPRING_DATASOURCE_USERNAME}}}
     password: ${SUBSCRIPTION_DB_PASSWORD:${BILLING_DB_PASSWORD:${SPRING_DATASOURCE_PASSWORD}}}
-vishop:
-  security:
-    jwt:
-      secret: ${JWT_SECRET}
-
 ---
 vishop:
   security:

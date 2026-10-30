@@ -1,6 +1,6 @@
 # Core Platform Architecture
 
-This directory is the central index for reusable Core Platform architecture and preserved architecture documents from the ViShop source project. The source reference is explicitly historical; current authentication follows the Java IAM contract.
+This directory is the central index for reusable Core Platform architecture and preserved architecture documents from the ViShop source project. The source reference is explicitly historical. IAM authentication is currently [reset for a fresh implementation](./iam-auth-reset.md).
 
 ## Core platform
 
@@ -11,6 +11,7 @@ This directory is the central index for reusable Core Platform architecture and 
 
 | Document | Subject |
 | --- | --- |
+| [IAM authentication reset](./iam-auth-reset.md) | Current state: four auth API skeletons, removed security implementation, and blocked business HTTP APIs |
 | [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, Kafka, and Database Persistence/Migration (Flyway/JPA) |
 | [Persistence standard](./persistence.md) | Required Spring Data JPA/EntityManager access, validate-only entities, and Flyway SQL migrations for all current services/libraries |
 | [API gateway](./api-gateway.md) | Gateway routing, filters, CORS, and error handling |

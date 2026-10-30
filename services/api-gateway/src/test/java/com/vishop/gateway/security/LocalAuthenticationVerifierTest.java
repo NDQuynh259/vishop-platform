@@ -18,13 +18,13 @@ import reactor.test.StepVerifier;
 
 class LocalAuthenticationVerifierTest {
   private static final String SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes";
-  private final IamTokenFixture tokens = new IamTokenFixture(new JwtTokenProvider(SECRET));
+  private final IamTokenFixture tokens =
+      new IamTokenFixture(
+          new JwtTokenProvider(SECRET),
+          new JwtTokenProvider("test-gateway-refresh-key-is-different-and-at-least-32-bytes"));
   private final AuthorizationCacheReader cache = mock(AuthorizationCacheReader.class);
   private final LocalAuthenticationVerifier verifier =
-      new LocalAuthenticationVerifier(credential -> Mono.fromCallable(() -> {
-        try { return tokens.provider().verify(credential); }
-        catch (RuntimeException invalid) { throw new AuthenticationFailure(401, "unauthorized"); }
-      }), cache);
+      new LocalAuthenticationVerifier(tokens.provider(), cache);
   private final UUID user = UUID.randomUUID(), tenant = UUID.randomUUID();
   private final UUID role =
       UUID.nameUUIDFromBytes((tenant + ":OWNER").getBytes(StandardCharsets.UTF_8));

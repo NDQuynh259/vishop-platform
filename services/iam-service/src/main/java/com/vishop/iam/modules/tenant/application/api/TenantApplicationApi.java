@@ -12,7 +12,6 @@ import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -87,32 +86,6 @@ class TenantApplicationApi implements TenantApi {
 
   public void requireAccess(AuthenticatedUser actor, UUID tenantId, String permission) {
     authorization.access(actor, tenantId, permission);
-  }
-
-  public List<UUID> activeTenantIds(UUID userId) {
-    return tenants.activeTenantIds(userId);
-  }
-
-  public boolean hasActiveRole(UUID userId, UUID tenantId, UUID roleId, String roleKey) {
-    return memberships.hasActiveRole(userId, tenantId, roleId, roleKey);
-  }
-
-  public Optional<Grant> activeGrant(UUID userId, UUID tenantId) {
-    return memberships
-        .membership(userId, tenantId)
-        .filter(
-            member ->
-                "ACTIVE".equals(member.status())
-                    && !member.requireTwoFactor()
-                    && tenants.isActive(tenantId))
-        .map(
-            member -> {
-              var role = roles.role(tenantId, member.roleId());
-              String key = role.builtinKey() != null ? role.builtinKey() : "CUSTOM:" + role.id();
-              return new Grant(role.id(), key, member.permissions());
-            })
-        .filter(
-            grant -> memberships.hasActiveRole(userId, tenantId, grant.roleId(), grant.roleKey()));
   }
 
   @Transactional(propagation = Propagation.MANDATORY)

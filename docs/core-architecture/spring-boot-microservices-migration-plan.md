@@ -131,7 +131,7 @@ Sở hữu:
 - Login, logout, password reset, email verification.
 - JWT access token và refresh token trong JSON body; API dùng Bearer access token.
 
-Gateway và downstream xác minh access JWT tại chỗ bằng JWT_SECRET. Không lưu session đăng nhập hoặc introspect IAM cho từng request.
+Gateway xác minh access JWT bằng JWT_ACCESS_SECRET; IAM dùng JWT_REFRESH_SECRET riêng cho refresh. Downstream nhận context từ gateway. Không lưu session đăng nhập hoặc introspect IAM cho từng request.
 
 #### `tenant-service`
 

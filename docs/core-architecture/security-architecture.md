@@ -1,5 +1,9 @@
 # Security architecture
 
+IAM authentication is currently [reset for a fresh implementation](iam-auth-reset.md).
+The IAM-specific flows below describe the previous design; its security implementation
+and authorization cache-loader have been removed. Other services keep their own code.
+
 Runtime authentication and authorization use the [gateway authorization contract](gateway-authorization.md).
 
 Gateway verifies the end-user access JWT and resolves current permissions from the dedicated

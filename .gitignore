@@ -19,3 +19,6 @@ bin/
 .env.*
 !.env.example
 !.env.*.example
+
+# Local signing material (never packaged or committed)
+.local/

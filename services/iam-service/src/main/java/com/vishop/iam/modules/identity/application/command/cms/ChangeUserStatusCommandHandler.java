@@ -1,6 +1,5 @@
 package com.vishop.iam.modules.identity.application.command.cms;
 
-import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
@@ -19,15 +18,11 @@ public class ChangeUserStatusCommandHandler
     implements CommandHandler<ChangeUserStatusCommand, Void> {
   private final UserRepositoryPort userRepository;
   private final IamEventPublisherPort outbox;
-  private final IdentityAuthorizationService authorization;
 
   public ChangeUserStatusCommandHandler(
-      UserRepositoryPort userRepository,
-      IamEventPublisherPort outbox,
-      IdentityAuthorizationService authorization) {
+      UserRepositoryPort userRepository, IamEventPublisherPort outbox) {
     this.userRepository = userRepository;
     this.outbox = outbox;
-    this.authorization = authorization;
   }
 
   @Override
@@ -38,7 +33,7 @@ public class ChangeUserStatusCommandHandler
     var status = command.status();
 
     userRepository.lockSystemRoles();
-    authorization.cms(actor);
+    actor.requireCms();
     if (!Set.of("ACTIVE", "SUSPENDED", "INACTIVE").contains(status))
       throw new BadRequestException("Invalid user status");
     User target =

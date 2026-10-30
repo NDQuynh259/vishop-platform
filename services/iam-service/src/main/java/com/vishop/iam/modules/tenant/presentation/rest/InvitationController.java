@@ -1,9 +1,9 @@
 package com.vishop.iam.modules.tenant.presentation.rest;
 
-import com.vishop.iam.infra.security.IamPrincipal;
 import com.vishop.iam.modules.tenant.application.command.invitation.AcceptInvitationCommand;
 import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import com.vishop.iam.modules.tenant.presentation.rest.dto.AcceptInvitationRequest;
+import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
@@ -24,8 +24,8 @@ public class InvitationController {
 
   @PostMapping("/accept")
   public TenantResponseDto accept(
-      @AuthenticationPrincipal IamPrincipal actor,
+      @AuthenticationPrincipal AuthenticatedUser actor,
       @Valid @RequestBody AcceptInvitationRequest request) {
-    return commands.dispatch(new AcceptInvitationCommand(actor.actor(), request.token()));
+    return commands.dispatch(new AcceptInvitationCommand(actor, request.token()));
   }
 }

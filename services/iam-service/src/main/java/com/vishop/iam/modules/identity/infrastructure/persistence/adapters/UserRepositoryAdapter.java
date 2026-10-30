@@ -4,7 +4,6 @@ import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.modules.identity.infrastructure.persistence.entities.UserJpaEntity;
 import com.vishop.iam.modules.identity.infrastructure.persistence.repositories.SpringDataUserRepository;
-import io.github.coreplatform.common.domain.UuidV7;
 import io.github.coreplatform.common.domain.constants.SystemRole;
 import jakarta.persistence.EntityManager;
 import java.util.*;
@@ -24,20 +23,8 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     return users.findById(id).map(UserJpaEntity::toDomain);
   }
 
-  public Optional<User> userByEmail(String email) {
-    return users.byEmail(email).map(UserJpaEntity::toDomain);
-  }
-
-  public User createUser(String email, String hash) {
-    return users.saveAndFlush(UserJpaEntity.create(UuidV7.nextId(), email, hash)).toDomain();
-  }
-
   public void updateUserStatus(UUID user, String status) {
     users.updateStatus(user, status);
-  }
-
-  public void updateLastTenant(UUID user, UUID tenant) {
-    users.updateLastTenant(user, tenant);
   }
 
   public void lockSystemRoles() {

@@ -1,10 +1,7 @@
 package com.vishop.iam.modules.identity.application.api;
 
-import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
-import com.vishop.iam.modules.identity.application.port.TokenPort;
-import com.vishop.iam.modules.identity.application.service.IdentityAuthorizationService;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.util.UUID;
@@ -12,27 +9,26 @@ import org.springframework.stereotype.Component;
 
 @Component
 class IdentityApplicationApi implements IdentityApi {
-  private final IdentityAuthorizationService authorization;
   private final UserRepositoryPort users;
-  private final TokenPort tokens;
 
-  public IdentityApplicationApi(
-      IdentityAuthorizationService authorization, UserRepositoryPort users, TokenPort tokens) {
-    this.authorization = authorization;
+  public IdentityApplicationApi(UserRepositoryPort users) {
     this.users = users;
-    this.tokens = tokens;
-  }
-
-  public IamTokenClaims.AccessToken verifyAccessToken(String accessToken) {
-    return tokens.verifyAccessToken(accessToken);
   }
 
   public UserView requireActive(UUID userId) {
-    return UserViewMapper.from(authorization.activeUser(userId));
+    var user =
+        users
+            .user(userId)
+            .orElseThrow(
+                () ->
+                    new io.github.coreplatform.common.domain.exception.UnauthorizedException(
+                        "Unknown account"));
+    user.requireActive();
+    return UserViewMapper.from(user);
   }
 
   public void requireCms(AuthenticatedUser actor) {
-    authorization.cms(actor);
+    actor.requireCms();
   }
 
   public boolean isActive(UUID userId) {
