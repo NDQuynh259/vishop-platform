@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.identity.application.api;
 
+import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.port.TokenPort;
@@ -22,8 +23,8 @@ class IdentityApplicationApi implements IdentityApi {
     this.tokens = tokens;
   }
 
-  public AuthenticatedUser authenticate(String accessToken) {
-    return tokens.verify(accessToken);
+  public IamTokenClaims.AccessToken verifyAccessToken(String accessToken) {
+    return tokens.verifyAccessToken(accessToken);
   }
 
   public UserView requireActive(UUID userId) {

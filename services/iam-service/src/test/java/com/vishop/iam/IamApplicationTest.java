@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.database.JpaDatabaseFixture;
-import com.vishop.iam.modules.identity.application.query.AuthenticateQuery;
+import com.vishop.iam.modules.identity.application.query.VerifyAccessTokenQuery;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.modules.tenant.application.command.tenant.CreateTenantCommand;
 import com.vishop.iam.modules.tenant.application.command.tenant.CreateTenantCommandHandler;
@@ -158,9 +158,9 @@ class IamApplicationTest {
     assertThat(claims).doesNotContainKeys("roles", "permissions");
     assertThat(claims.getSubject()).isEqualTo(response.path("user").path("id").asText());
     String tenantId = claims.get("tenantId", String.class);
-    if (tenantId == null) assertThat(claims.get("roleId")).isNull();
+    if (tenantId == null) assertThat(claims.get("tenantRoleId")).isNull();
     else
-      assertThat(claims.get("roleId", String.class))
+      assertThat(claims.get("tenantRoleId", String.class))
           .isEqualTo(
               db.queryForObject(
                   "SELECT role_id::text FROM tenant_members WHERE tenant_id=CAST(? AS uuid) AND user_id=CAST(? AS uuid)",
@@ -201,12 +201,12 @@ class IamApplicationTest {
                         != u.tokenVersion()) return r;
                 java.util.UUID roleId = null;
                 if (c.tenantId() != null) {
-                  var m = projection.find("auth:member:" + c.tenantId() + ":" + c.userId());
                   var t = projection.find("auth:tenant:" + c.tenantId());
-                  if (m == null || !"ACTIVE".equals(m.status()) || !"ACTIVE".equals(t.status()))
-                    return r;
-                  roleId = m.roleId();
+                  if (t == null || !"ACTIVE".equals(t.status())) return r;
+                  roleId =
+                      UUID.fromString(tokens.parseClaims(token).get("tenantRoleId", String.class));
                   var role = projection.find("auth:role:" + c.tenantId() + ":" + roleId);
+                  if (role == null || !"ACTIVE".equals(role.status())) return r;
                   c =
                       new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
                           c.userId(),
@@ -1436,9 +1436,9 @@ class IamApplicationTest {
     Account owner = register("owner@example.com");
     String tenant = createTenant(owner, "owned-tenant").path("id").asText();
     String selected = select(owner, tenant).accessToken();
-    var resolved = queries.dispatch(new AuthenticateQuery(selected, true));
+    var resolved = queries.dispatch(new VerifyAccessTokenQuery(selected, true));
     assertThat(resolved.tenantId()).isEqualTo(UUID.fromString(tenant));
-    assertThat(resolved.permissions()).contains("tenant.view");
+    assertThat(resolved.tenantRoleId()).isEqualTo(UUID.fromString(role(tenant, "OWNER")));
     db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", admin.id());
     admin = fresh(admin);
     http.perform(
@@ -1454,7 +1454,7 @@ class IamApplicationTest {
                     selected),
                 Map.of("tenantId", tenant)))
         .andExpect(status().isUnauthorized());
-    assertThatThrownBy(() -> queries.dispatch(new AuthenticateQuery(selected, true)))
+    assertThatThrownBy(() -> queries.dispatch(new VerifyAccessTokenQuery(selected, true)))
         .isInstanceOf(io.github.coreplatform.common.domain.exception.UnauthorizedException.class);
     http.perform(
             payload(
@@ -1516,6 +1516,7 @@ class IamApplicationTest {
       strings = {
         "role",
         "systemRole",
+        "password",
         "status",
         "inactiveMember",
         "deletedMember",
@@ -1537,6 +1538,10 @@ class IamApplicationTest {
       case "systemRole" ->
           db.update(
               "UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", owner.id());
+      case "password" ->
+          db.update(
+              "UPDATE users SET password_hash='new-password-hash' WHERE id=CAST(? AS uuid)",
+              owner.id());
       case "status" ->
           db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", owner.id());
       case "inactiveMember" ->
@@ -1623,14 +1628,28 @@ class IamApplicationTest {
     db.update(
         "UPDATE tenant_members SET role_id=role_id,status=status,updated_at=now() WHERE user_id=CAST(? AS uuid)",
         owner.id());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant), credentials.accessToken()))
+        .andExpect(status().isOk());
     db.update("DELETE FROM role_permissions WHERE role_id=CAST(? AS uuid)", role(tenant, "OWNER"));
     assertThat(
             db.queryForObject(
                 "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id()))
         .isEqualTo(before);
+    assertThat(
+            queries
+                .dispatch(new VerifyAccessTokenQuery(credentials.accessToken(), true))
+                .tenantRoleId())
+        .isEqualTo(UUID.fromString(role(tenant, "OWNER")));
     http.perform(authorized(get("/api/v1/auth/me"), credentials.accessToken()))
         .andExpect(status().isOk());
+    http.perform(authorized(get("/api/v1/tenants/" + tenant), credentials.accessToken()))
+        .andExpect(status().isForbidden());
     http.perform(refreshRequest(credentials.refreshToken())).andExpect(status().isOk());
+    db.update(
+        "INSERT INTO role_permissions(role_id,permission_key) VALUES (CAST(? AS uuid),'tenant.view')",
+        role(tenant, "OWNER"));
+    http.perform(authorized(get("/api/v1/tenants/" + tenant), credentials.accessToken()))
+        .andExpect(status().isOk());
   }
 
   @Test
@@ -2130,5 +2149,91 @@ class IamApplicationTest {
         .andExpect(status().isUnauthorized());
     http.perform(get("/internal/authorization").param("key", "auth:user:" + user.id()))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void lockedAccountCannotLoginAndUnlockDoesNotRestoreOldCredentials() throws Exception {
+    Account account = register("locked-login@example.com");
+    db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", account.id());
+    http.perform(
+            payload(
+                post("/api/v1/auth/login"),
+                Map.of("email", account.email(), "password", "StrongPass123!")))
+        .andExpect(status().isUnauthorized());
+    http.perform(authorized(get("/api/v1/auth/me"), account.token()))
+        .andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(account.refreshToken())).andExpect(status().isUnauthorized());
+    db.update("UPDATE users SET status='ACTIVE' WHERE id=CAST(? AS uuid)", account.id());
+    http.perform(authorized(get("/api/v1/auth/me"), account.token()))
+        .andExpect(status().isUnauthorized());
+    http.perform(refreshRequest(account.refreshToken())).andExpect(status().isUnauthorized());
+    var current = login(account);
+    http.perform(authorized(get("/api/v1/auth/me"), current.accessToken()))
+        .andExpect(status().isOk());
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {
+        "userStatus",
+        "userDeleted",
+        "userRole",
+        "membershipStatus",
+        "membershipDeleted",
+        "membershipRole",
+        "tenantStatus",
+        "tenantDeleted",
+        "roleDeleted",
+        "roleMfa",
+        "roleKey"
+      })
+  void iamChecksCurrentDatabaseStateEvenForASignedTokenWithCurrentVersion(String change)
+      throws Exception {
+    var owner = register("db-verification@example.com");
+    String tenant = createTenant(owner, "db-verification").path("id").asText();
+    String token = select(owner, tenant).accessToken();
+    String ownerRole = role(tenant, "OWNER");
+    switch (change) {
+      case "userStatus" ->
+          db.update("UPDATE users SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", owner.id());
+      case "userDeleted" ->
+          db.update("UPDATE users SET deleted_at=now() WHERE id=CAST(? AS uuid)", owner.id());
+      case "userRole" ->
+          db.update(
+              "UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=CAST(? AS uuid)", owner.id());
+      case "membershipStatus" ->
+          db.update(
+              "UPDATE tenant_members SET status='INACTIVE' WHERE user_id=CAST(? AS uuid)",
+              owner.id());
+      case "membershipDeleted" ->
+          db.update(
+              "UPDATE tenant_members SET deleted_at=now() WHERE user_id=CAST(? AS uuid)",
+              owner.id());
+      case "membershipRole" ->
+          db.update(
+              "UPDATE tenant_members SET role_id=CAST(? AS uuid) WHERE user_id=CAST(? AS uuid)",
+              role(tenant, "ACCOUNTING"),
+              owner.id());
+      case "tenantStatus" ->
+          db.update("UPDATE tenants SET status='SUSPENDED' WHERE id=CAST(? AS uuid)", tenant);
+      case "tenantDeleted" ->
+          db.update("UPDATE tenants SET deleted_at=now() WHERE id=CAST(? AS uuid)", tenant);
+      case "roleDeleted" ->
+          db.update("UPDATE roles SET deleted_at=now() WHERE id=CAST(? AS uuid)", ownerRole);
+      case "roleMfa" ->
+          db.update("UPDATE roles SET require_two_factor=true WHERE id=CAST(? AS uuid)", ownerRole);
+      case "roleKey" ->
+          db.update("UPDATE roles SET builtin_key=NULL WHERE id=CAST(? AS uuid)", ownerRole);
+      default -> throw new IllegalArgumentException(change);
+    }
+    // Use the current version to ensure rejection comes from DB identity/access checks too.
+    var claims = new HashMap<String, Object>(tokens.parseClaims(token));
+    claims.put(
+        "tokenVersion",
+        db.queryForObject(
+            "SELECT token_version FROM users WHERE id=CAST(? AS uuid)", Long.class, owner.id()));
+    String signed = tokens.provider().encode(claims);
+    assertThatThrownBy(() -> queries.dispatch(new VerifyAccessTokenQuery(signed, true)))
+        .isInstanceOf(io.github.coreplatform.common.domain.exception.UnauthorizedException.class);
   }
 }

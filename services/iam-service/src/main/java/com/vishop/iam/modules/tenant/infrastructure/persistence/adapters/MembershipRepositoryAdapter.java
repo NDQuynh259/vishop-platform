@@ -3,6 +3,7 @@ package com.vishop.iam.modules.tenant.infrastructure.persistence.adapters;
 import com.vishop.iam.modules.tenant.application.api.TenantApi.MemberReadPort;
 import com.vishop.iam.modules.tenant.domain.entity.Membership;
 import com.vishop.iam.modules.tenant.domain.port.MembershipRepositoryPort;
+import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.entities.MembershipJpaEntity;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.repositories.SpringDataMembershipRepository;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.repositories.SpringDataRoleRepository;
@@ -33,6 +34,10 @@ public class MembershipRepositoryAdapter implements MembershipRepositoryPort {
                 roles
                     .findByTenantIdAndId(tenant, member.getRoleId())
                     .map(role -> member.toDomain(role.toDomain())));
+  }
+
+  public boolean hasActiveRole(UUID user, UUID tenant, UUID role, String roleKey) {
+    return members.hasActiveRole(user, tenant, role, roleKey, TenantStatus.ACTIVE);
   }
 
   public void addMembership(UUID user, UUID tenant, UUID role) {

@@ -18,8 +18,14 @@ Claims claims = jwt.verify(token);
 // Service kiểm tra hợp đồng claims của mình sau bước xác minh chữ ký.
 ```
 
-IAM quản lý payload phát hành trong `IamJwtTokenFactory` và kiểm tra access claims
-trong `IamAccessTokenClaims`; refresh contract nằm trong `JwtTokenAdapter`.
+IAM quản lý payload phát hành trong `IamJwtTokenFactory`. Hai hợp đồng claims nằm
+chung trong `IamTokenClaims.java`: `IamTokenClaims.AccessToken` và `IamTokenClaims.RefreshToken`.
+File DTO này nằm trong application/dto và không phụ thuộc thư viện JWT. Parser trong
+infrastructure xác minh chữ ký/metadata và trả DTO. verifyAccessToken của IAM đối
+chiếu DB: user active/chưa xóa, tokenVersion, systemRole, tenant/membership/role hiện tại.
+Việc kiểm tra tenant đi qua port của module tenant và không tải permissions. Hàm
+vẫn trả claims, không dựng AuthenticatedUser. Refresh kiểm tra user/version hiện tại
+để không cấp lại credential đã bị thu hồi. Thư viện JWT chung không tự đọc DB.
 Gateway có hợp đồng nhận credential IAM riêng và lấy quyền hiện tại từ Redis.
 
 ## Principal và filter

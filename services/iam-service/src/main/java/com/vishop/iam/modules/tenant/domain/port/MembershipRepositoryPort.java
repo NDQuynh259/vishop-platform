@@ -8,6 +8,8 @@ import java.util.UUID;
 public interface MembershipRepositoryPort {
   Optional<Membership> membership(UUID user, UUID tenant);
 
+  boolean hasActiveRole(UUID user, UUID tenant, UUID role, String roleKey);
+
   void addMembership(UUID user, UUID tenant, UUID role);
 
   void updateMembership(UUID user, UUID tenant, UUID role, String status);

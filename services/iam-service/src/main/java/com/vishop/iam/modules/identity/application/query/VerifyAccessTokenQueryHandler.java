@@ -1,22 +1,22 @@
 package com.vishop.iam.modules.identity.application.query;
 
+import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.modules.identity.application.port.TokenPort;
-import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.cqrs.QueryHandler;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import org.springframework.stereotype.Component;
 
 @Component
-public class AuthenticateQueryHandler
-    implements QueryHandler<AuthenticateQuery, AuthenticatedUser> {
+public class VerifyAccessTokenQueryHandler
+    implements QueryHandler<VerifyAccessTokenQuery, IamTokenClaims.AccessToken> {
   private final TokenPort tokens;
 
-  public AuthenticateQueryHandler(TokenPort tokens) {
+  public VerifyAccessTokenQueryHandler(TokenPort tokens) {
     this.tokens = tokens;
   }
 
-  public AuthenticatedUser handle(AuthenticateQuery query) {
+  public IamTokenClaims.AccessToken handle(VerifyAccessTokenQuery query) {
     if (!query.bearer()) throw new UnauthorizedException("Bearer access token is required");
-    return tokens.verify(query.credential());
+    return tokens.verifyAccessToken(query.credential());
   }
 }

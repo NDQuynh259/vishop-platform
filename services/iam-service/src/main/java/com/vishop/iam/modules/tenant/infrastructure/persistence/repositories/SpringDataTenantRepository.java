@@ -26,9 +26,9 @@ public interface SpringDataTenantRepository
   @Query(
       """
       select t.id from TenantJpaEntity t
-      where t.status=:status and exists (
+      where t.status=:status and t.deletedAt is null and exists (
           select m.id from MembershipJpaEntity m
-          where m.tenantId=t.id and m.userId=:userId and m.status='ACTIVE')
+          where m.tenantId=t.id and m.userId=:userId and m.status='ACTIVE' and m.deletedAt is null)
       order by t.name,t.id
       """)
   List<UUID> findActiveTenantIds(

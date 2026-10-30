@@ -154,11 +154,11 @@ and authorize tenant resources locally. See [gateway authorization](docs/core-ar
 Browser requests use credentials: include and X-Requested-With: XMLHttpRequest on writes.
 Refresh reads its cookie with no body; switch-tenant accepts only {tenantId}. Logout clears
 cookies. Credential/status/system-role changes revoke tokens through tokenVersion; role and
-membership changes update current Redis grants. Production uses Secure cookies and HTTPS.
+membership changes revoke both access and refresh tokens; permission edits update Redis grants. Production uses Secure cookies and HTTPS.
 
 Configure JWT_SECRET in IAM/gateway, separate GATEWAY_{IAM,AUDIT,SUBSCRIPTION}_CONTEXT_SECRET
 values, Auth Redis connectivity, database credentials and exact ALLOWED_ORIGINS. CMS requires
-PLATFORM_ADMIN; tenant OWNER does not grant CMS access. Apply IAM migration V9 before the
+PLATFORM_ADMIN; tenant OWNER does not grant CMS access. Apply IAM migrations through V11 before the
 coordinated gateway/backend rollout.
 
 

@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-class IamAccessTokenClaimsTest {
+class IamTokenClaimsTest {
   private static final String SECRET = "test-signing-secret-with-at-least-thirty-two-bytes";
   private final io.github.coreplatform.common.test.security.IamTokenFixture tokens =
       new io.github.coreplatform.common.test.security.IamTokenFixture(new JwtTokenProvider(SECRET));
@@ -25,16 +25,16 @@ class IamAccessTokenClaimsTest {
     String jwt =
         tokens.generateIamAccessToken(
             user, tenant, SystemRole.USER.name(), "OWNER", Set.of("order.view"));
-    var access = IamAccessTokenClaims.verify(tokens.provider(), jwt);
-    assertThat(access.systemRole()).isEqualTo(SystemRole.USER.name());
+    var access = IamTokenClaimsParser.verifyAccessToken(tokens.provider(), jwt);
+    assertThat(access.systemRole()).isEqualTo(SystemRole.USER);
     assertThat(access.tenantRole()).isEqualTo("OWNER");
-    assertThat(access.roleId()).isNotNull();
+    assertThat(access.tenantRoleId()).isNotNull();
     assertThat(access.tokenVersion()).isEqualTo(1);
     assertThat(tokens.parseClaims(jwt))
         .containsEntry("tenantRole", "OWNER")
         .doesNotContainKey("roles");
     var global =
-        IamAccessTokenClaims.verify(
+        IamTokenClaimsParser.verifyAccessToken(
             tokens.provider(),
             tokens.generateIamAccessToken(
                 user, null, SystemRole.PLATFORM_ADMIN.name(), null, Set.of()));
@@ -69,15 +69,49 @@ class IamAccessTokenClaimsTest {
                 tokens.generateIamAccessToken(
                     user, tenant, "USER", "OWNER", Set.of("order.view"))));
     claims.remove("permissions");
-    assertThat(IamAccessTokenClaims.verify(tokens.provider(), sign(claims)).tenantId())
+    assertThat(IamTokenClaimsParser.verifyAccessToken(tokens.provider(), sign(claims)).tenantId())
         .isEqualTo(tenant);
-    for (String field : List.of("roleId", "tokenVersion")) {
+    for (String field : List.of("tenantRoleId", "tokenVersion")) {
       var missing = new HashMap<String, Object>(claims);
       missing.remove(field);
       assertRejected(sign(missing));
     }
-    claims.put("roleId", "invalid-uuid");
+    claims.put("tenantRoleId", "invalid-uuid");
     assertRejected(sign(claims));
+  }
+
+  @Test
+  void readsRefreshIdentityAndRejectsUsingTheWrongTokenPurpose() {
+    var expiry =
+        java.time.Instant.now().plusSeconds(600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    String refreshToken = tokens.generateRefreshToken(user, tenant, expiry);
+    var refresh = IamTokenClaimsParser.verifyRefreshToken(tokens.provider(), refreshToken);
+    assertThat(refresh.userId()).isEqualTo(user);
+    assertThat(refresh.tenantId()).isEqualTo(tenant);
+    assertThat(refresh.tokenVersion()).isEqualTo(1);
+    assertThat(refresh.expiresAt()).isEqualTo(expiry);
+    assertThatThrownBy(
+            () -> IamTokenClaimsParser.verifyAccessToken(tokens.provider(), refreshToken))
+        .isInstanceOf(IllegalArgumentException.class);
+    String accessToken = tokens.generateIamAccessToken(user, tenant, "USER", "OWNER", Set.of());
+    assertThatThrownBy(
+            () -> IamTokenClaimsParser.verifyRefreshToken(tokens.provider(), accessToken))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void refreshRequiresAllCommonMetadataAndItsJwtId() {
+    var valid =
+        tokens.parseClaims(
+            tokens.generateRefreshToken(user, tenant, java.time.Instant.now().plusSeconds(600)));
+    for (String field : List.of("iss", "aud", "iat", "exp", "jti", "tokenVersion")) {
+      var missing = new HashMap<String, Object>(valid);
+      missing.remove(field);
+      assertThatThrownBy(
+              () -> IamTokenClaimsParser.verifyRefreshToken(tokens.provider(), sign(missing)))
+          .as("Missing refresh claim: %s", field)
+          .isInstanceOf(IllegalArgumentException.class);
+    }
   }
 
   private String sign(java.util.Map<String, Object> claims) {
@@ -88,7 +122,7 @@ class IamAccessTokenClaimsTest {
   }
 
   private void assertRejected(String jwt) {
-    assertThatThrownBy(() -> IamAccessTokenClaims.verify(tokens.provider(), jwt))
+    assertThatThrownBy(() -> IamTokenClaimsParser.verifyAccessToken(tokens.provider(), jwt))
         .isInstanceOf(RuntimeException.class);
   }
 }

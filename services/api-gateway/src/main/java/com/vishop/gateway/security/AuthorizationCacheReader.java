@@ -50,24 +50,26 @@ public class AuthorizationCacheReader {
   }
 
   public Mono<AuthorizationSnapshot> get(String key) {
-    return read(key)
-        .switchIfEmpty(
-            Mono.defer(
-                () ->
-                    loads.computeIfAbsent(
-                        key,
-                        k ->
-                            Mono.defer(
-                                    () -> {
-                                      if (!permits.tryAcquire())
-                                        return Mono.error(
-                                            new IllegalStateException(
-                                                "Authorization loader at capacity"));
-                                      return load(k).doFinally(signal -> permits.release());
-                                    })
-                                .timeout(Duration.ofSeconds(3))
-                                .doFinally(s -> loads.remove(k))
-                                .cache())));
+    return read(key).switchIfEmpty(Mono.defer(() -> refresh(key)));
+  }
+
+  /** Revalidates against IAM when a freshly issued credential is ahead of the cache. */
+  public Mono<AuthorizationSnapshot> refresh(String key) {
+    return Mono.defer(
+        () ->
+            loads.computeIfAbsent(
+                key,
+                k ->
+                    Mono.defer(
+                            () -> {
+                              if (!permits.tryAcquire())
+                                return Mono.error(
+                                    new IllegalStateException("Authorization loader at capacity"));
+                              return load(k).doFinally(signal -> permits.release());
+                            })
+                        .timeout(Duration.ofSeconds(3))
+                        .doFinally(signal -> loads.remove(k))
+                        .cache()));
   }
 
   private Mono<AuthorizationSnapshot> read(String key) {

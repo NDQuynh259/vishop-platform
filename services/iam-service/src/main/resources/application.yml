@@ -51,7 +51,10 @@ vishop:
       secure: ${AUTH_COOKIE_SECURE:false}
       same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
     jwt:
-      secret: ${JWT_SECRET:vishop_platform_dev_jwt_secret_key_at_least_32_bytes_long!}
+      enabled: false # IAM configures its own RSA signing provider.
+      key-id: ${IAM_JWT_KEY_ID:iam-dev-1}
+      private-key-location: ${IAM_JWT_PRIVATE_KEY_LOCATION:file:./.local/jwt/private.pem}
+      public-key-location: ${IAM_JWT_PUBLIC_KEY_LOCATION:file:./.local/jwt/public.pem}
       access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
       refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:3000}

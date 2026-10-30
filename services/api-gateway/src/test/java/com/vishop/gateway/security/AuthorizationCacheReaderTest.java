@@ -72,9 +72,11 @@ class AuthorizationCacheReaderTest {
           }
         });
     iam.start();
+    var reactive = new ReactiveStringRedisTemplate(connection);
+    reactive.opsForValue().get("test:connection-ready").block(Duration.ofSeconds(10));
     reader =
         new AuthorizationCacheReader(
-            new ReactiveStringRedisTemplate(connection),
+            reactive,
             json,
             new GatewayContextSigners(json, secret, secret, secret),
             "http://127.0.0.1:" + iam.getAddress().getPort(),
@@ -117,12 +119,23 @@ class AuthorizationCacheReaderTest {
   }
 
   @Test
-  void missingMemberDeniesInsteadOfCreatingAnActiveDefault() {
+  void missingRoleDeniesInsteadOfCreatingAnActiveDefault() {
     assertThatThrownBy(
             () ->
                 reader
-                    .get(AuthorizationSnapshot.member(UUID.randomUUID(), UUID.randomUUID()))
+                    .get(AuthorizationSnapshot.role(UUID.randomUUID(), UUID.randomUUID()))
                     .block(Duration.ofSeconds(5)))
         .isInstanceOf(AuthenticationFailure.class);
+  }
+
+  @Test
+  void explicitRefreshConfirmsStateBeforeTheNormalFreshnessDeadline() {
+    String key = AuthorizationSnapshot.user(UUID.randomUUID());
+    current.set(new AuthorizationSnapshot(key, "1", "ACTIVE", "USER", null, null, Set.of(), 1));
+    assertThat(reader.get(key).block().tokenVersion()).isEqualTo(1);
+    current.set(new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2));
+    assertThat(reader.get(key).block().tokenVersion()).isEqualTo(1);
+    assertThat(reader.refresh(key).block().tokenVersion()).isEqualTo(2);
+    assertThat(calls.get()).isEqualTo(2);
   }
 }

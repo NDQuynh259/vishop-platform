@@ -150,7 +150,9 @@ class GatewayApplicationTest {
                       "1",
                       "ACTIVE",
                       "PLATFORM_ADMIN",
-                      new java.util.UUID(0, 1),
+                      key.startsWith("auth:role:")
+                          ? java.util.UUID.fromString(key.substring(key.lastIndexOf(':') + 1))
+                          : null,
                       "OWNER",
                       java.util.Set.of("audit_log.view"),
                       1));

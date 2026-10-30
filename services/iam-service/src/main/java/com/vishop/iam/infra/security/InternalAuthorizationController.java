@@ -16,8 +16,7 @@ public class InternalAuthorizationController {
 
   @GetMapping("/internal/authorization")
   public ResponseEntity<AuthorizationSnapshot> get(@RequestParam String key) {
-    if (!key.matches(
-        "auth:(user|tenant):[0-9a-f-]{36}|auth:(member|role):[0-9a-f-]{36}:[0-9a-f-]{36}"))
+    if (!key.matches("auth:(user|tenant):[0-9a-f-]{36}|auth:role:[0-9a-f-]{36}:[0-9a-f-]{36}"))
       return ResponseEntity.badRequest().build();
     var value = projection.find(key);
     return value == null

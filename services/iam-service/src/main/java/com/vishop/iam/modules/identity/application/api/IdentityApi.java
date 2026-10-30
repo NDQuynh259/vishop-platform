@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.identity.application.api;
 
+import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.util.List;
@@ -14,6 +15,8 @@ public interface IdentityApi {
     List<UUID> activeTenantIds(UUID userId);
 
     Optional<TenantGrant> activeGrant(UUID userId, UUID tenantId);
+
+    boolean hasActiveRole(UUID userId, UUID tenantId, UUID roleId, String roleKey);
   }
 
   record TenantGrant(UUID roleId, String roleKey, Set<String> permissions) {
@@ -22,7 +25,7 @@ public interface IdentityApi {
     }
   }
 
-  AuthenticatedUser authenticate(String accessToken);
+  IamTokenClaims.AccessToken verifyAccessToken(String accessToken);
 
   UserView requireActive(UUID userId);
 

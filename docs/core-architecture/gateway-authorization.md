@@ -1,5 +1,12 @@
 # Gateway authentication và phân quyền Redis
 
+Chính sách đã chốt được ghi trong [authorization-policy.md](authorization-policy.md):
+đổi role/khóa/xóa membership hoặc đổi mật khẩu thì bắt đăng nhập lại; khóa tài khoản
+thì chặn truy cập và đăng nhập; sửa permissions thì dùng quyền mới từ Redis, không
+đăng xuất. Code gateway dùng ba nhóm cache user/tenant/role; V11 ngừng tạo projection
+membership. Phương án giữ refresh sau đổi membership đã bị bỏ. Cần migrate và triển
+khai phiên bản này trước khi hành vi mới có hiệu lực trên môi trường đang chạy.
+
 Gateway xác minh access JWT. IAM, audit và subscription nhận context có chữ ký từ
 gateway; không xác minh lại JWT người dùng và không gọi IAM/Redis cho request thông
 thường. Service vẫn kiểm tra permission, tenant của tài nguyên và điều kiện nghiệp vụ.
@@ -7,6 +14,14 @@ thường. Service vẫn kiểm tra permission, tenant của tài nguyên và đ
 Thư viện `common-security/jwt` chỉ ký và xác minh JWT tổng quát. IAM sở hữu cấu trúc
 claims và policy phát hành; gateway sở hữu hợp đồng credential được chấp nhận.
 `GatewayPrincipal` là principal context nội bộ, không phải DTO claims của JWT.
+
+Ở gateway, `LocalAuthenticationVerifier.verifyAccessToken` chỉ xác minh JWT và so
+`tokenVersion` với user snapshot trong cache. Version cũ bị từ chối với 401.
+`resolveAuthorization` chạy sau đó để kiểm tra trạng thái user/tenant/role và lấy
+permissions dựng context, dùng lại user snapshot vừa đọc. Gateway không truy vấn DB.
+Cache thiếu/quá hạn hoặc version JWT mới hơn cache vẫn dùng cơ chế tải lại snapshot
+từ IAM; nếu chưa xác nhận được version mới thì chặn request, không tự nâng version.
+Riêng `verifyAccessToken` bên IAM vẫn kiểm tra trạng thái hiện tại trong DB.
 
 ```mermaid
 sequenceDiagram
@@ -17,7 +32,7 @@ sequenceDiagram
     participant Service
     Client->>Gateway: Access cookie / Bearer JWT
     Gateway->>Gateway: Verify signature, issuer, audience, expiry
-    Gateway->>Redis: User + tenant + membership + role
+    Gateway->>Redis: User; tenant + role theo tenantRoleId trong JWT
     alt Cache thiếu hoặc quá 30 giây
         Gateway->>IAM: GET /internal/authorization, context ký riêng
         IAM-->>Gateway: Snapshot đã commit
@@ -39,17 +54,27 @@ CMS, không tự cấp quyền trên tài nguyên tenant.
 |---|---|
 | `auth:user:{userId}` | status, systemRole, tokenVersion |
 | `auth:tenant:{tenantId}` | Trạng thái tenant |
-| `auth:member:{tenantId}:{userId}` | status, roleId |
 | `auth:role:{tenantId}:{roleId}` | Role key và permissions |
 
 Mỗi key là hash có `version`, `payload`, `checkedAt`. Sửa role chỉ cập nhật snapshot
-role đó; đổi role user chỉ cập nhật membership. Version và permission nằm trong cùng
-payload. Access JWT mới chứa userId trong `sub`, `tenantId`, `roleId`, `tenantRole`,
+role đó; đổi role user tăng tokenVersion và cập nhật user snapshot. Version và permission nằm trong cùng
+payload. Access JWT mới chứa userId trong `sub`, `tenantId`, `tenantRoleId`, `tenantRole`,
 `systemRole`, `tokenVersion` và các claim chuẩn về issuer, audience, thời hạn, loại
 token và jti. Không nhúng `permissions` vào JWT. Khi chưa chọn tenant, tenant/role
 claims không có giá trị. Gateway vẫn lấy trạng thái và quyền hiện hành từ Redis;
 không dùng permissions trong JWT cũ làm nguồn cấp quyền. Permissions tiếp tục có
-trong response đăng nhập/refresh và context nội bộ có chữ ký.
+trong response đăng nhập/refresh và context nội bộ có chữ ký. JWT chọn tenant bắt buộc
+có tenantRoleId hợp lệ; gateway chỉ dùng ID đó sau khi user tokenVersion đã khớp Redis.
+Không lookup membership trong luồng xác thực thông thường.
+
+systemRole dùng enum USER/PLATFORM_ADMIN, không thêm systemRoleId. Việc đổi claim
+roleId thành tenantRoleId cần triển khai đồng bộ IAM và gateway. Access cũ thiếu
+tenantRoleId bị từ chối; refresh còn hợp lệ có thể cấp access theo hợp đồng mới.
+Không cần migration DB cho thay đổi tên claim này. Payload cache/context vẫn dùng roleId.
+
+Khi tokenVersion trong JWT mới hơn user cache (ví dụ vừa đăng nhập lại sau đổi role),
+gateway nạp lại user snapshot từ IAM trước khi quyết định. JWT không được tự nâng
+version Redis. Snapshot vẫn không khớp thì từ chối; lỗi xác nhận lại thì trả 503.
 
 ## Outbox và version
 
@@ -59,7 +84,9 @@ sự kiện và không thay thế outbox Kafka/audit.
 
 Trigger DB cập nhật snapshot cùng transaction với nghiệp vụ. Rollback nghiệp vụ cũng
 rollback snapshot. Khóa hàng theo key tuần tự hóa người ghi. Xóa membership/role tạo
-snapshot INACTIVE để quyền cũ không sống lại.
+snapshot INACTIVE cho role bị xóa. Từ V11, thay đổi/xóa membership chỉ dùng cơ chế
+thu hồi tokenVersion của V10, không tạo member snapshot nữa. V11 xóa các hàng
+auth:member:* trong authorization_outbox; giữ dữ liệu nghiệp vụ tenant_members.
 
 Sau business commit, IAM đánh thức relay để thử đồng bộ Redis. Relay lịch 500 ms là
 đường retry bền vững, dùng `FOR UPDATE SKIP LOCKED` cho nhiều IAM replica. Redis lỗi
@@ -149,7 +176,7 @@ Secure. Những kiểm tra này vẫn giữ ở gateway và IAM.
 ## Triển khai
 
 1. Dừng bản cũ, chạy `./gradlew.bat migrateIam` với IAM_DB_URL/USER/PASSWORD theo
-   runbook. Áp dụng cả V9 và V10; giữ nguyên migration đã phát hành. Ứng dụng chỉ
+   runbook. Áp dụng qua V11; giữ nguyên migration đã phát hành. Ứng dụng chỉ
    validate JPA, không tự migrate khi startup.
 2. Bật auth-redis riêng. Local mặc định localhost:6380, database 0; Compose dùng
    auth-redis:6379. AOF và volume phải bền vững.
@@ -160,6 +187,10 @@ Secure. Những kiểm tra này vẫn giữ ở gateway và IAM.
    mặc định vishop:. AUTH_CACHE_MAX_AGE_SECONDS mặc định 30.
 5. Triển khai gateway và cả ba backend cùng hợp đồng context; không trộn backend cũ
    nhận JWT với backend mới chỉ nhận context.
+   Riêng V11 phải thay gateway còn lookup member bằng phiên bản dùng tenantRoleId JWT.
+   Các Redis hash auth:member:* cũ không được đọc/phát tiếp; sau khi mọi gateway đã
+   nâng cấp có thể dọn đúng prefix môi trường bằng SCAN và UNLINK. Migration PostgreSQL
+   không tự kết nối Redis để xóa các hash lịch sử này.
 6. Theo dõi authorization_outbox WHERE pending, lỗi relay, cache miss, thời gian thu
    hồi thực tế và memory Redis. Noeviction từ chối ghi khi đầy.
 7. Khi restore IAM DB về version cũ, đổi namespace hoặc xóa riêng auth Redis theo

@@ -22,7 +22,7 @@ class IamJwtTokenFactoryTest {
     assertThat(claims).containsEntry("token_use", "access").containsEntry("tokenVersion", 7);
     assertThat(claims.getIssuer()).isEqualTo("iam-service");
     assertThat(claims.getAudience()).containsExactly("vishop-api");
-    assertThat(claims).doesNotContainKey("permissions");
+    assertThat(claims).doesNotContainKeys("permissions", "systemRoleId", "roleId");
   }
 
   @Test
@@ -39,13 +39,13 @@ class IamJwtTokenFactoryTest {
     assertThat(claims)
         .containsEntry("sub", user.toString())
         .containsEntry("tenantId", tenant.toString())
-        .containsEntry("roleId", role.toString())
+        .containsEntry("tenantRoleId", role.toString())
         .containsEntry("tenantRole", "OWNER")
         .containsEntry("systemRole", "USER")
         .containsEntry("tokenVersion", 3)
-        .doesNotContainKey("permissions");
-    var decoded = IamAccessTokenClaims.verify(jwt, encoded);
-    assertThat(decoded.roleId()).isEqualTo(role);
+        .doesNotContainKeys("permissions", "systemRoleId", "roleId");
+    var decoded = IamTokenClaimsParser.verifyAccessToken(jwt, encoded);
+    assertThat(decoded.tenantRoleId()).isEqualTo(role);
     assertThat(decoded.userId()).isEqualTo(user);
   }
 
@@ -59,6 +59,6 @@ class IamJwtTokenFactoryTest {
     assertThat(claims)
         .containsEntry("token_use", "refresh")
         .containsEntry("tokenVersion", 9)
-        .doesNotContainKeys("systemRole", "permissions");
+        .doesNotContainKeys("systemRole", "systemRoleId", "tenantRoleId", "permissions");
   }
 }

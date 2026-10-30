@@ -244,6 +244,8 @@ class IamArchitectureTest {
                   return type.isPrimitive()
                       || type.getPackageName().startsWith("java.")
                       || type.getPackageName().startsWith("com.vishop.iam.shared.")
+                      || type.getName()
+                          .equals("io.github.coreplatform.common.domain.constants.SystemRole")
                       || isPublicApiType(type);
                 }
               });
@@ -317,7 +319,9 @@ class IamArchitectureTest {
               + "Api";
       if (name.equals(api) || name.startsWith(api + "$")) return true;
     }
-    return name.equals("com.vishop.iam.modules.identity.application.dto.UserView")
+    return name.equals("com.vishop.iam.modules.identity.application.dto.IamTokenClaims")
+        || name.startsWith("com.vishop.iam.modules.identity.application.dto.IamTokenClaims$")
+        || name.equals("com.vishop.iam.modules.identity.application.dto.UserView")
         || name.equals("com.vishop.iam.modules.tenant.application.dto.TenantResponseDto")
         || name.equals("com.vishop.iam.modules.tenant.application.dto.MemberView")
         || name.equals("com.vishop.iam.modules.tenant.application.dto.TenantMemberResponseDto");

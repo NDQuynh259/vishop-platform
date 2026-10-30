@@ -28,7 +28,7 @@ class IamSchemaTest {
             .dataSource(postgres.getPostgresDatabase())
             .locations("classpath:db/migration")
             .load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(10);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(11);
   }
 
   @AfterAll
@@ -130,7 +130,7 @@ class IamSchemaTest {
 
       var upgraded =
           Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
-      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(5);
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(6);
       upgraded.validate();
       try (var upgradeConnection = database.getConnection();
           var statement = upgradeConnection.createStatement()) {
@@ -374,10 +374,10 @@ class IamSchemaTest {
     UUID firstRole = role(first, "WAREHOUSE"), secondRole = role(second, "WAREHOUSE");
     member(user, first, firstRole);
     member(user, second, secondRole);
-    String memberVersion =
+    String userPayload =
         scalar(
-            "SELECT version FROM authorization_outbox WHERE state_key=?",
-            "auth:member:" + first + ":" + user);
+            "SELECT payload::text FROM authorization_outbox WHERE state_key=?",
+            "auth:user:" + user);
     String other =
         scalar(
             "SELECT payload::text FROM authorization_outbox WHERE state_key=?",
@@ -397,15 +397,21 @@ class IamSchemaTest {
         .isEqualTo(other);
     assertThat(
             scalar(
-                "SELECT version FROM authorization_outbox WHERE state_key=?",
-                "auth:member:" + first + ":" + user))
-        .isEqualTo(memberVersion);
+                "SELECT payload::text FROM authorization_outbox WHERE state_key=?",
+                "auth:user:" + user))
+        .isEqualTo(userPayload);
+    assertThat(scalar("SELECT token_version FROM users WHERE id=?", user)).isEqualTo("1");
     execute("DELETE FROM tenant_members WHERE tenant_id=? AND user_id=?", first, user);
+    assertThat(scalar("SELECT token_version FROM users WHERE id=?", user)).isEqualTo("2");
     assertThat(
             scalar(
-                "SELECT payload->>'status' FROM authorization_outbox WHERE state_key=?",
-                "auth:member:" + first + ":" + user))
-        .isEqualTo("INACTIVE");
+                "SELECT payload->>'tokenVersion' FROM authorization_outbox WHERE state_key=?",
+                "auth:user:" + user))
+        .isEqualTo("2");
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM authorization_outbox WHERE state_key LIKE 'auth:member:%'"))
+        .isEqualTo("0");
   }
 
   @Test
@@ -424,5 +430,56 @@ class IamSchemaTest {
     assertThat(scalar("SELECT payload::text FROM authorization_outbox WHERE state_key=?", key))
         .isEqualTo(before);
     assertThat(scalar("SELECT token_version FROM users WHERE id=?", user)).isEqualTo("1");
+  }
+
+  @Test
+  void upgradingV10RetiresOnlyMemberSnapshotsAndPreservesRevocation() throws Exception {
+    try (var upgrade = EmbeddedPostgres.builder().setPort(0).start()) {
+      var database = upgrade.getPostgresDatabase();
+      Flyway.configure()
+          .dataSource(database)
+          .locations("classpath:db/migration")
+          .target("10")
+          .load()
+          .migrate();
+      try (var c = database.getConnection();
+          var statement = c.createStatement()) {
+        statement.execute(
+            "INSERT INTO users(email,password_hash) VALUES ('v10@example.com','hash')");
+        statement.execute("INSERT INTO tenants(code,name) VALUES ('v10-upgrade','Upgrade')");
+        statement.execute(
+            "INSERT INTO tenant_members(user_id,tenant_id,role_id) SELECT u.id,t.id,r.id FROM users u CROSS JOIN tenants t JOIN roles r ON r.tenant_id=t.id WHERE r.builtin_key='WAREHOUSE'");
+        statement.execute("UPDATE tenant_members SET status='INACTIVE'");
+        try (var row =
+            statement.executeQuery(
+                "SELECT (SELECT token_version FROM users)=2 AND (SELECT count(*) FROM authorization_outbox WHERE state_key LIKE 'auth:member:%')=1")) {
+          assertThat(row.next()).isTrue();
+          assertThat(row.getBoolean(1)).isTrue();
+        }
+      }
+      var upgraded =
+          Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(1);
+      upgraded.validate();
+      try (var c = database.getConnection();
+          var statement = c.createStatement()) {
+        try (var row =
+            statement.executeQuery(
+                "SELECT (SELECT token_version FROM users)=2 AND (SELECT count(*) FROM tenant_members)=1 AND (SELECT count(*) FROM authorization_outbox WHERE state_key LIKE 'auth:member:%')=0 AND (SELECT count(*) FROM authorization_outbox WHERE state_key LIKE 'auth:role:%')=4")) {
+          assertThat(row.next()).isTrue();
+          assertThat(row.getBoolean(1)).isTrue();
+        }
+        statement.execute(
+            "UPDATE tenant_members SET role_id=(SELECT id FROM roles WHERE builtin_key='ACCOUNTING')");
+        statement.execute(
+            "DELETE FROM role_permissions WHERE role_id=(SELECT id FROM roles WHERE builtin_key='ACCOUNTING')");
+        try (var row =
+            statement.executeQuery(
+                "SELECT (SELECT token_version FROM users)=3 AND (SELECT (payload->>'tokenVersion')::bigint FROM authorization_outbox WHERE state_key LIKE 'auth:user:%')=3 AND (SELECT count(*) FROM authorization_outbox WHERE state_key LIKE 'auth:member:%')=0")) {
+          assertThat(row.next()).isTrue();
+          assertThat(row.getBoolean(1)).isTrue();
+        }
+      }
+    }
   }
 }

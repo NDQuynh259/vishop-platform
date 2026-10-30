@@ -43,13 +43,13 @@ public class TokenService {
   }
 
   public AuthResponse refresh(String credential) {
-    var refresh = tokens.verifyRefresh(credential);
+    var refresh = tokens.verifyRefreshToken(credential);
     return response(
         identities.activeUser(refresh.userId()), refresh.tenantId(), refresh.expiresAt());
   }
 
   public AuthResponse switchTenant(AuthenticatedUser actor, UUID tenant, String credential) {
-    var refresh = tokens.verifyRefresh(credential);
+    var refresh = tokens.verifyRefreshToken(credential);
     if (!refresh.userId().equals(actor.userId()))
       throw new io.github.coreplatform.common.domain.exception.UnauthorizedException(
           "Token owner mismatch");

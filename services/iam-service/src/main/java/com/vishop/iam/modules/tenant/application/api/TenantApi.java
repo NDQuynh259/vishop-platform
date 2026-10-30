@@ -38,6 +38,8 @@ public interface TenantApi {
 
   Optional<Grant> activeGrant(UUID userId, UUID tenantId);
 
+  boolean hasActiveRole(UUID userId, UUID tenantId, UUID roleId, String roleKey);
+
   /** Mutation APIs participate in the caller's transaction. */
   TenantResponseDto create(UUID ownerId, String code, String name);
 

@@ -31,7 +31,8 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
     return Set.of(
                 ApiPaths.V1 + "/auth/login",
                 ApiPaths.V1 + "/auth/register",
-                ApiPaths.V1 + "/auth/refresh")
+                ApiPaths.V1 + "/auth/refresh",
+                "/.well-known/jwks.json")
             .contains(path)
         || path.startsWith("/actuator/")
         || path.startsWith("/v3/api-docs");

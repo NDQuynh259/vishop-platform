@@ -237,7 +237,7 @@ tenants and requires login again. Unchanged membership updates and role permissi
 do not revoke credentials. Apply V10 before relying on membership-triggered revocation.
 Cache freshness defaults to 30 seconds; failures never fall back to old JWT permissions.
 
-New access JWTs contain `sub` (userId), `tenantId`, `roleId`, `tenantRole`, `systemRole`
+New access JWTs contain `sub` (userId), `tenantId`, `tenantRoleId`, `tenantRole`, `systemRole`
 and `tokenVersion`, plus standard credential metadata. Permissions are omitted to keep
 tokens compact. Login, refresh and tenant switch resolve the role ID from the active
 membership. Permission lists remain in authentication responses and signed gateway
@@ -389,3 +389,12 @@ the custom role's display name separately. Permission grants remain a collection
 Old access JWTs with the `roles` claim are rejected. Deploy IAM, gateway, and downstream
 services together; clients must read `tenantRole` and obtain a new access token by refresh
 or login. V9 also introduces tokenVersion; credentials predating that change require login. Apply V9 before rollout.
+
+### Three-cache authorization (V11)
+
+Gateway uses JWT tenantRoleId only after checking the global user tokenVersion. It reads user,
+tenant and role snapshots; it no longer reads membership snapshots on ordinary requests.
+V11 retires only the derived auth:member projection and preserves V10 membership revocation.
+Apply migrations through V11 before rollout; stop gateways still expecting member snapshots.
+Old Redis member hashes are unused and can be cleaned by environment prefix after rollout.
+See the [agreed authorization policy](../../docs/core-architecture/authorization-policy.md).

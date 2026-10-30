@@ -1,17 +1,17 @@
 package com.vishop.iam.modules.identity.application.port;
 
+import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import java.time.Instant;
 import java.util.UUID;
 
 public interface TokenPort {
-  record RefreshIdentity(UUID userId, UUID tenantId, Instant expiresAt) {}
+  /** Verifies JWT and current DB identity/version/tenant membership; returns claims only. */
+  IamTokenClaims.AccessToken verifyAccessToken(String credential);
 
-  AuthenticatedUser verify(String credential);
+  IamTokenClaims.RefreshToken verifyRefreshToken(String credential);
 
-  RefreshIdentity verifyRefresh(String credential);
-
-  String issue(AuthenticatedUser actor, UUID roleId);
+  String issue(AuthenticatedUser actor, UUID tenantRoleId);
 
   String issueRefresh(UUID userId, UUID tenantId, Instant expiresAt);
 

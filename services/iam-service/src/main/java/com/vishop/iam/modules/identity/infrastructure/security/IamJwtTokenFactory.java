@@ -1,6 +1,8 @@
 package com.vishop.iam.modules.identity.infrastructure.security;
 
+import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import java.time.Instant;
 import java.util.*;
@@ -22,13 +24,13 @@ public class IamJwtTokenFactory {
     this.accessExpirationMs = accessExpirationMs;
   }
 
-  public String access(AuthenticatedUser actor, UUID roleId, long tokenVersion) {
+  public String access(AuthenticatedUser actor, UUID tenantRoleId, long tokenVersion) {
     var identity =
-        new IamAccessTokenClaims(
+        new IamTokenClaims.AccessToken(
             actor.userId(),
             actor.tenantId(),
-            roleId,
-            actor.systemRole(),
+            SystemRole.valueOf(actor.systemRole()),
+            tenantRoleId,
             actor.tenantRole(),
             tokenVersion);
     Instant issuedAt = Instant.now();
@@ -36,13 +38,15 @@ public class IamJwtTokenFactory {
         base(
             identity.userId(),
             identity.tenantId(),
-            IamTokenClaims.Purpose.ACCESS,
+            IamTokenClaimsParser.Purpose.ACCESS,
             issuedAt,
             issuedAt.plusMillis(accessExpirationMs),
             tokenVersion);
-    claims.put("systemRole", identity.systemRole());
+    claims.put("systemRole", identity.systemRole().name());
     claims.put("tenantRole", identity.tenantRole());
-    claims.put("roleId", identity.roleId() == null ? null : identity.roleId().toString());
+    claims.put(
+        "tenantRoleId",
+        identity.tenantRoleId() == null ? null : identity.tenantRoleId().toString());
     return jwt.encode(claims);
   }
 
@@ -51,7 +55,7 @@ public class IamJwtTokenFactory {
         base(
             userId,
             tenantId,
-            IamTokenClaims.Purpose.REFRESH,
+            IamTokenClaimsParser.Purpose.REFRESH,
             Instant.now(),
             expiresAt,
             tokenVersion));
@@ -64,13 +68,13 @@ public class IamJwtTokenFactory {
   private Map<String, Object> base(
       UUID userId,
       UUID tenantId,
-      IamTokenClaims.Purpose purpose,
+      IamTokenClaimsParser.Purpose purpose,
       Instant issuedAt,
       Instant expiry,
       long version) {
     var claims = new HashMap<String, Object>();
     claims.put("sub", userId.toString());
-    claims.put("iss", IamTokenClaims.ISSUER);
+    claims.put("iss", IamTokenClaimsParser.ISSUER);
     claims.put("aud", List.of(purpose.audience));
     claims.put("jti", UUID.randomUUID().toString());
     claims.put("iat", Date.from(issuedAt));

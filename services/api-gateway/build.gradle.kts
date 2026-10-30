@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":libs:common-security"))
     implementation(project(":libs:common-observability"))
     implementation("org.springframework.cloud:spring-cloud-starter-gateway")
+    implementation("org.springframework.security:spring-security-oauth2-jose")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springdoc:springdoc-openapi-starter-webflux-api:2.6.0")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")

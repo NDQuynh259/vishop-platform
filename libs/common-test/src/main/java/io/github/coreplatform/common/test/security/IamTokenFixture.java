@@ -35,7 +35,7 @@ public final class IamTokenFixture {
     claims.put("systemRole", systemRole);
     claims.put("tenantRole", tenantRole);
     claims.put(
-        "roleId",
+        "tenantRoleId",
         tenant == null
             ? null
             : UUID.nameUUIDFromBytes(

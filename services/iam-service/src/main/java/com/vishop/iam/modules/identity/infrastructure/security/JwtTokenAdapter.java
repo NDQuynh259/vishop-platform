@@ -1,16 +1,19 @@
 package com.vishop.iam.modules.identity.infrastructure.security;
 
 import com.vishop.iam.modules.identity.application.api.IdentityApi.TenantAccessPort;
+import com.vishop.iam.modules.identity.application.dto.IamTokenClaims;
 import com.vishop.iam.modules.identity.application.port.TokenPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
-import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class JwtTokenAdapter implements TokenPort {
@@ -36,36 +39,41 @@ public class JwtTokenAdapter implements TokenPort {
   }
 
   @Override
-  public AuthenticatedUser verify(String credential) {
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+  public IamTokenClaims.AccessToken verifyAccessToken(String credential) {
+    IamTokenClaims.AccessToken identity;
     try {
-      var identity = IamAccessTokenClaims.verify(tokens, credential);
-      requireCurrentVersion(identity.userId(), identity.tokenVersion());
-      return new AuthenticatedUser(
-          identity.userId(),
-          identity.tenantId(),
-          identity.systemRole(),
-          identity.tenantRole(),
-          currentPermissions(identity));
+      identity = IamTokenClaimsParser.verifyAccessToken(tokens, credential);
     } catch (RuntimeException invalid) {
       throw new UnauthorizedException("Invalid access token");
     }
+    requireActiveUser(identity);
+    if (identity.tenantId() != null
+        && !access.hasActiveRole(
+            identity.userId(),
+            identity.tenantId(),
+            identity.tenantRoleId(),
+            identity.tenantRole())) {
+      throw new UnauthorizedException("Tenant access is no longer valid");
+    }
+    return identity;
   }
 
   @Override
-  public RefreshIdentity verifyRefresh(String credential) {
+  public IamTokenClaims.RefreshToken verifyRefreshToken(String credential) {
+    IamTokenClaims.RefreshToken identity;
     try {
-      var identity =
-          IamTokenClaims.fromClaims(tokens.verify(credential), IamTokenClaims.Purpose.REFRESH);
-      requireCurrentVersion(identity.userId(), identity.tokenVersion());
-      return new RefreshIdentity(identity.userId(), identity.tenantId(), identity.expiresAt());
+      identity = IamTokenClaimsParser.verifyRefreshToken(tokens, credential);
     } catch (RuntimeException invalid) {
       throw new UnauthorizedException("Invalid refresh token");
     }
+    requireCurrentVersion(identity.userId(), identity.tokenVersion());
+    return identity;
   }
 
   @Override
-  public String issue(AuthenticatedUser actor, UUID roleId) {
-    return factory.access(actor, roleId, currentVersion(actor.userId()));
+  public String issue(AuthenticatedUser actor, UUID tenantRoleId) {
+    return factory.access(actor, tenantRoleId, currentVersion(actor.userId()));
   }
 
   @Override
@@ -83,24 +91,39 @@ public class JwtTokenAdapter implements TokenPort {
     return refreshExpirationMs;
   }
 
-  private Set<String> currentPermissions(IamAccessTokenClaims identity) {
-    if (identity.tenantId() == null) return Set.of();
-    var grant = access.activeGrant(identity.userId(), identity.tenantId()).orElseThrow();
-    if (!grant.roleId().equals(identity.roleId()) || !grant.roleKey().equals(identity.tenantRole()))
-      throw new IllegalArgumentException("Stale tenant role");
-    return grant.permissions();
+  private void requireActiveUser(IamTokenClaims.AccessToken identity) {
+    long matches =
+        ((Number)
+                db.createNativeQuery(
+                        """
+        SELECT count(*) FROM users
+        WHERE id=:id AND status='ACTIVE' AND deleted_at IS NULL
+          AND token_version=:version AND system_role=:systemRole
+        """)
+                    .setParameter("id", identity.userId())
+                    .setParameter("version", identity.tokenVersion())
+                    .setParameter("systemRole", identity.systemRole().name())
+                    .getSingleResult())
+            .longValue();
+    if (matches != 1)
+      throw new UnauthorizedException("Account is inactive or access token is revoked");
   }
 
   private void requireCurrentVersion(UUID userId, long tokenVersion) {
     if (tokenVersion != currentVersion(userId))
-      throw new IllegalArgumentException("Revoked credential");
+      throw new UnauthorizedException("Refresh token has been revoked");
   }
 
   private long currentVersion(UUID userId) {
-    return ((Number)
-            db.createNativeQuery("SELECT token_version FROM users WHERE id=:id")
-                .setParameter("id", userId)
-                .getSingleResult())
-        .longValue();
+    List<?> versions =
+        db.createNativeQuery(
+                """
+        SELECT token_version FROM users
+        WHERE id=:id AND status='ACTIVE' AND deleted_at IS NULL
+        """)
+            .setParameter("id", userId)
+            .getResultList();
+    if (versions.isEmpty()) throw new UnauthorizedException("Account is not active");
+    return ((Number) versions.getFirst()).longValue();
   }
 }

@@ -93,6 +93,10 @@ class TenantApplicationApi implements TenantApi {
     return tenants.activeTenantIds(userId);
   }
 
+  public boolean hasActiveRole(UUID userId, UUID tenantId, UUID roleId, String roleKey) {
+    return memberships.hasActiveRole(userId, tenantId, roleId, roleKey);
+  }
+
   public Optional<Grant> activeGrant(UUID userId, UUID tenantId) {
     return memberships
         .membership(userId, tenantId)
@@ -106,7 +110,9 @@ class TenantApplicationApi implements TenantApi {
               var role = roles.role(tenantId, member.roleId());
               String key = role.builtinKey() != null ? role.builtinKey() : "CUSTOM:" + role.id();
               return new Grant(role.id(), key, member.permissions());
-            });
+            })
+        .filter(
+            grant -> memberships.hasActiveRole(userId, tenantId, grant.roleId(), grant.roleKey()));
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
