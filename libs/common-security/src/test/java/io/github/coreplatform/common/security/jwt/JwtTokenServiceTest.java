@@ -42,6 +42,19 @@ class JwtTokenServiceTest {
   }
 
   @Test
+  void absoluteDeadlineDoesNotSlideWhenRefreshIsReissuedLater() {
+    Instant deadline = now.plusSeconds(300);
+    String first = tokens.generateRefreshToken(Map.of("sid", "same-session"), deadline);
+    var later =
+        new JwtTokenService(ACCESS, REFRESH, Clock.fixed(now.plusSeconds(10), ZoneOffset.UTC));
+    String second = later.generateRefreshToken(Map.of("sid", "same-session"), deadline);
+    assertThat(tokens.verifyRefreshToken(first).getExpiration())
+        .isEqualTo(tokens.verifyRefreshToken(second).getExpiration());
+    assertThat(tokens.verifyRefreshToken(second).getIssuedAt().toInstant())
+        .isEqualTo(now.plusSeconds(10));
+  }
+
+  @Test
   void signingKeysCannotBeUsedInterchangeably() {
     String access =
         tokens.generateAccessToken(Map.of("token_use", "refresh"), Duration.ofMinutes(1));

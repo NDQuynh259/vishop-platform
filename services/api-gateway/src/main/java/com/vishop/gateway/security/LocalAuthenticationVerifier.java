@@ -51,6 +51,8 @@ public class LocalAuthenticationVerifier {
                               : Mono.just(state))
                   .map(
                       state -> {
+                        if (!"ACTIVE".equals(state.status()))
+                          throw new AuthenticationFailure(403, "access-not-active");
                         if (state.tokenVersion() < claims.tokenVersion()) {
                           throw new IllegalStateException(
                               "Credential version is ahead of confirmed user state");
@@ -64,8 +66,29 @@ public class LocalAuthenticationVerifier {
 
   private Mono<Identity> resolveAuthorization(VerifiedAccessToken verified) {
     var claims = verified.claims();
+    active(verified.userState());
+    // tokenVersion đúng chưa đủ: logout chỉ thu hồi sid, không tăng version toàn user.
+    // Kiểm tra chủ sở hữu và hạn phiên trước khi đọc quyền của tenant.
+    return cache
+        .get(AuthorizationSnapshot.session(claims.sessionId()))
+        .flatMap(
+            session -> {
+              if (!AuthorizationSnapshot.session(claims.sessionId()).equals(session.key()))
+                return Mono.error(new IllegalStateException("Cached session key mismatch"));
+              if (!"ACTIVE".equals(session.status())
+                  || session.expiresAt() == null
+                  || !session.expiresAt().isAfter(java.time.Instant.now()))
+                return Mono.error(new AuthenticationFailure(401, "session-revoked"));
+              if (!claims.userId().equals(session.userId())
+                  || session.tokenVersion() != claims.tokenVersion())
+                return Mono.error(new AuthenticationFailure(401, "invalid-session"));
+              return resolveTenant(verified);
+            });
+  }
+
+  private Mono<Identity> resolveTenant(VerifiedAccessToken verified) {
+    var claims = verified.claims();
     var userState = verified.userState();
-    active(userState);
     UUID user = claims.userId();
     UUID tenant = claims.tenantId();
     if (tenant == null) {
@@ -74,9 +97,16 @@ public class LocalAuthenticationVerifier {
               user,
               null,
               null,
-              new GatewayPrincipal(user, null, userState.systemRole(), null, java.util.Set.of())));
+              new GatewayPrincipal(
+                  user,
+                  null,
+                  userState.systemRole(),
+                  null,
+                  java.util.Set.of(),
+                  claims.sessionId())));
     }
     UUID role = claims.tenantRoleId();
+    // Role cùng tên ở hai tenant có thể có quyền khác nhau: cache luôn dùng tenant + roleId.
     return Mono.zip(
             cache.get(AuthorizationSnapshot.tenant(tenant)),
             cache.get(AuthorizationSnapshot.role(tenant, role)))
@@ -94,7 +124,12 @@ public class LocalAuthenticationVerifier {
                   tenant,
                   role,
                   new GatewayPrincipal(
-                      user, tenant, userState.systemRole(), grant.roleKey(), grant.permissions()));
+                      user,
+                      tenant,
+                      userState.systemRole(),
+                      grant.roleKey(),
+                      grant.permissions(),
+                      claims.sessionId()));
             });
   }
 

@@ -20,7 +20,26 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
   }
 
   public Optional<User> user(UUID id) {
-    return users.findById(id).map(UserJpaEntity::toDomain);
+    return users.activeRow(id).map(UserJpaEntity::toDomain);
+  }
+
+  public Optional<User> lockByEmail(String email) {
+    return users.lockByEmail(email).map(UserJpaEntity::toDomain);
+  }
+
+  public Optional<User> lockUser(UUID id) {
+    return users.lockUser(id).map(UserJpaEntity::toDomain);
+  }
+
+  public User create(String email, String hash) {
+    return users
+        .saveAndFlush(
+            UserJpaEntity.create(io.github.coreplatform.common.domain.UuidV7.nextId(), email, hash))
+        .toDomain();
+  }
+
+  public void rememberTenant(UUID userId, UUID tenantId) {
+    users.rememberTenant(userId, tenantId);
   }
 
   public void updateUserStatus(UUID user, String status) {

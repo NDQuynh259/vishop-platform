@@ -15,6 +15,9 @@ public final class VersionedAuthorizationCache {
       end
       local now = redis.call('TIME')
       redis.call('HSET', KEYS[1], 'checkedAt', now[1])
+      if ARGV[3] and ARGV[3] ~= '' then
+        redis.call('EXPIREAT', KEYS[1], ARGV[3])
+      end
       return 1
       """;
   public static final String READ =

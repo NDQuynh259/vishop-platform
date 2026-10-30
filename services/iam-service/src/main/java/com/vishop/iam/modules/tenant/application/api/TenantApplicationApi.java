@@ -84,6 +84,16 @@ class TenantApplicationApi implements TenantApi {
     return TenantResponseMapper.from(tenant);
   }
 
+  public List<UUID> activeTenantIds(UUID userId) {
+    return memberships.activeTenantIds(userId);
+  }
+
+  public java.util.Optional<AuthGrant> authenticationGrant(UUID userId, UUID tenantId) {
+    return memberships
+        .authenticationMembership(userId, tenantId)
+        .map(m -> new AuthGrant(m.roleId(), m.roleKey(), m.permissions()));
+  }
+
   public void requireAccess(AuthenticatedUser actor, UUID tenantId, String permission) {
     authorization.access(actor, tenantId, permission);
   }

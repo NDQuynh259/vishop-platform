@@ -5,7 +5,17 @@ import java.util.UUID;
 
 /** Principal propagated by the gateway context protocol, independent of user JWT claims. */
 public record GatewayPrincipal(
-    UUID userId, UUID tenantId, String systemRole, String tenantRole, Set<String> permissions) {
+    UUID userId,
+    UUID tenantId,
+    String systemRole,
+    String tenantRole,
+    Set<String> permissions,
+    UUID sessionId) {
+  public GatewayPrincipal(
+      UUID userId, UUID tenantId, String systemRole, String tenantRole, Set<String> permissions) {
+    this(userId, tenantId, systemRole, tenantRole, permissions, null);
+  }
+
   public GatewayPrincipal {
     permissions = Set.copyOf(permissions);
   }

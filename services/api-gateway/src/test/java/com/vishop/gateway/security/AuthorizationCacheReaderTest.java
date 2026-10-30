@@ -21,7 +21,7 @@ class AuthorizationCacheReaderTest {
   RedisServer server;
   LettuceConnectionFactory connection;
   HttpServer iam;
-  final ObjectMapper json = new ObjectMapper();
+  final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
   final String secret = "test-context-secret-with-at-least-thirty-two-bytes";
   final AtomicReference<AuthorizationSnapshot> current = new AtomicReference<>();
   final AtomicInteger calls = new AtomicInteger();
@@ -89,6 +89,27 @@ class AuthorizationCacheReaderTest {
     if (iam != null) iam.stop(0);
     if (connection != null) connection.destroy();
     if (server != null) server.stop();
+  }
+
+  @Test
+  void sessionSnapshotsHaveAbsoluteTtlAndNewerRevocationWins() {
+    UUID session = UUID.randomUUID(), user = UUID.randomUUID();
+    String key = AuthorizationSnapshot.session(session);
+    var deadline = java.time.Instant.now().plusSeconds(120);
+    current.set(
+        new AuthorizationSnapshot(
+            key, "1", "ACTIVE", null, null, null, Set.of(), 1, user, deadline));
+    assertThat(reader.get(key).block().userId()).isEqualTo(user);
+    assertThat(redis.getExpire("test:" + key)).isPositive().isLessThanOrEqualTo(120);
+    current.set(
+        new AuthorizationSnapshot(
+            key, "2", "REVOKED", null, null, null, Set.of(), 1, user, deadline));
+    assertThat(reader.refresh(key).block().status()).isEqualTo("REVOKED");
+    current.set(
+        new AuthorizationSnapshot(
+            key, "1", "ACTIVE", null, null, null, Set.of(), 1, user, deadline));
+    assertThat(reader.refresh(key).block().status()).isEqualTo("REVOKED");
+    assertThat(redis.getExpire("test:" + key)).isLessThanOrEqualTo(120);
   }
 
   @Test

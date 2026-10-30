@@ -1,5 +1,6 @@
 package io.github.coreplatform.common.security.gateway;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
@@ -12,6 +13,8 @@ import java.util.UUID;
  *   <li>User: dùng {@code status}, {@code systemRole}, {@code tokenVersion}.
  *   <li>Tenant: dùng {@code status}.
  *   <li>Role của tenant: dùng {@code status}, {@code roleId}, {@code roleKey}, {@code permissions}.
+ *   <li>Session: dùng {@code status}, {@code userId}, {@code tokenVersion}, {@code expiresAt}; key
+ *       có TTL theo hạn tuyệt đối của phiên, để logout riêng thiết bị.
  * </ul>
  *
  * <p>Các trường không áp dụng cho loại bản ghi đó có thể để {@code null}; permissions mặc định là
@@ -34,6 +37,9 @@ import java.util.UUID;
  * @param tokenVersion phiên bản thu hồi token của user; gateway đối chiếu với tokenVersion trong
  *     JWT. Tăng giá trị này làm token phiên bản cũ không còn hợp lệ, khác với version của bản ghi
  *     cache
+ * @param userId chủ sở hữu session; gateway so với subject JWT để không dùng phiên của user khác
+ * @param expiresAt hạn tuyệt đối của session; không gia hạn khi refresh và không áp dụng cho key
+ *     role/user/tenant
  */
 public record AuthorizationSnapshot(
     String key,
@@ -43,7 +49,25 @@ public record AuthorizationSnapshot(
     UUID roleId,
     String roleKey,
     Set<String> permissions,
-    long tokenVersion) {
+    long tokenVersion,
+    UUID userId,
+    Instant expiresAt) {
+  public AuthorizationSnapshot(
+      String key,
+      String version,
+      String status,
+      String systemRole,
+      UUID roleId,
+      String roleKey,
+      Set<String> permissions,
+      long tokenVersion) {
+    this(key, version, status, systemRole, roleId, roleKey, permissions, tokenVersion, null, null);
+  }
+
+  public static String session(UUID id) {
+    return "auth:session:" + id;
+  }
+
   /** Chuẩn hóa permissions rỗng và sao chép để bên gọi không thể thay đổi tập quyền đã lưu. */
   public AuthorizationSnapshot {
     permissions = permissions == null ? Set.of() : Set.copyOf(permissions);

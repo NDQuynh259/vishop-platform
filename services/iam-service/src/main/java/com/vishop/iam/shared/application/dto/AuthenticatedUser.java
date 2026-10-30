@@ -7,7 +7,17 @@ import java.util.Set;
 import java.util.UUID;
 
 public record AuthenticatedUser(
-    UUID userId, UUID tenantId, String systemRole, String tenantRole, Set<String> permissions) {
+    UUID userId,
+    UUID tenantId,
+    String systemRole,
+    String tenantRole,
+    Set<String> permissions,
+    UUID sessionId) {
+  public AuthenticatedUser(
+      UUID userId, UUID tenantId, String systemRole, String tenantRole, Set<String> permissions) {
+    this(userId, tenantId, systemRole, tenantRole, permissions, null);
+  }
+
   public void requireCms() {
     if (!SystemRole.PLATFORM_ADMIN.name().equals(systemRole))
       throw new ForbiddenException("CMS requires PLATFORM_ADMIN");

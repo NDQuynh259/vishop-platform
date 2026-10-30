@@ -12,7 +12,8 @@ public record User(
     SystemRole systemRole,
     String status,
     Instant createdAt,
-    UUID lastTenantId) {
+    UUID lastTenantId,
+    long tokenVersion) {
 
   public void requireActive() {
     if (!"ACTIVE".equals(status))

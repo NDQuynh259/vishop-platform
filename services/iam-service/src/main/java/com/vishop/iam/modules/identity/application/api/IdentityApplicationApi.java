@@ -10,9 +10,29 @@ import org.springframework.stereotype.Component;
 @Component
 class IdentityApplicationApi implements IdentityApi {
   private final UserRepositoryPort users;
+  private final com.vishop.iam.modules.identity.application.service.SessionAuthenticationService
+      authentication;
 
-  public IdentityApplicationApi(UserRepositoryPort users) {
+  public IdentityApplicationApi(
+      UserRepositoryPort users,
+      com.vishop.iam.modules.identity.application.service.SessionAuthenticationService
+          authentication) {
     this.users = users;
+    this.authentication = authentication;
+  }
+
+  @org.springframework.transaction.annotation.Transactional(
+      readOnly = true,
+      isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+  public AuthenticatedUser resolveContext(AuthenticatedUser context, UUID roleId) {
+    return authentication.resolveContext(context, roleId);
+  }
+
+  @org.springframework.transaction.annotation.Transactional(
+      readOnly = true,
+      isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+  public AuthenticatedUser verifyAccessToken(String token) {
+    return authentication.verifyAccessToken(token);
   }
 
   public UserView requireActive(UUID userId) {

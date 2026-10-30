@@ -151,7 +151,7 @@ class IamArchitectureTest {
   static void modules_map_and_query_only_owned_tables(JavaClasses classes) {
     Map<String, Set<String>> tables =
         Map.of(
-            "identity", Set.of("users"),
+            "identity", Set.of("users", "auth_sessions"),
             "tenant",
                 Set.of(
                     "tenants",

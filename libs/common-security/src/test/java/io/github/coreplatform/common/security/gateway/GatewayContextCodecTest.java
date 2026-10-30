@@ -17,6 +17,18 @@ class GatewayContextCodecTest {
   }
 
   @Test
+  void sessionIdAndRoleIdAreBoundToTheSignedContext() {
+    UUID session = UUID.randomUUID(), role = UUID.randomUUID();
+    var actor =
+        new GatewayPrincipal(
+            UUID.randomUUID(), UUID.randomUUID(), "USER", "OWNER", Set.of("tenant.view"), session);
+    var codec = codec("iam-service", now);
+    String signed = codec.sign(actor, role, "GET", "/api/v1/tenants");
+    assertThat(codec.verify(signed, "GET", "/api/v1/tenants").sessionId()).isEqualTo(session);
+    assertThat(codec.verifyContext(signed, "GET", "/api/v1/tenants").roleId()).isEqualTo(role);
+  }
+
+  @Test
   void contextBindsIdentityPermissionsAudienceMethodAndQuery() {
     var actor =
         new GatewayPrincipal(

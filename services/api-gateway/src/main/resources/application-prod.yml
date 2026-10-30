@@ -4,6 +4,8 @@ vishop:
   security:
     jwt:
       secret: ${JWT_ACCESS_SECRET}
+      access-token-secret: ${JWT_ACCESS_SECRET}
+      refresh-token-secret: ${JWT_REFRESH_SECRET}
     context:
       iam-secret: ${GATEWAY_IAM_CONTEXT_SECRET}
       audit-secret: ${GATEWAY_AUDIT_CONTEXT_SECRET}

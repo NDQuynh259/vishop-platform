@@ -146,16 +146,15 @@ accounts, system roles, tenants, memberships, tenant roles and permissions in `v
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
 
-IAM authentication is currently reset for a fresh implementation. Only the four auth
-endpoint skeletons remain: POST login/register/refresh/logout under /api/v1/auth.
-They return 501 without issuing credentials or changing user data. Existing IAM
-business HTTP endpoints temporarily return 503 until authentication is rebuilt.
-See [reset scope and checks](docs/core-architecture/iam-auth-reset.md).
+IAM provides POST login/register/refresh/logout under /api/v1/auth. Access and
+refresh JWTs use separate HS256 keys and HttpOnly cookies. Each login creates a sid;
+logout revokes only that session. Security-sensitive user/membership changes revoke
+all previous sessions through tokenVersion; role permission edits update Redis grants.
 
-User/tenant models, business use cases, persistence, Kafka outbox and Flyway history
-remain. No database records or migrations were deleted. Gateway/audit/subscription
-retain their separate authentication/context code; IAM currently does not issue
-JWTs or provide the gateway authorization cache-loader.
+Gateway verifies access JWTs and cached user/session/tenant/role state, then signs
+request context for downstream services. IAM additionally validates its own DB state.
+Apply IAM migration V12 before running this version. See the annotated
+[authentication flow](docs/core-architecture/authentication-flow.md).
 
 ## Contribution rules
 

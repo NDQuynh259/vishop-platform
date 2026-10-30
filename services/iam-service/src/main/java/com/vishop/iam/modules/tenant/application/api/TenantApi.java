@@ -25,6 +25,12 @@ public interface TenantApi {
     int activeOwners(UUID tenantId);
   }
 
+  record AuthGrant(UUID roleId, String roleKey, java.util.Set<String> permissions) {}
+
+  List<UUID> activeTenantIds(UUID userId);
+
+  Optional<AuthGrant> authenticationGrant(UUID userId, UUID tenantId);
+
   void requireAccess(AuthenticatedUser actor, UUID tenantId, String permission);
 
   /** Mutation APIs participate in the caller's transaction. */

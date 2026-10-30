@@ -97,6 +97,7 @@ public final class IamTokenFixture {
     claims.put("exp", Date.from(expiry));
     claims.put("jti", UUID.randomUUID().toString());
     claims.put("tokenVersion", 1);
+    claims.put("sid", user.toString());
     return claims;
   }
 }

@@ -35,6 +35,20 @@ public class MembershipRepositoryAdapter implements MembershipRepositoryPort {
                     .map(role -> member.toDomain(role.toDomain())));
   }
 
+  public Optional<Membership> authenticationMembership(UUID user, UUID tenant) {
+    return members
+        .authenticationMembership(user, tenant)
+        .flatMap(
+            m ->
+                roles
+                    .findByTenantIdAndId(tenant, m.getRoleId())
+                    .map(r -> m.toDomain(r.toDomain())));
+  }
+
+  public List<UUID> activeTenantIds(UUID user) {
+    return members.activeTenantIds(user);
+  }
+
   public void addMembership(UUID user, UUID tenant, UUID role) {
     members.saveAndFlush(MembershipJpaEntity.create(UuidV7.nextId(), tenant, user, role));
   }

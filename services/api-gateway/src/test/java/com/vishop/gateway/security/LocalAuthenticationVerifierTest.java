@@ -43,7 +43,9 @@ class LocalAuthenticationVerifierTest {
                         role,
                         "OWNER",
                         Set.of("tenant.view"),
-                        1)));
+                        1,
+                        user,
+                        Instant.now().plusSeconds(604800))));
   }
 
   private String issue(IamTokenFixture fixture) {
@@ -97,7 +99,7 @@ class LocalAuthenticationVerifierTest {
   }
 
   @Test
-  void usesJwtRoleAfterVersionCheckAndReadsOnlyThreeCacheKeys() {
+  void usesJwtRoleAfterVersionAndSessionChecks() {
     StepVerifier.create(verifier.authenticate(issue(tokens), true))
         .assertNext(
             identity -> {
@@ -108,9 +110,41 @@ class LocalAuthenticationVerifierTest {
             })
         .verifyComplete();
     verify(cache).get(AuthorizationSnapshot.user(user));
+    verify(cache).get(AuthorizationSnapshot.session(user));
     verify(cache).get(AuthorizationSnapshot.tenant(tenant));
     verify(cache).get(AuthorizationSnapshot.role(tenant, role));
     verifyNoMoreInteractions(cache);
+  }
+
+  @Test
+  void rejectsMissingSessionIdBeforeReadingCache() {
+    var claims = new HashMap<String, Object>(tokens.parseClaims(issue(tokens)));
+    claims.remove("sid");
+    rejects(tokens.provider().encode(claims), true);
+    verifyNoInteractions(cache);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"revoked", "expired", "wrong-user", "wrong-version"})
+  void rejectsInvalidSessionBeforeUsingTenantPermissions(String kind) {
+    String key = AuthorizationSnapshot.session(user);
+    when(cache.get(key))
+        .thenReturn(
+            Mono.just(
+                new AuthorizationSnapshot(
+                    key,
+                    "2",
+                    kind.equals("revoked") ? "REVOKED" : "ACTIVE",
+                    null,
+                    null,
+                    null,
+                    Set.of(),
+                    kind.equals("wrong-version") ? 2 : 1,
+                    kind.equals("wrong-user") ? UUID.randomUUID() : user,
+                    Instant.now().plusSeconds(kind.equals("expired") ? -1 : 3600))));
+    rejects(issue(tokens), true);
+    verify(cache, never()).get(AuthorizationSnapshot.tenant(tenant));
+    verify(cache, never()).get(AuthorizationSnapshot.role(tenant, role));
   }
 
   @Test
@@ -243,6 +277,7 @@ class LocalAuthenticationVerifierTest {
         .assertNext(identity -> assertThat(identity.tenantId()).isNull())
         .verifyComplete();
     verify(cache).get(AuthorizationSnapshot.user(user));
+    verify(cache).get(AuthorizationSnapshot.session(user));
     verifyNoMoreInteractions(cache);
   }
 
@@ -263,6 +298,20 @@ class LocalAuthenticationVerifierTest {
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2)));
+    when(cache.get(AuthorizationSnapshot.session(user)))
+        .thenReturn(
+            Mono.just(
+                new AuthorizationSnapshot(
+                    AuthorizationSnapshot.session(user),
+                    "1",
+                    "ACTIVE",
+                    null,
+                    null,
+                    null,
+                    Set.of(),
+                    2,
+                    user,
+                    Instant.now().plusSeconds(604800))));
     StepVerifier.create(verifier.authenticate(tokens.provider().encode(claims), true))
         .assertNext(identity -> assertThat(identity.roleId()).isEqualTo(role))
         .verifyComplete();

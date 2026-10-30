@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.UUID;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -64,12 +65,16 @@ public class TenantController {
   }
 
   @GetMapping("/{id}")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).VIEW)")
   public TenantResponseDto get(
       @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
     return queries.dispatch(new GetTenantByIdQuery(actor, id));
   }
 
   @PatchMapping("/{id}")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MANAGE)")
   public TenantResponseDto rename(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,

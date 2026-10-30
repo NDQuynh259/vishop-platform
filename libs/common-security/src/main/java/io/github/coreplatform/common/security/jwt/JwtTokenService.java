@@ -51,9 +51,28 @@ public final class JwtTokenService {
     if (lifetime == null || lifetime.compareTo(Duration.ofSeconds(1)) < 0)
       throw new IllegalArgumentException("Token lifetime must be at least one second");
     Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
+    return generateUntil(provider, claims, issuedAt, issuedAt.plusSeconds(lifetime.getSeconds()));
+  }
+
+  public String generateAccessToken(Map<String, ?> claims, Instant expiresAt) {
+    Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
+    return generateUntil(accessTokens, claims, issuedAt, expiresAt);
+  }
+
+  /** Giữ đúng deadline có sẵn, dùng khi đổi tenant mà không kéo dài tuổi thọ phiên. */
+  public String generateRefreshToken(Map<String, ?> claims, Instant expiresAt) {
+    Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
+    return generateUntil(refreshTokens, claims, issuedAt, expiresAt);
+  }
+
+  private String generateUntil(
+      JwtTokenProvider provider, Map<String, ?> claims, Instant issuedAt, Instant expiresAt) {
+    Objects.requireNonNull(claims, "claims");
+    if (expiresAt == null || !expiresAt.truncatedTo(ChronoUnit.SECONDS).isAfter(issuedAt))
+      throw new IllegalArgumentException("Token expiration must be after issuance");
     var payload = new HashMap<String, Object>(claims);
     payload.put("iat", Date.from(issuedAt));
-    payload.put("exp", Date.from(issuedAt.plusSeconds(lifetime.getSeconds())));
+    payload.put("exp", Date.from(expiresAt.truncatedTo(ChronoUnit.SECONDS)));
     payload.putIfAbsent("jti", UUID.randomUUID().toString());
     return provider.encode(payload);
   }

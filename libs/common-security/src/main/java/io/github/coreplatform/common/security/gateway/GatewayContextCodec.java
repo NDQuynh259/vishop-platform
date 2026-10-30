@@ -27,7 +27,21 @@ public final class GatewayContextCodec {
       String tenantRole,
       Set<String> permissions,
       long issuedAt,
-      String requestId) {}
+      String requestId,
+      UUID sessionId) {
+    public Context(
+        UUID userId,
+        UUID tenantId,
+        UUID roleId,
+        String systemRole,
+        String tenantRole,
+        Set<String> permissions,
+        long issuedAt,
+        String requestId) {
+      this(
+          userId, tenantId, roleId, systemRole, tenantRole, permissions, issuedAt, requestId, null);
+    }
+  }
 
   public GatewayContextCodec(ObjectMapper json, String secret, String audience) {
     this(json, secret, audience, Clock.systemUTC());
@@ -53,7 +67,8 @@ public final class GatewayContextCodec {
               actor.tenantRole(),
               actor.permissions(),
               clock.instant().getEpochSecond(),
-              UUID.randomUUID().toString());
+              UUID.randomUUID().toString(),
+              actor.sessionId());
       String body =
           Base64.getUrlEncoder().withoutPadding().encodeToString(json.writeValueAsBytes(context));
       return body
@@ -65,6 +80,17 @@ public final class GatewayContextCodec {
   }
 
   public GatewayPrincipal verify(String value, String method, String target) {
+    var c = verifyContext(value, method, target);
+    return new GatewayPrincipal(
+        c.userId(),
+        c.tenantId(),
+        c.systemRole(),
+        c.tenantRole(),
+        Set.copyOf(c.permissions()),
+        c.sessionId());
+  }
+
+  public Context verifyContext(String value, String method, String target) {
     try {
       if (value == null || value.length() > 32768) throw new IllegalArgumentException();
       String[] parts = value.split("\\.", -1);
@@ -84,8 +110,7 @@ public final class GatewayContextCodec {
               ? c.tenantRole() != null || c.roleId() != null || !c.permissions().isEmpty()
               : c.roleId() == null || c.tenantRole() == null || c.tenantRole().isBlank()))
         throw new IllegalArgumentException();
-      return new GatewayPrincipal(
-          c.userId(), c.tenantId(), c.systemRole(), c.tenantRole(), Set.copyOf(c.permissions()));
+      return c;
     } catch (Exception e) {
       throw new IllegalArgumentException("Invalid gateway context", e);
     }

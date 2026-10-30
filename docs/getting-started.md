@@ -16,9 +16,10 @@ Trên volume mới, PostgreSQL tự tạo `vishop_iam` và `vishop_audit` tại 
 riêng; không xóa volume để áp dụng lại init script.
 
 Thiết lập database credentials theo [hướng dẫn IAM](../services/iam-service/README.md).
-IAM authentication đã [reset để viết lại](core-architecture/iam-auth-reset.md): bốn auth
-endpoint trả 501 và các API nghiệp vụ IAM trả 503. IAM hiện không cần JWT/Redis/context
-secrets. Gateway vẫn giữ cấu hình riêng của luồng trước.
+IAM cấp access/refresh JWT HS256 bằng hai key riêng và tạo sid cho mỗi lần login.
+IAM/gateway phải dùng cùng JWT_ACCESS_SECRET, JWT_REFRESH_SECRET,
+GATEWAY_IAM_CONTEXT_SECRET, Auth Redis và AUTH_CACHE_PREFIX. Production bắt buộc
+secrets riêng và ALLOWED_ORIGINS; xem [luồng auth](core-architecture/authentication-flow.md).
 
 ## Build và kiểm thử
 
@@ -106,11 +107,13 @@ Gửi request qua gateway tại `http://localhost:8000`:
    `credentials: 'include'` và header `X-Requested-With: XMLHttpRequest` cho các request ghi.
 3. `POST /api/v1/tenants` với code/name: IAM tạo tenant, bốn role và OWNER membership
    trong cùng transaction, đồng thời ghi event vào outbox.
-4. `POST /api/v1/auth/switch-tenant` với `{tenantId}` và cookie tự gửi từ trình duyệt;
-   IAM thay cookie theo tổ chức được chọn.
+4. `POST /api/v1/auth/refresh` với `{tenantId}` và cookie tự gửi từ trình duyệt;
+   IAM thay cookie theo tổ chức được chọn, giữ nguyên sid và hạn phiên.
 5. Khi access hết hạn, gọi `POST /api/v1/auth/refresh` không body; IAM đọc refresh cookie.
 6. Inspect `vishop.tenant.events` and `vishop.user.events` in Kafka UI (:8088).
    Audit service nhận cả event user và tenant, xử lý chống trùng rồi lưu audit log.
+7. `POST /api/v1/auth/logout` thu hồi sid hiện tại và xóa cookies; thiết bị khác vẫn
+   dùng được phiên riêng. Nếu trả 503 sau commit, retry để đồng bộ Redis.
 
 API, response mới, JWT access/refresh và hướng dẫn chuyển dữ liệu được mô tả trong
 [IAM README](../services/iam-service/README.md) và [kiến trúc tenancy](core-architecture/tenancy.md).

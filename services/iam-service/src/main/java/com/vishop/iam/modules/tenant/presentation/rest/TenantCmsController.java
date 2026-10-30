@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +30,7 @@ public class TenantCmsController {
   }
 
   @GetMapping("/tenants")
+  @PreAuthorize("@iamAuthorization.canAccessCms(authentication)")
   public List<TenantResponseDto> tenants(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
@@ -37,6 +39,7 @@ public class TenantCmsController {
   }
 
   @PutMapping("/tenants/{id}")
+  @PreAuthorize("@iamAuthorization.canAccessCms(authentication)")
   public TenantResponseDto updateTenant(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,

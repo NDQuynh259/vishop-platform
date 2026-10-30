@@ -14,6 +14,9 @@ dependencies {
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
     implementation(project(":libs:common-domain"))
+    implementation(project(":libs:common-cache"))
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.boot:spring-boot-starter-security")
     testImplementation(project(":libs:common-test"))
     implementation(project(":libs:common-web"))
     implementation(project(":libs:common-security"))
@@ -27,6 +30,7 @@ dependencies {
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
     testImplementation("io.zonky.test:embedded-postgres:2.1.0")
+    testImplementation("com.github.codemonstur:embedded-redis:1.4.3")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
     testImplementation(enforcedPlatform("io.zonky.test.postgres:embedded-postgres-binaries-bom:16.15.0"))
 }

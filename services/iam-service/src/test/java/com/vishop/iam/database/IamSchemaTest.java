@@ -28,7 +28,7 @@ class IamSchemaTest {
             .dataSource(postgres.getPostgresDatabase())
             .locations("classpath:db/migration")
             .load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(11);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(12);
   }
 
   @AfterAll
@@ -130,7 +130,7 @@ class IamSchemaTest {
 
       var upgraded =
           Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
-      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(6);
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(7);
       upgraded.validate();
       try (var upgradeConnection = database.getConnection();
           var statement = upgradeConnection.createStatement()) {
@@ -459,7 +459,7 @@ class IamSchemaTest {
       }
       var upgraded =
           Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
-      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(1);
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(2);
       upgraded.validate();
       try (var c = database.getConnection();
           var statement = c.createStatement()) {

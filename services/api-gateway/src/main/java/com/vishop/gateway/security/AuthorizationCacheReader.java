@@ -79,7 +79,13 @@ public class AuthorizationCacheReader {
             List.of(prefix + key),
             List.of(Long.toString(maxAge)))
         .next()
-        .map(this::decode);
+        .map(
+            value -> {
+              var state = decode(value);
+              if (!key.equals(state.key()))
+                throw new IllegalStateException("Cached authorization key mismatch");
+              return state;
+            });
   }
 
   private Mono<AuthorizationSnapshot> load(String key) {
@@ -102,6 +108,8 @@ public class AuthorizationCacheReader {
         .switchIfEmpty(Mono.error(new IllegalStateException("Empty authorization projection")))
         .flatMap(
             state -> {
+              if (state.expiresAt() != null && !state.expiresAt().isAfter(java.time.Instant.now()))
+                return Mono.error(new AuthenticationFailure(401, "session-expired"));
               if (!key.equals(state.key()))
                 return Mono.error(new IllegalStateException("Authorization key mismatch"));
               try {
@@ -109,7 +117,12 @@ public class AuthorizationCacheReader {
                     .execute(
                         new DefaultRedisScript<Long>(VersionedAuthorizationCache.WRITE, Long.class),
                         List.of(prefix + key),
-                        List.of(state.version(), json.writeValueAsString(state)))
+                        List.of(
+                            state.version(),
+                            json.writeValueAsString(state),
+                            state.expiresAt() == null
+                                ? ""
+                                : Long.toString(state.expiresAt().getEpochSecond())))
                     .then(read(key))
                     .switchIfEmpty(
                         Mono.error(new IllegalStateException("Authorization cache unavailable")));

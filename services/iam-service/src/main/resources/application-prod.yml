@@ -1,0 +1,10 @@
+vishop:
+  security:
+    jwt:
+      access-token-secret: ${JWT_ACCESS_SECRET}
+      refresh-token-secret: ${JWT_REFRESH_SECRET}
+    context:
+      secret: ${GATEWAY_IAM_CONTEXT_SECRET}
+    cookies:
+      secure: ${AUTH_COOKIE_SECURE:true}
+    allowed-origins: ${ALLOWED_ORIGINS}

@@ -202,6 +202,19 @@ services:
       - "${IAM_DEBUG_PORT:-5001}:5001"
     environment:
       SERVER_PORT: 8080
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_vishop_access_secret_at_least_32_bytes}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_vishop_refresh_secret_at_least_32_bytes}
+      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:-dev_gateway_iam_context_secret_at_least_32_bytes}
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_CACHE_PREFIX: ${AUTH_CACHE_PREFIX:-vishop:dev:}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Lax}
+      JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-900000}
+      JWT_REFRESH_EXPIRATION_MS: ${JWT_REFRESH_EXPIRATION_MS:-604800000}
       SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_iam
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
@@ -326,12 +339,14 @@ services:
       GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:-dev_gateway_iam_context_secret_at_least_32_bytes}
       GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:-dev_gateway_audit_context_secret_at_least_32_bytes}
       GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:-dev_gateway_subscription_context_secret_at_least_32_bytes}
+      AUTH_CACHE_PREFIX: ${AUTH_CACHE_PREFIX:-vishop:dev:}
       AUTH_REDIS_HOST: auth-redis
       AUTH_REDIS_PORT: 6379
       AUTH_REDIS_DATABASE: 0
       AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-vishop_dev_access_secret_at_least_32_bytes_long!}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_vishop_refresh_secret_at_least_32_bytes}
       SPRING_PROFILES_ACTIVE: dev
       IAM_SERVICE_URL: http://iam-service:8080
       AUDIT_SERVICE_URL: http://audit-service:8082

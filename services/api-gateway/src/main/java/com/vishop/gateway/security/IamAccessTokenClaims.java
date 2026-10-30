@@ -11,7 +11,8 @@ record IamAccessTokenClaims(
     SystemRole systemRole,
     UUID tenantRoleId,
     String tenantRole,
-    long tokenVersion) {
+    long tokenVersion,
+    UUID sessionId) {
   static IamAccessTokenClaims from(Claims claims) {
     if (!"iam-service".equals(claims.getIssuer())
         || claims.getAudience() == null
@@ -42,6 +43,7 @@ record IamAccessTokenClaims(
         SystemRole.valueOf(systemRole),
         role == null ? null : UUID.fromString(role),
         tenantRole,
-        version.longValue());
+        version.longValue(),
+        UUID.fromString(claims.get("sid", String.class)));
   }
 }

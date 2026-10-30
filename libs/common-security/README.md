@@ -32,7 +32,7 @@ Claims refreshClaimsVerified = tokens.verifyRefreshToken(refresh);
 - Verify dùng đúng key tương ứng và bắt buộc có `iat`/`exp` hợp lệ; không thử key còn
   lại. Việc đối chiếu DB/cache hoặc kiểm tra claims nghiệp vụ nằm ở service.
 - Không có cấu hình JWT thì không tự tạo token bean. `enabled=false` tắt toàn bộ
-  auto-configuration này. IAM hiện vẫn exclude auto-config trong giai đoạn reset.
+  auto-configuration này. IAM inject facade này qua auto-configuration.
 
 `jwt/JwtTokenProvider` chỉ phụ trách thao tác JWT tổng quát:
 
@@ -40,9 +40,8 @@ Claims refreshClaimsVerified = tokens.verifyRefreshToken(refresh);
 - `verify(token)`: kiểm tra chữ ký và các ràng buộc chuẩn `exp`/`nbf` nếu có, trả claims.
 - `decode(token)`: đọc claims sau khi verify; không cung cấp claims chưa xác minh.
 
-Provider chỉ hỗ trợ HS256 với một secret cho mỗi instance. Gateway vẫn dùng provider
-cấu hình của nó. IAM authentication hiện đã [reset](../../docs/core-architecture/iam-auth-reset.md),
-không còn tạo provider access/refresh. Ứng dụng có thể tắt bean mặc định bằng
+Provider chỉ hỗ trợ HS256 với một secret cho mỗi instance. Gateway dùng provider
+access; IAM dùng JwtTokenService quản lý hai provider riêng. Ứng dụng có thể tắt bean mặc định bằng
 `vishop.security.jwt.enabled=false` hoặc exclude JwtAutoConfiguration.
 
 Bean một-key `JwtTokenProvider` chỉ được tạo khi có `vishop.security.jwt.secret`.
@@ -58,8 +57,10 @@ Claims claims = jwt.verify(token);
 // Service kiểm tra hợp đồng claims của mình sau bước xác minh chữ ký.
 ```
 
-IAM đã gỡ codec/adapter/claims DTO của luồng đăng nhập trước để viết lại. Thư viện JWT
-chung vẫn độc lập với dữ liệu nghiệp vụ và không tự đọc DB.
+Các overload generateAccessToken/generateRefreshToken nhận Instant cho phép giữ
+deadline tuyệt đối của phiên khi chọn tenant. Chúng không kéo dài hạn refresh.
+IAM sở hữu sid, tokenVersion và kiểm tra session; thư viện JWT chung vẫn độc lập
+với nghiệp vụ và không tự đọc DB. Xem [luồng auth](../../docs/core-architecture/authentication-flow.md).
 
 ## Principal và filter
 

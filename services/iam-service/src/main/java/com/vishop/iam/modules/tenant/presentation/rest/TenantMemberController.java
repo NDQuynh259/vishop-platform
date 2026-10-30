@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,18 +25,23 @@ public class TenantMemberController {
   }
 
   @GetMapping("/{id}/members/me")
+  @PreAuthorize("@iamAuthorization.inTenant(authentication, #id)")
   public ResponseEntity<TenantMemberResponseDto> me(
       @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
     return memberResponse(new GetTenantMemberQuery(actor, id, actor.userId()));
   }
 
   @GetMapping("/{id}/members")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW)")
   public List<MemberView> members(
       @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
     return queries.dispatch(new ListTenantMembersQuery(actor, id));
   }
 
   @GetMapping("/{id}/members/{user}")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and (#user == principal.userId or hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW))")
   public ResponseEntity<TenantMemberResponseDto> member(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,

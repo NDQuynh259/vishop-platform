@@ -48,6 +48,11 @@ public class UserJpaEntity {
   @Column(name = "deleted_at")
   private Instant deletedAt;
 
+  @org.hibernate.annotations.Generated(
+      event = {org.hibernate.generator.EventType.INSERT, org.hibernate.generator.EventType.UPDATE})
+  @Column(name = "token_version", insertable = false, updatable = false, nullable = false)
+  private long tokenVersion;
+
   @Version
   @Column(name = "version")
   private Long version;
@@ -75,6 +80,14 @@ public class UserJpaEntity {
 
   public User toDomain() {
     return new User(
-        getId(), email, passwordHash, fullName, systemRole, status, getCreatedAt(), lastTenantId);
+        getId(),
+        email,
+        passwordHash,
+        fullName,
+        systemRole,
+        status,
+        getCreatedAt(),
+        lastTenantId,
+        tokenVersion);
   }
 }

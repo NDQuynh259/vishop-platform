@@ -115,6 +115,6 @@ vishop:
       subscription-secret: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:dev_gateway_subscription_context_secret_at_least_32_bytes}
     jwt:
       secret: ${vishop.security.jwt.access-token-secret}
-      access-token-secret: ${GATEWAY_JWT_ACCESS_TOKEN_SECRET:dev_gateway_jwt_access_token_secret_at_least_32_bytes}
-      refresh-token-secret: ${GATEWAY_JWT_REFRESH_TOKEN_SECRET:dev_gateway_jwt_refresh_token_secret_at_least_32_bytes}
+      access-token-secret: ${JWT_ACCESS_SECRET:${GATEWAY_JWT_ACCESS_TOKEN_SECRET:dev_vishop_access_secret_at_least_32_bytes}}
+      refresh-token-secret: ${JWT_REFRESH_SECRET:${GATEWAY_JWT_REFRESH_TOKEN_SECRET:dev_vishop_refresh_secret_at_least_32_bytes}}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:3000}

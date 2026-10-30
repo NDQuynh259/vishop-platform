@@ -151,7 +151,13 @@ class GatewayApplicationTest {
                           : null,
                       "OWNER",
                       java.util.Set.of("audit_log.view"),
-                      1));
+                      1,
+                      key.startsWith("auth:session:")
+                          ? java.util.UUID.fromString(key.substring(key.lastIndexOf(':') + 1))
+                          : null,
+                      key.startsWith("auth:session:")
+                          ? java.time.Instant.now().plusSeconds(604800)
+                          : null));
             });
   }
 

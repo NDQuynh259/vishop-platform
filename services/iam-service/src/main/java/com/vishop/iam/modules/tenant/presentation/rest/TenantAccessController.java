@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,6 +36,8 @@ public class TenantAccessController {
   }
 
   @PutMapping("/{id}/members/{user}/role")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_ROLE_ASSIGN)")
   public ResponseEntity<Void> assign(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,
@@ -45,6 +48,8 @@ public class TenantAccessController {
   }
 
   @DeleteMapping("/{id}/members/{user}")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_REMOVE)")
   public ResponseEntity<Void> deactivate(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,
@@ -54,12 +59,16 @@ public class TenantAccessController {
   }
 
   @GetMapping("/{id}/roles")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW)")
   public List<RoleResponseDto> roles(
       @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
     return queries.dispatch(new ListTenantRolesQuery(actor, id));
   }
 
   @PostMapping("/{id}/roles")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_ROLE_ASSIGN)")
   public ResponseEntity<RoleResponseDto> createRole(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,
@@ -72,6 +81,8 @@ public class TenantAccessController {
   }
 
   @PutMapping("/{id}/roles/{role}")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_ROLE_ASSIGN)")
   public RoleResponseDto editRole(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,
@@ -82,6 +93,8 @@ public class TenantAccessController {
   }
 
   @PostMapping("/{id}/invitations")
+  @PreAuthorize(
+      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_INVITE)")
   public ResponseEntity<InvitationCreated> invite(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,

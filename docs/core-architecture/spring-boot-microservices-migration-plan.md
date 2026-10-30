@@ -129,9 +129,9 @@ Sở hữu:
 
 - Global user, password, JWT access/refresh; verification và two-factor là phạm vi mở rộng, chưa được triển khai đầy đủ.
 - Login, logout, password reset, email verification.
-- JWT access token và refresh token trong JSON body; API dùng Bearer access token.
+- JWT access/refresh trong cookie HttpOnly; JSON không chứa credential.
 
-Gateway xác minh access JWT bằng JWT_ACCESS_SECRET; IAM dùng JWT_REFRESH_SECRET riêng cho refresh. Downstream nhận context từ gateway. Không lưu session đăng nhập hoặc introspect IAM cho từng request.
+Gateway xác minh access JWT bằng JWT_ACCESS_SECRET; IAM dùng JWT_REFRESH_SECRET riêng cho refresh. Downstream nhận context từ gateway. Mỗi login có sid với trạng thái phiên trong DB/Redis để thu hồi riêng thiết bị; không dùng HttpSession hoặc introspect IAM cho từng request. Xem [luồng auth hiện tại](authentication-flow.md).
 
 #### `tenant-service`
 
@@ -446,21 +446,18 @@ Mỗi consumer phải:
 
 ### 7.1. Authentication
 
-Xác thực dùng JWT stateless với access token và refresh token, trả trong JSON body.
-API được bảo vệ nhận `Authorization: Bearer <accessToken>`; gateway và downstream xác minh
-chữ ký, issuer, audience, loại token và thời hạn tại chỗ. Không lưu session đăng nhập,
-không dùng cookie xác thực hoặc Redis projection. Gateway không gọi IAM introspection
-trên mỗi request.
+Xác thực dùng JWT HS256 với access/refresh key riêng và cookie HttpOnly. Gateway verify
+access, so user tokenVersion và session sid, rồi lấy quyền tenant/role từ Redis. Downstream
+verify context được gateway ký và kiểm tra phân quyền; IAM đối chiếu thêm DB của mình.
 
-`POST /api/v1/auth/refresh` nhận `{ "refreshToken": "..." }`, hoạt động cả khi access token
-đã hết hạn. IAM kiểm tra tài khoản và quyền hiện tại trước khi cấp cặp token mới. Thời hạn
-mặc định: access 15 phút, refresh 7 ngày; refresh giữ thời điểm hết hạn tuyệt đối ban đầu.
-Token refresh cũ còn hiệu lực đến hết hạn; không có cơ chế lưu trạng thái rotation/reuse.
+`POST /api/v1/auth/refresh` đọc refresh cookie, hoạt động cả khi access hết hạn. Body
+tenantId tùy chọn dùng để chọn tenant sau khi IAM kiểm tra membership. Hạn phiên giữ
+nguyên từ login; mặc định access 15 phút và refresh/phiên 7 ngày. Chưa có refresh rotation.
 
-Logout ghi audit, trả 204 và client xoá cả hai token. JWT đã cấp vẫn hợp lệ đến hết hạn;
-không cam kết thu hồi tức thời. Tenant context lấy từ JWT đã xác minh; đổi tenant qua
-`POST /api/v1/auth/switch-tenant` với Bearer access token và `{tenantId,refreshToken}`,
-rồi dùng cặp token mới. Header `X-Tenant-Id` từ client không cấp hoặc đổi quyền tenant.
+Logout thu hồi sid trong DB, đợi Redis xác nhận REVOKED, xóa cookies và trả 204.
+Lỗi Redis sau commit trả 503 để retry; thiết bị khác giữ phiên riêng. Thay đổi bảo mật
+toàn user thu hồi các phiên qua tokenVersion. Không dùng HttpSession; header tenant
+tự khai báo không cấp quyền. Xem [luồng auth và chính sách](authentication-flow.md).
 
 ### 7.2. Tenant context
 
