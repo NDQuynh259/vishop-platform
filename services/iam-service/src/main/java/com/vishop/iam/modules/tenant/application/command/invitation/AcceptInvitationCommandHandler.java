@@ -4,7 +4,6 @@ import com.vishop.iam.modules.identity.application.api.IdentityApi;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.tenant.application.api.TenantApi;
 import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
-import com.vishop.iam.modules.tenant.domain.entity.Membership;
 import com.vishop.iam.modules.tenant.domain.port.InvitationRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.port.MembershipRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.port.RoleRepositoryPort;
@@ -72,19 +71,16 @@ public class AcceptInvitationCommandHandler
       throw new ForbiddenException("Invitation email does not match your account");
     if (!tenants.isActive(invitation.tenantId()))
       throw new ForbiddenException("Tenant is not active");
-    Membership inviter =
-        membershipRepository
-            .membership(invitation.invitedBy(), invitation.tenantId())
-            .filter(
-                member ->
-                    "ACTIVE".equals(member.status())
-                        && !member.requireTwoFactor()
-                        && member.permissions().contains(CommonPermissions.Tenant.MEMBER_INVITE))
+    if (!identities.isActive(invitation.invitedBy()))
+      throw new ForbiddenException("Invitation issuer is no longer authorized");
+    // Reuse login's grant rules: deleted membership/role and MFA-only roles confer no access.
+    var inviter =
+        tenants
+            .authenticationGrant(invitation.invitedBy(), invitation.tenantId())
+            .filter(grant -> grant.permissions().contains(CommonPermissions.Tenant.MEMBER_INVITE))
             .orElseThrow(() -> new ForbiddenException("Invitation issuer is no longer authorized"));
     rolePolicy.canAssign(
-        new TenantAuthority(
-            roleRepository.role(invitation.tenantId(), inviter.roleId()).builtinKey(),
-            inviter.permissions()),
+        new TenantAuthority(inviter.roleKey(), inviter.permissions()),
         roleRepository.role(invitation.tenantId(), invitation.roleId()));
     var existing = membershipRepository.membership(user.id(), invitation.tenantId());
     if (existing.isPresent() && "ACTIVE".equals(existing.get().status()))

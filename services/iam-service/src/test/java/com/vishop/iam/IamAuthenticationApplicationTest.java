@@ -109,6 +109,7 @@ class IamAuthenticationApplicationTest {
   @Autowired JwtTokenService jwt;
   @Autowired GatewayContextCodec context;
   @Autowired IdentityApi identity;
+  @Autowired com.vishop.iam.modules.identity.domain.port.AuthSessionRepositoryPort sessions;
   @Autowired org.springframework.data.redis.core.StringRedisTemplate redis;
 
   @SpyBean(proxyTargetAware = true)
@@ -257,6 +258,37 @@ class IamAuthenticationApplicationTest {
                 Map.of("email", "new@example.com", "password", "StrongPassword123!")))
         .andExpect(status().isConflict());
     assertThat(db.queryForObject("SELECT count(*) FROM users", Integer.class)).isEqualTo(1);
+  }
+
+  @Test
+  void sessionCreationTimeIsGeneratedByDatabaseAndPreservedThroughRefreshAndLogout()
+      throws Exception {
+    var credentials = register("session-timestamp@example.com");
+    UUID sessionId = sid(credentials);
+    var session = sessions.find(sessionId).orElseThrow();
+    Instant createdAt =
+        db.queryForObject(
+                "SELECT created_at FROM auth_sessions WHERE id=?",
+                java.sql.Timestamp.class,
+                sessionId)
+            .toInstant();
+    assertThat(session.createdAt()).isNotNull().isEqualTo(createdAt);
+    assertThat(session.createdAt()).isBefore(session.expiresAt());
+    assertThat(session.userId()).isEqualTo(credentials.userId());
+    assertThat(session.revokedAt()).isNull();
+    http.perform(refresh(credentials)).andExpect(status().isOk());
+    var refreshed = sessions.find(sessionId).orElseThrow();
+    assertThat(refreshed.createdAt()).isEqualTo(createdAt);
+    assertThat(refreshed.expiresAt()).isEqualTo(session.expiresAt());
+    assertThat(refreshed.tokenVersion()).isEqualTo(session.tokenVersion());
+    http.perform(logout(credentials)).andExpect(status().isNoContent());
+    var revoked = sessions.find(sessionId).orElseThrow();
+    assertThat(revoked.createdAt()).isEqualTo(createdAt);
+    assertThat(revoked.expiresAt()).isEqualTo(session.expiresAt());
+    assertThat(revoked.revokedAt()).isNotNull().isAfterOrEqualTo(createdAt);
+    assertThat(revoked.active(Instant.now())).isFalse();
+    http.perform(logout(credentials)).andExpect(status().isNoContent());
+    assertThat(sessions.find(sessionId).orElseThrow().revokedAt()).isEqualTo(revoked.revokedAt());
   }
 
   @Test
@@ -488,5 +520,269 @@ class IamAuthenticationApplicationTest {
         .andExpect(status().isForbidden());
     http.perform(postAuth("logout")).andExpect(status().isNoContent());
     assertThat(db.queryForObject("SELECT count(*) FROM outbox_events", Integer.class)).isZero();
+  }
+
+  private UUID createRole(Credentials owner, UUID tenant, String name, Set<String> permissions)
+      throws Exception {
+    var response =
+        http.perform(
+                payload(
+                    protectedRequest(owner, "POST", "/api/v1/tenants/" + tenant + "/roles"),
+                    Map.of("name", name, "permissions", permissions)))
+            .andExpect(status().isCreated())
+            .andReturn();
+    return UUID.fromString(
+        json.readTree(response.getResponse().getContentAsString()).path("id").asText());
+  }
+
+  @Test
+  void customRoleCreationEditingAndAssignmentUseCurrentPermissionsAndRevokeOldCredentials()
+      throws Exception {
+    var ownerIdentity = register("role-owner@example.com");
+    UUID tenant = tenant(ownerIdentity, "custom-role-flow");
+    var owner = select(ownerIdentity, tenant);
+    UUID role = createRole(owner, tenant, "Sales", Set.of("tenant.view"));
+    var memberIdentity = register("sales@example.com");
+    db.update(
+        "INSERT INTO tenant_members(id,tenant_id,user_id,role_id) VALUES (?,?,?,?)",
+        UUID.randomUUID(),
+        tenant,
+        memberIdentity.userId(),
+        role);
+    var member = select(memberIdentity, tenant);
+    http.perform(protectedRequest(member, "GET", "/api/v1/tenants/" + tenant))
+        .andExpect(status().isOk());
+    String rolesPath = "/api/v1/tenants/" + tenant + "/roles";
+    http.perform(
+            payload(
+                protectedRequest(owner, "POST", rolesPath),
+                Map.of("name", "Invalid", "permissions", Set.of("unknown.permission"))))
+        .andExpect(status().isBadRequest());
+    http.perform(
+            payload(
+                protectedRequest(owner, "PUT", rolesPath + "/" + role),
+                Map.of("name", "Sales", "permissions", Set.of("tenant.member.view"))))
+        .andExpect(status().isOk());
+    // Permission edits affect current requests without revoking or refreshing this token.
+    assertThat(
+            db.queryForObject(
+                "SELECT token_version FROM users WHERE id=?", Long.class, member.userId()))
+        .isEqualTo(1L);
+    http.perform(protectedRequest(member, "GET", "/api/v1/tenants/" + tenant))
+        .andExpect(status().isForbidden());
+    http.perform(protectedRequest(member, "GET", rolesPath)).andExpect(status().isOk());
+    projection.publish();
+    var cached = projection.find(AuthorizationSnapshot.role(tenant, role));
+    assertThat(cached.permissions()).containsExactly("tenant.member.view");
+    assertThat(redis.<String, String>opsForHash().get("vishop:" + cached.key(), "payload"))
+        .contains("tenant.member.view")
+        .doesNotContain("tenant.view");
+    UUID nextRole = createRole(owner, tenant, "Viewer", Set.of("tenant.view"));
+    http.perform(
+            payload(
+                protectedRequest(
+                    owner,
+                    "PUT",
+                    "/api/v1/tenants/" + tenant + "/members/" + member.userId() + "/role"),
+                Map.of("roleId", nextRole)))
+        .andExpect(status().isNoContent());
+    http.perform(refresh(member)).andExpect(status().isUnauthorized());
+    http.perform(protectedRequest(member, "GET", rolesPath)).andExpect(status().isUnauthorized());
+    var loggedIn = login("sales@example.com");
+    assertThat(jwt.verifyAccessToken(loggedIn.access()).get("tenantRoleId", String.class))
+        .isEqualTo(nextRole.toString());
+    assertThat(loggedIn.body().path("permissions").toString())
+        .contains("tenant.view")
+        .doesNotContain("tenant.member.view");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"user", "membership"})
+  void softDeletedOwnersDoNotAllowRemovingTheLastUsableOwner(String deleted) throws Exception {
+    var ownerIdentity = register("last-owner@example.com");
+    UUID tenant = tenant(ownerIdentity, "last-owner-check");
+    var owner = select(ownerIdentity, tenant);
+    UUID ownerRole =
+        UUID.fromString(jwt.verifyAccessToken(owner.access()).get("tenantRoleId", String.class));
+    var removed = register("removed-owner@example.com");
+    db.update(
+        "INSERT INTO tenant_members(id,tenant_id,user_id,role_id) VALUES (?,?,?,?)",
+        UUID.randomUUID(),
+        tenant,
+        removed.userId(),
+        ownerRole);
+    if ("user".equals(deleted))
+      db.update("UPDATE users SET deleted_at=clock_timestamp() WHERE id=?", removed.userId());
+    else
+      db.update(
+          "UPDATE tenant_members SET deleted_at=clock_timestamp() WHERE tenant_id=? AND user_id=?",
+          tenant,
+          removed.userId());
+    http.perform(
+            protectedRequest(
+                owner, "DELETE", "/api/v1/tenants/" + tenant + "/members/" + owner.userId()))
+        .andExpect(status().isConflict());
+    assertThat(
+            db.queryForObject(
+                "SELECT status FROM tenant_members WHERE tenant_id=? AND user_id=?",
+                String.class,
+                tenant,
+                owner.userId()))
+        .isEqualTo("ACTIVE");
+  }
+
+  @Test
+  void customRoleManagerCanInviteWithinTheirGrantsButCannotEscalatePermissions() throws Exception {
+    var ownerIdentity = register("scoped-owner@example.com");
+    UUID tenant = tenant(ownerIdentity, "scoped-manager");
+    var owner = select(ownerIdentity, tenant);
+    UUID managerRole =
+        createRole(
+            owner,
+            tenant,
+            "Member manager",
+            Set.of(
+                "tenant.view",
+                "tenant.member.view",
+                "tenant.member.invite",
+                "tenant.member.role_assign"));
+    UUID viewerRole = createRole(owner, tenant, "Viewer", Set.of("tenant.view"));
+    var managerIdentity = register("manager@example.com");
+    db.update(
+        "INSERT INTO tenant_members(id,tenant_id,user_id,role_id) VALUES (?,?,?,?)",
+        UUID.randomUUID(),
+        tenant,
+        managerIdentity.userId(),
+        managerRole);
+    var manager = select(managerIdentity, tenant);
+    var recipient = register("viewer@example.com");
+    String rolesPath = "/api/v1/tenants/" + tenant + "/roles";
+    http.perform(
+            payload(
+                protectedRequest(manager, "POST", rolesPath),
+                Map.of("name", "Escalated", "permissions", Set.of("billing.manage"))))
+        .andExpect(status().isForbidden());
+    UUID ownerRole =
+        UUID.fromString(jwt.verifyAccessToken(owner.access()).get("tenantRoleId", String.class));
+    String invitePath = "/api/v1/tenants/" + tenant + "/invitations";
+    http.perform(
+            payload(
+                protectedRequest(manager, "POST", invitePath),
+                Map.of("email", "viewer@example.com", "roleId", ownerRole)))
+        .andExpect(status().isForbidden());
+    var response =
+        http.perform(
+                payload(
+                    protectedRequest(manager, "POST", invitePath),
+                    Map.of("email", "viewer@example.com", "roleId", viewerRole)))
+            .andExpect(status().isCreated())
+            .andReturn();
+    var invitation = json.readTree(response.getResponse().getContentAsString());
+    http.perform(
+            payload(
+                protectedRequest(recipient, "POST", "/api/v1/invitations/accept"),
+                Map.of("token", invitation.path("token").asText())))
+        .andExpect(status().isOk());
+    var joined = select(recipient, tenant);
+    assertThat(jwt.verifyAccessToken(joined.access()).get("tenantRoleId", String.class))
+        .isEqualTo(viewerRole.toString());
+    http.perform(protectedRequest(joined, "GET", "/api/v1/tenants/" + tenant))
+        .andExpect(status().isOk());
+    http.perform(protectedRequest(joined, "GET", rolesPath)).andExpect(status().isForbidden());
+    // The same invitation is single-use; it must not add another member or acceptance event.
+    http.perform(
+            payload(
+                protectedRequest(recipient, "POST", "/api/v1/invitations/accept"),
+                Map.of("token", invitation.path("token").asText())))
+        .andExpect(status().isBadRequest());
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM outbox_events WHERE event_type='InvitationAccepted'",
+                Integer.class))
+        .isEqualTo(1);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"system-role", "status"})
+  void softDeletedAdminsDoNotAllowDisablingTheLastUsableAdmin(String change) throws Exception {
+    var adminIdentity = register("last-admin@example.com");
+    var removed = register("removed-admin@example.com");
+    db.update(
+        "UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id IN (?,?)",
+        adminIdentity.userId(),
+        removed.userId());
+    db.update("UPDATE users SET deleted_at=clock_timestamp() WHERE id=?", removed.userId());
+    var admin = login("last-admin@example.com");
+    var body =
+        "status".equals(change) ? Map.of("status", "SUSPENDED") : Map.of("systemRole", "USER");
+    http.perform(
+            payload(
+                protectedRequest(
+                    admin, "PATCH", "/api/v1/cms/users/" + admin.userId() + "/" + change),
+                body))
+        .andExpect(status().isConflict());
+    assertThat(
+            db.queryForObject(
+                "SELECT system_role FROM users WHERE id=?", String.class, admin.userId()))
+        .isEqualTo("PLATFORM_ADMIN");
+    assertThat(
+            db.queryForObject("SELECT status FROM users WHERE id=?", String.class, admin.userId()))
+        .isEqualTo("ACTIVE");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"suspendedUser", "deletedUser", "deletedMembership", "deletedRole"})
+  void invitationCannotBeAcceptedAfterIssuerLosesActiveAccess(String revoked) throws Exception {
+    var inviterIdentity = register("inviter@example.com");
+    UUID tenant = tenant(inviterIdentity, "invitation-check");
+    var inviter = select(inviterIdentity, tenant);
+    var recipient = register("recipient@example.com");
+    UUID targetRole =
+        db.queryForObject(
+            "SELECT id FROM roles WHERE tenant_id=? AND builtin_key='WAREHOUSE'",
+            UUID.class,
+            tenant);
+    var result =
+        http.perform(
+                payload(
+                    protectedRequest(inviter, "POST", "/api/v1/tenants/" + tenant + "/invitations"),
+                    Map.of("email", "recipient@example.com", "roleId", targetRole)))
+            .andExpect(status().isCreated())
+            .andReturn();
+    var invitation = json.readTree(result.getResponse().getContentAsString());
+    switch (revoked) {
+      case "suspendedUser" ->
+          db.update("UPDATE users SET status='SUSPENDED' WHERE id=?", inviter.userId());
+      case "deletedUser" ->
+          db.update("UPDATE users SET deleted_at=clock_timestamp() WHERE id=?", inviter.userId());
+      case "deletedMembership" ->
+          db.update(
+              "UPDATE tenant_members SET deleted_at=clock_timestamp() WHERE tenant_id=? AND user_id=?",
+              tenant,
+              inviter.userId());
+      case "deletedRole" ->
+          db.update(
+              "UPDATE roles SET deleted_at=clock_timestamp() WHERE tenant_id=? AND builtin_key='OWNER'",
+              tenant);
+      default -> throw new IllegalArgumentException(revoked);
+    }
+    http.perform(
+            payload(
+                protectedRequest(recipient, "POST", "/api/v1/invitations/accept"),
+                Map.of("token", invitation.path("token").asText())))
+        .andExpect(status().isForbidden());
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM tenant_members WHERE tenant_id=? AND user_id=?",
+                Integer.class,
+                tenant,
+                recipient.userId()))
+        .isZero();
+    assertThat(
+            db.queryForObject(
+                "SELECT status FROM tenant_invitations WHERE id=?",
+                String.class,
+                UUID.fromString(invitation.path("id").asText())))
+        .isEqualTo("PENDING");
   }
 }

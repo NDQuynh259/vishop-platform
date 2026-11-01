@@ -11,7 +11,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Access/refresh JWTs with independent HS256 keys. Services own business claims and lifetimes. */
+/**
+ * Access/refresh JWTs with independent HS256 keys. Services own business claims
+ * and lifetimes.
+ */
 public final class JwtTokenService {
   private final JwtTokenProvider accessTokens;
   private final JwtTokenProvider refreshTokens;
@@ -45,7 +48,10 @@ public final class JwtTokenService {
     return verify(refreshTokens, token);
   }
 
-  /** Sets iat/exp at JWT second precision; preserves a caller-provided jti or generates one. */
+  /**
+   * Sets iat/exp at JWT second precision; preserves a caller-provided jti or
+   * generates one.
+   */
   private String generate(JwtTokenProvider provider, Map<String, ?> claims, Duration lifetime) {
     Objects.requireNonNull(claims, "claims");
     if (lifetime == null || lifetime.compareTo(Duration.ofSeconds(1)) < 0)
@@ -59,7 +65,10 @@ public final class JwtTokenService {
     return generateUntil(accessTokens, claims, issuedAt, expiresAt);
   }
 
-  /** Giữ đúng deadline có sẵn, dùng khi đổi tenant mà không kéo dài tuổi thọ phiên. */
+  /**
+   * Giữ đúng deadline có sẵn, dùng khi đổi tenant mà không kéo dài tuổi thọ
+   * phiên.
+   */
   public String generateRefreshToken(Map<String, ?> claims, Instant expiresAt) {
     Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
     return generateUntil(refreshTokens, claims, issuedAt, expiresAt);

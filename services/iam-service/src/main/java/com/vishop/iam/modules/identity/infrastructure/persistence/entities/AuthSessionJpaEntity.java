@@ -13,21 +13,29 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AuthSessionJpaEntity {
-  @Id private UUID id;
+  @Id
+  @Column(name = "id", nullable = false, updatable = false)
+  private UUID id;
 
-  @Column(name = "user_id", nullable = false)
+  @Column(name = "user_id", nullable = false, updatable = false)
   private UUID userId;
 
-  @Column(name = "token_version", nullable = false)
+  @Column(name = "token_version", nullable = false, updatable = false)
   private long tokenVersion;
 
-  @Column(name = "expires_at", nullable = false)
+  @org.hibernate.annotations.Generated(event = org.hibernate.generator.EventType.INSERT)
+  @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+  private Instant createdAt;
+
+  @Column(name = "expires_at", nullable = false, updatable = false)
   private Instant expiresAt;
 
   @Column(name = "revoked_at")
   private Instant revokedAt;
 
-  @Version private Long version;
+  @Version
+  @Column(name = "version", nullable = false)
+  private Long version;
 
   public static AuthSessionJpaEntity create(
       UUID id, UUID userId, long tokenVersion, Instant expiresAt) {
@@ -40,6 +48,6 @@ public class AuthSessionJpaEntity {
   }
 
   public AuthSession toDomain() {
-    return new AuthSession(id, userId, tokenVersion, expiresAt, revokedAt);
+    return new AuthSession(id, userId, tokenVersion, createdAt, expiresAt, revokedAt);
   }
 }

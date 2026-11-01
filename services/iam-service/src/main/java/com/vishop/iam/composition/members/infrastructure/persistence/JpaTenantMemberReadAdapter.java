@@ -101,6 +101,8 @@ public class JpaTenantMemberReadAdapter implements MemberReadPort {
         JOIN users u ON u.id=m.user_id
         WHERE m.tenant_id=:tenant AND m.status='ACTIVE'
           AND r.builtin_key='OWNER' AND u.status='ACTIVE'
+          AND m.deleted_at IS NULL AND r.deleted_at IS NULL AND u.deleted_at IS NULL
+          AND NOT r.require_two_factor
         """)
                 .setParameter("tenant", tenantId)
                 .getSingleResult())

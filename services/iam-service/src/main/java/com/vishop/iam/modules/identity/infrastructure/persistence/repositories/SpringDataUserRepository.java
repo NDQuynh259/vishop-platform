@@ -30,7 +30,8 @@ public interface SpringDataUserRepository extends JpaRepository<UserJpaEntity, U
   void updateStatus(@Param("id") UUID id, @Param("status") String status);
 
   @Query(
-      value = "SELECT count(*) FROM users WHERE system_role=:role AND status='ACTIVE'",
+      value =
+          "SELECT count(*) FROM users WHERE system_role=:role AND status='ACTIVE' AND deleted_at IS NULL",
       nativeQuery = true)
   int activeAdmins(@Param("role") String role);
 
