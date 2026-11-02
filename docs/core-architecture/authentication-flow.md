@@ -13,6 +13,8 @@ lần đăng nhập tạo một `sid` mới. JWT đi cùng trạng thái phiên 
 | `SessionAuthenticationService` | Đối chiếu user, phiên, tokenVersion và quyền hiện tại trong DB |
 | `LocalAuthenticationVerifier` trong gateway | Verify access JWT, đối chiếu user/session/tenant/role từ Auth Redis |
 | `AuthorizationProjection` | Đẩy projection đã commit trong authorization_outbox sang Redis |
+| `CacheKeyBuilder` trong common-cache | Thêm prefix ứng dụng/môi trường, dùng chung cho mọi namespace cache |
+| `AuthorizationCacheKeys` trong common-security | Quy ước key logic user/session/tenant/role, độc lập với dữ liệu snapshot |
 | `GatewayContextCodec` | Ký và kiểm tra context nội bộ, ràng buộc service đích, method, URI và thời gian |
 
 Common JWT không quy định claims nghiệp vụ và không truy cập DB/Redis.
@@ -42,9 +44,31 @@ role, permissions và thời điểm hết hạn, không chứa chuỗi credenti
 | `/api/v1/auth/register` | JSON email, password | Tạo USER/ACTIVE, hash BCrypt, tạo phiên, trả 201 và cookies |
 | `/api/v1/auth/login` | JSON email, password, tenantId tùy chọn | Xác thực mật khẩu, tạo phiên mới, trả 200 và cookies |
 | `/api/v1/auth/refresh` | Refresh cookie; JSON tenantId tùy chọn | Cấp access mới hoặc chọn tenant trong cùng phiên |
-| `/api/v1/auth/logout` | Context gateway hoặc refresh/access cookie | Thu hồi đúng sid, xóa cookies, trả 204 |
+| `/api/v1/auth/logout` | Context gateway hoặc refresh cookie | Thu hồi đúng sid, xóa cookies, trả 204 |
 
 Không có `/auth/me` hoặc `/auth/switch-tenant`. Chọn tenant bằng body của refresh.
+
+## Gateway chuyển tiếp credential và context
+
+| Request | Xác minh access tại gateway | Chuyển xuống service |
+| --- | --- | --- |
+| POST login/register | Không yêu cầu access | Không chuyển credential cũ |
+| POST refresh | Không yêu cầu access còn hạn | Chỉ refresh cookie về IAM |
+| POST logout | Nếu access hợp lệ thì tạo context; access thiếu/hết hạn vẫn cho logout | Context đã xác minh nếu có, cùng refresh cookie về IAM |
+| API nghiệp vụ | Bắt buộc access hợp lệ và trạng thái cache cho phép | Context qua header, không có access/refresh token gốc |
+
+Refresh cookie chỉ được forward khi route đích là iam-service, method POST và path
+khớp chính xác refresh/logout. GET, OPTIONS và route sang service khác không nhận
+refresh cookie. Cookie refresh trùng tên không được chọn tùy tiện để forward.
+
+`X-Gateway-Context` chứa userId, tenantId, roleId, systemRole, tenantRole, permissions
+và sessionId (sid), cùng metadata ràng buộc request. Gateway xóa context/header định
+danh do client tự gửi trước khi tạo header này. Access cookie và Authorization bị
+loại khỏi request downstream, kể cả logout. IAM dùng actor từ context hoặc verify
+refresh cookie để xác định phiên cần thu hồi; không đọc access cookie để logout.
+
+Gateway chỉ giữ access key. Refresh key và việc verify refresh thuộc IAM; service
+nghiệp vụ kiểm tra context và quyền tại chỗ, không verify lại JWT người dùng.
 
 ## Đăng nhập và cấp token
 
@@ -98,7 +122,13 @@ bảo mật; audit/subscription không phải gọi IAM cho từng request đã 
 
 ## Auth Redis
 
-Các key dưới đây được thêm prefix môi trường, ví dụ `vishop:dev:`.
+Các key dưới đây do `AuthorizationCacheKeys` tạo, chưa có prefix. `CacheKeyBuilder`
+trong common-cache thêm prefix môi trường, ví dụ `vishop:dev:`. `AuthorizationSnapshot`
+chỉ chứa dữ liệu. SQL projection IAM giữ cùng định dạng key logic nên không cần migration.
+
+Prefix dùng chung mọi loại cache, cấu hình qua `vishop.cache.key-prefix` hoặc biến
+`CACHE_KEY_PREFIX`. IAM/gateway vẫn nhận `AUTH_CACHE_PREFIX` làm giá trị dự phòng.
+Namespace và TTL của cache nghiệp vụ khác do module sở hữu quyết định.
 
 | Key logic | Nội dung | TTL |
 | --- | --- | --- |
@@ -129,7 +159,7 @@ không được sống lâu hơn phiên. Mặc định access 15 phút, phiên/r
 
 ## Logout riêng phiên
 
-1. Xác định user/sid từ context hợp lệ hoặc cookie JWT hợp lệ.
+1. Xác định user/sid từ context gateway hợp lệ hoặc refresh cookie hợp lệ.
 2. Trong transaction DB: cập nhật có điều kiện `revoked_at IS NULL`, ghi projection
    và event UserLoggedOut. Logout lặp chỉ có một lần thay đổi và một event.
 3. Sau commit, đẩy projection REVOKED của đúng sid sang Redis và chờ xác nhận.
@@ -156,9 +186,11 @@ không dọn PostgreSQL. Không xóa hàng phiên còn hiệu lực khi bổ sun
 ## Cấu hình và triển khai
 
 - IAM và gateway dùng chung `JWT_ACCESS_SECRET`; mỗi key tối thiểu 32 byte UTF-8.
-- `JWT_REFRESH_SECRET` khác access secret. IAM dùng key này để cấp/verify refresh.
+- `JWT_REFRESH_SECRET` khác access secret và chỉ cấu hình cho IAM để cấp/verify refresh;
+  gateway chỉ chuyển refresh cookie tới endpoint cần nó.
 - `GATEWAY_IAM_CONTEXT_SECRET` giống nhau ở gateway và IAM; là key riêng cho context.
-- `AUTH_CACHE_PREFIX`, Redis host/port/password/database phải khớp giữa IAM/gateway.
+- `CACHE_KEY_PREFIX`, Redis host/port/password/database phải khớp giữa IAM/gateway.
+  Khi chưa đặt biến mới, `AUTH_CACHE_PREFIX` cũ vẫn được dùng làm giá trị dự phòng.
 - Production bắt buộc cấu hình secrets và `ALLOWED_ORIGINS`; cookies Secure,
   frontend gửi credentials. SameSite=None yêu cầu Secure và HTTPS.
 - JPA chỉ validate. Áp dụng V12 trước khi chạy bản mới; không tự migrate khi startup.

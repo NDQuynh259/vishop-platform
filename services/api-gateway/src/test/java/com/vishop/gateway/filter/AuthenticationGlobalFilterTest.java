@@ -4,14 +4,22 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.vishop.gateway.handler.AuthenticationErrorResponse;
 import com.vishop.gateway.security.AuthenticationFailure;
+import com.vishop.gateway.security.GatewayContextSigners;
+import com.vishop.gateway.security.GatewayRequestForwarder;
+import com.vishop.gateway.security.GatewayRequestPolicy;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
 import com.vishop.gateway.security.LocalAuthenticationVerifier.Identity;
 import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
+import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import java.util.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.*;
@@ -22,30 +30,39 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 class AuthenticationGlobalFilterTest {
-  private final UUID user = UUID.randomUUID(), tenant = UUID.randomUUID();
+  private final UUID user = UUID.randomUUID(),
+      tenant = UUID.randomUUID(),
+      session = UUID.randomUUID();
   private LocalAuthenticationVerifier authentication;
   private GatewayFilterChain chain;
   private AuthenticationGlobalFilter filter;
   private Identity identity;
+  private GatewayContextSigners signers;
 
   @BeforeEach
   void setup() {
     authentication = mock(LocalAuthenticationVerifier.class);
     chain = mock(GatewayFilterChain.class);
-    var signers =
-        new com.vishop.gateway.security.GatewayContextSigners(
+    signers =
+        new GatewayContextSigners(
             new com.fasterxml.jackson.databind.ObjectMapper(),
             "dev_gateway_iam_context_secret_at_least_32_bytes",
             "dev_gateway_audit_context_secret_at_least_32_bytes",
             "dev_gateway_subscription_context_secret_at_least_32_bytes");
-    filter = new AuthenticationGlobalFilter(authentication, signers, "http://localhost:3000");
+    var policy = new GatewayRequestPolicy("http://localhost:3000");
+    filter =
+        new AuthenticationGlobalFilter(
+            authentication,
+            policy,
+            new GatewayRequestForwarder(signers, policy),
+            new AuthenticationErrorResponse());
     identity =
         new Identity(
             user,
             tenant,
             UUID.randomUUID(),
             new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
-                user, tenant, "USER", "OWNER", Set.of("tenant.view")));
+                user, tenant, "USER", "OWNER", Set.of("tenant.view"), session));
     when(chain.filter(any())).thenReturn(Mono.empty());
     when(authentication.authenticate(anyString(), anyBoolean()))
         .thenReturn(Mono.error(new AuthenticationFailure(401, "unauthorized")));
@@ -109,6 +126,32 @@ class AuthenticationGlobalFilterTest {
     verifyNoInteractions(authentication);
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "x-user-id",
+        "X-TENANT-ID",
+        "X-User-Roles",
+        "x-USER-permissions",
+        "X-User-Shops",
+        "x-gateway-context",
+        "X-IAM-INTERNAL-KEY",
+        "X-User-Email",
+        "X-Gateway-Custom"
+      })
+  void internalHeadersAreRemovedCaseInsensitivelyWithoutRemovingOrdinaryHeaders(String header) {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/login")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+            .header(header, "spoofed")
+            .header("X-Correlation-Id", "keep-this")
+            .build());
+    var headers = forwarded().getRequest().getHeaders();
+    assertThat(headers).doesNotContainKey(header);
+    assertThat(headers.getFirst("X-Correlation-Id")).isEqualTo("keep-this");
+    verifyNoInteractions(authentication);
+  }
+
   @Test
   void identityEndpointsStillRequireAuthentication() {
     var exchange = run(MockServerHttpRequest.get("/api/v1/auth/me").build());
@@ -137,12 +180,24 @@ class AuthenticationGlobalFilterTest {
             .header(SecurityHeaders.X_TENANT_ID, UUID.randomUUID().toString())
             .header(SecurityHeaders.X_USER_ROLES, SystemRole.PLATFORM_ADMIN.name())
             .header(SecurityHeaders.X_USER_PERMISSIONS, "system.admin")
+            .header(GatewayContextCodec.HEADER, "spoofed-context")
             .build());
     var headers = forwarded().getRequest().getHeaders();
     assertThat(headers.getFirst("Authorization")).isNull();
     assertThat(headers.getFirst(SecurityHeaders.X_USER_ID)).isEqualTo(user.toString());
     assertThat(headers.getFirst(SecurityHeaders.X_TENANT_ID)).isEqualTo(tenant.toString());
     assertThat(headers.getFirst("X-Gateway-Context")).isNotBlank();
+    var context =
+        signers
+            .forService("iam-service")
+            .verifyContext(headers.getFirst(GatewayContextCodec.HEADER), "GET", "/api/v1/tenants");
+    assertThat(context.userId()).isEqualTo(user);
+    assertThat(context.tenantId()).isEqualTo(tenant);
+    assertThat(context.roleId()).isEqualTo(identity.roleId());
+    assertThat(context.systemRole()).isEqualTo("USER");
+    assertThat(context.tenantRole()).isEqualTo("OWNER");
+    assertThat(context.permissions()).containsExactly("tenant.view");
+    assertThat(context.sessionId()).isEqualTo(session);
     // Roles/grants stay inside the signed context; arbitrary role names never become HTTP headers.
     assertThat(headers)
         .doesNotContainKeys(SecurityHeaders.X_USER_ROLES, SecurityHeaders.X_USER_PERMISSIONS);
@@ -236,9 +291,9 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void switchTenantForwardsOnlyRefreshCookieToIam() {
+  void logoutForwardsOnlyRefreshCookieAndVerifiedAccessContextToIam() {
     run(
-        MockServerHttpRequest.post("/api/v1/auth/switch-tenant")
+        MockServerHttpRequest.post("/api/v1/auth/logout")
             .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
             .cookie(
                 new HttpCookie(AuthCookies.ACCESS_TOKEN, "valid-token"),
@@ -247,6 +302,16 @@ class AuthenticationGlobalFilterTest {
             .build());
     assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE))
         .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
+    var headers = forwarded().getRequest().getHeaders();
+    assertThat(headers).doesNotContainKey(HttpHeaders.AUTHORIZATION);
+    var context =
+        signers
+            .forService("iam-service")
+            .verifyContext(
+                headers.getFirst(GatewayContextCodec.HEADER), "POST", "/api/v1/auth/logout");
+    assertThat(context.userId()).isEqualTo(user);
+    assertThat(context.sessionId()).isEqualTo(session);
+    verify(authentication).authenticate("valid-token", true);
   }
 
   @Test
@@ -261,6 +326,78 @@ class AuthenticationGlobalFilterTest {
     verifyNoInteractions(authentication);
     assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE))
         .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
+    assertThat(forwarded().getRequest().getHeaders())
+        .doesNotContainKeys(HttpHeaders.AUTHORIZATION, GatewayContextCodec.HEADER);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"expired", "revoked", ""})
+  void logoutStillReachesIamWithRefreshWhenAccessCannotAuthenticate(String access) {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/logout")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+            .header(GatewayContextCodec.HEADER, "spoofed")
+            .cookie(
+                new HttpCookie(AuthCookies.ACCESS_TOKEN, access),
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh"))
+            .build());
+    var headers = forwarded().getRequest().getHeaders();
+    assertThat(headers.getFirst(HttpHeaders.COOKIE))
+        .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
+    assertThat(headers).doesNotContainKeys(HttpHeaders.AUTHORIZATION, GatewayContextCodec.HEADER);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "GET,/api/v1/auth/refresh",
+    "OPTIONS,/api/v1/auth/refresh",
+    "GET,/api/v1/auth/logout",
+    "POST,/api/v1/auth/switch-tenant",
+    "POST,/api/v1/auth/login",
+    "POST,/api/v1/auth/register",
+    "GET,/api/v1/tenants"
+  })
+  void otherEndpointsAndMethodsNeverReceiveRawTokens(String method, String path) {
+    run(
+        MockServerHttpRequest.method(HttpMethod.valueOf(method), path)
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+            .cookie(
+                new HttpCookie(AuthCookies.ACCESS_TOKEN, "valid-token"),
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh"))
+            .build());
+    assertThat(forwarded().getRequest().getHeaders())
+        .doesNotContainKeys(HttpHeaders.AUTHORIZATION, HttpHeaders.COOKIE);
+  }
+
+  @Test
+  void refreshCookieNeverReachesAnotherServiceEvenWhenAuthPathMatches() {
+    var exchange =
+        MockServerWebExchange.from(
+            MockServerHttpRequest.post("/api/v1/auth/refresh")
+                .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+                .cookie(new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh")));
+    var route = mock(org.springframework.cloud.gateway.route.Route.class);
+    when(route.getId()).thenReturn("subscription-service");
+    exchange
+        .getAttributes()
+        .put(
+            org.springframework.cloud.gateway.support.ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR,
+            route);
+    StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+    assertThat(forwarded().getRequest().getHeaders()).doesNotContainKey(HttpHeaders.COOKIE);
+  }
+
+  @Test
+  void ambiguousRefreshCookiesAreNotForwarded() {
+    run(
+        MockServerHttpRequest.post("/api/v1/auth/refresh")
+            .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+            .cookie(
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "first"),
+                new HttpCookie(AuthCookies.REFRESH_TOKEN, "second"))
+            .build());
+    assertThat(forwarded().getRequest().getHeaders()).doesNotContainKey(HttpHeaders.COOKIE);
   }
 
   @Test
@@ -268,5 +405,24 @@ class AuthenticationGlobalFilterTest {
     var exchange = run(MockServerHttpRequest.post("/api/v1/auth/login").build());
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     verify(chain, never()).filter(any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"/api/v1/tenants", "/api/v1/auth/logout"})
+  void downstreamFailureIsPropagatedWithoutRetryingOrBecomingAuthenticationError(String path) {
+    var failure = new IllegalStateException("Downstream failed");
+    when(chain.filter(any())).thenReturn(Mono.error(failure));
+    var exchange =
+        MockServerWebExchange.from(
+            MockServerHttpRequest.post(path)
+                .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token"));
+
+    StepVerifier.create(filter.filter(exchange, chain))
+        .expectErrorSatisfies(error -> assertThat(error).isSameAs(failure))
+        .verify();
+
+    verify(chain, times(1)).filter(any());
+    assertThat(exchange.getResponse().getStatusCode()).isNull();
   }
 }

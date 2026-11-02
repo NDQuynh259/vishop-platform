@@ -59,10 +59,7 @@ public class AuthController {
   public ResponseEntity<Void> logout(
       @AuthenticationPrincipal AuthenticatedUser actor, HttpServletRequest request) {
     commands.dispatch(
-        new LogoutCommand(
-            actor,
-            cookies.read(request, AuthCookies.REFRESH_TOKEN, false),
-            cookies.read(request, AuthCookies.ACCESS_TOKEN, false)));
+        new LogoutCommand(actor, cookies.read(request, AuthCookies.REFRESH_TOKEN, false)));
     return ResponseEntity.noContent()
         .headers(cookies.clear())
         .cacheControl(CacheControl.noStore())

@@ -33,6 +33,7 @@ import redis.embedded.RedisServer;
 
 @SpringBootTest(
     properties = {
+      "vishop.cache.key-prefix=iam-test:cache:",
       "vishop.outbox.enabled=false", "vishop.security.authorization.initial-delay-ms=600000",
       "vishop.security.authorization.eager-publish=false", "management.tracing.enabled=false",
       "vishop.security.cookies.secure=true"
@@ -170,10 +171,7 @@ class IamAuthenticationApplicationTest {
   }
 
   private MockHttpServletRequestBuilder logout(Credentials c) {
-    return postAuth("logout")
-        .cookie(
-            new Cookie(AuthCookies.ACCESS_TOKEN, c.access()),
-            new Cookie(AuthCookies.REFRESH_TOKEN, c.refresh()));
+    return postAuth("logout").cookie(new Cookie(AuthCookies.REFRESH_TOKEN, c.refresh()));
   }
 
   private MockHttpServletRequestBuilder protectedRequest(
@@ -336,7 +334,7 @@ class IamAuthenticationApplicationTest {
     var b = login("devices@example.com");
     assertThat(sid(a)).isNotEqualTo(sid(b));
     projection.publish();
-    String key = "vishop:" + AuthorizationSnapshot.session(sid(a));
+    String key = "iam-test:cache:" + AuthorizationCacheKeys.session(sid(a));
     var result = http.perform(logout(a)).andExpect(status().isNoContent()).andReturn();
     assertThat(result.getResponse().getCookie(AuthCookies.ACCESS_TOKEN).getMaxAge()).isZero();
     assertThat(redis.<String, String>opsForHash().get(key, "payload")).contains("REVOKED");
@@ -354,6 +352,28 @@ class IamAuthenticationApplicationTest {
         .andExpect(status().isUnauthorized());
     http.perform(refresh(b)).andExpect(status().isOk());
     assertThat(identity.verifyAccessToken(b.access()).userId()).isEqualTo(b.userId());
+  }
+
+  @Test
+  void logoutUsesVerifiedGatewayContextWithoutAnyRawToken() throws Exception {
+    var c = register("context-logout@example.com");
+    http.perform(protectedRequest(c, "POST", "/api/v1/auth/logout"))
+        .andExpect(status().isNoContent());
+    assertThat(sessions.find(sid(c)).orElseThrow().revokedAt()).isNotNull();
+    http.perform(refresh(c)).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void rawAccessCookieAloneDoesNotAuthenticateLogoutAtIam() throws Exception {
+    var c = register("raw-access-logout@example.com");
+    http.perform(postAuth("logout").cookie(new Cookie(AuthCookies.ACCESS_TOKEN, c.access())))
+        .andExpect(status().isNoContent());
+    assertThat(sessions.find(sid(c)).orElseThrow().revokedAt()).isNull();
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM outbox_events WHERE event_type='UserLoggedOut'",
+                Integer.class))
+        .isZero();
   }
 
   @Test
@@ -494,7 +514,7 @@ class IamAuthenticationApplicationTest {
         URI.create(
             "/internal/authorization?key="
                 + URLEncoder.encode(
-                    AuthorizationSnapshot.session(sid(c)),
+                    AuthorizationCacheKeys.session(sid(c)),
                     java.nio.charset.StandardCharsets.UTF_8));
     String bound = target.getRawPath() + "?" + target.getRawQuery();
     http.perform(get(target)).andExpect(status().isUnauthorized());
@@ -572,9 +592,9 @@ class IamAuthenticationApplicationTest {
         .andExpect(status().isForbidden());
     http.perform(protectedRequest(member, "GET", rolesPath)).andExpect(status().isOk());
     projection.publish();
-    var cached = projection.find(AuthorizationSnapshot.role(tenant, role));
+    var cached = projection.find(AuthorizationCacheKeys.role(tenant, role));
     assertThat(cached.permissions()).containsExactly("tenant.member.view");
-    assertThat(redis.<String, String>opsForHash().get("vishop:" + cached.key(), "payload"))
+    assertThat(redis.<String, String>opsForHash().get("iam-test:cache:" + cached.key(), "payload"))
         .contains("tenant.member.view")
         .doesNotContain("tenant.view");
     UUID nextRole = createRole(owner, tenant, "Viewer", Set.of("tenant.view"));

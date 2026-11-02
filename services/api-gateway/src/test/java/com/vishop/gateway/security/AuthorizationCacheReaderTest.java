@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import io.github.coreplatform.common.cache.CacheKeyBuilder;
+import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import java.net.*;
@@ -80,7 +82,7 @@ class AuthorizationCacheReaderTest {
             json,
             new GatewayContextSigners(json, secret, secret, secret),
             "http://127.0.0.1:" + iam.getAddress().getPort(),
-            "test:",
+            new CacheKeyBuilder("test:"),
             30);
   }
 
@@ -94,7 +96,7 @@ class AuthorizationCacheReaderTest {
   @Test
   void sessionSnapshotsHaveAbsoluteTtlAndNewerRevocationWins() {
     UUID session = UUID.randomUUID(), user = UUID.randomUUID();
-    String key = AuthorizationSnapshot.session(session);
+    String key = AuthorizationCacheKeys.session(session);
     var deadline = java.time.Instant.now().plusSeconds(120);
     current.set(
         new AuthorizationSnapshot(
@@ -115,7 +117,7 @@ class AuthorizationCacheReaderTest {
   @Test
   void coldMissesShareAuthenticatedIamLoadAndRevokedRoleReplacesCachedPermissions() {
     UUID tenant = UUID.randomUUID(), role = UUID.randomUUID();
-    String key = AuthorizationSnapshot.role(tenant, role);
+    String key = AuthorizationCacheKeys.role(tenant, role);
     current.set(
         new AuthorizationSnapshot(
             key, "1", "ACTIVE", null, role, "WAREHOUSE", Set.of("inventory.adjust"), 0));
@@ -144,14 +146,14 @@ class AuthorizationCacheReaderTest {
     assertThatThrownBy(
             () ->
                 reader
-                    .get(AuthorizationSnapshot.role(UUID.randomUUID(), UUID.randomUUID()))
+                    .get(AuthorizationCacheKeys.role(UUID.randomUUID(), UUID.randomUUID()))
                     .block(Duration.ofSeconds(5)))
         .isInstanceOf(AuthenticationFailure.class);
   }
 
   @Test
   void explicitRefreshConfirmsStateBeforeTheNormalFreshnessDeadline() {
-    String key = AuthorizationSnapshot.user(UUID.randomUUID());
+    String key = AuthorizationCacheKeys.user(UUID.randomUUID());
     current.set(new AuthorizationSnapshot(key, "1", "ACTIVE", "USER", null, null, Set.of(), 1));
     assertThat(reader.get(key).block().tokenVersion()).isEqualTo(1);
     current.set(new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2));

@@ -16,7 +16,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"management.health.redis.enabled=false"})
+    properties = {"management.health.redis.enabled=false", "vishop.cache.key-prefix=gateway-test:cache:"})
 class GatewayApplicationTest {
   private static final java.util.concurrent.atomic.AtomicReference<com.sun.net.httpserver.Headers>
       FORWARDED = new java.util.concurrent.atomic.AtomicReference<>();
@@ -65,6 +65,13 @@ class GatewayApplicationTest {
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
+            exchange.close();
+          });
+      server.createContext(
+          "/api/v1/auth/logout",
+          exchange -> {
+            AUTH_FORWARDED.set(exchange.getRequestHeaders());
+            exchange.sendResponseHeaders(204, -1);
             exchange.close();
           });
       server.createContext(
@@ -164,6 +171,10 @@ class GatewayApplicationTest {
   @LocalServerPort private int port;
 
   @Autowired private WebTestClient webTestClient;
+
+  @Autowired com.vishop.gateway.security.GatewayContextSigners contextSigners;
+
+  @Autowired org.springframework.context.ApplicationContext application;
 
   @Autowired org.springframework.cloud.gateway.route.RouteLocator routes;
 
@@ -333,12 +344,50 @@ class GatewayApplicationTest {
         .doesNotExist();
     assertThat(AUTH_FORWARDED.get().getFirst("Cookie"))
         .isEqualTo(AuthCookies.REFRESH_TOKEN + "=valid-refresh");
+    assertThat(AUTH_FORWARDED.get().getFirst("Authorization")).isNull();
+    assertThat(AUTH_FORWARDED.get().getFirst("X-Gateway-Context")).isNull();
+  }
+
+  @Test
+  void logoutForwardsRefreshAndVerifiedUserContextOverHttpWithoutRawAccess() {
+    var user = java.util.UUID.randomUUID();
+    String access =
+        tokens.generateIamAccessToken(
+            user, null, SystemRole.PLATFORM_ADMIN.name(), null, java.util.Set.of());
+    webTestClient
+        .post()
+        .uri("/api/v1/auth/logout")
+        .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
+        .header("Authorization", "Bearer " + access)
+        .header("X-Gateway-Context", "spoofed")
+        .cookie(AuthCookies.ACCESS_TOKEN, access)
+        .cookie(AuthCookies.REFRESH_TOKEN, "valid-refresh")
+        .exchange()
+        .expectStatus()
+        .isNoContent();
+    var headers = AUTH_FORWARDED.get();
+    assertThat(headers.getFirst("Cookie")).isEqualTo(AuthCookies.REFRESH_TOKEN + "=valid-refresh");
+    assertThat(headers.getFirst("Authorization")).isNull();
+    var context =
+        contextSigners
+            .forService("iam-service")
+            .verifyContext(headers.getFirst("X-Gateway-Context"), "POST", "/api/v1/auth/logout");
+    assertThat(context.userId()).isEqualTo(user);
+    assertThat(context.sessionId()).isEqualTo(user); // Test fixture binds sid to user UUID.
+    assertThat(context.systemRole()).isEqualTo(SystemRole.PLATFORM_ADMIN.name());
   }
 
   @Test
   @DisplayName("Application context loads successfully")
   void contextLoads() {
     assertThat(port).isPositive();
+    assertThat(application.getBean(io.github.coreplatform.common.cache.CacheKeyBuilder.class)
+        .build("catalog", "product", 42)).isEqualTo("gateway-test:cache:catalog:product:42");
+    // Gateway chỉ có access verifier; refresh issuer/verifier cùng key nằm ở IAM.
+    assertThat(
+            application.getBeansOfType(
+                io.github.coreplatform.common.security.jwt.JwtTokenService.class))
+        .isEmpty();
   }
 
   @Test

@@ -230,6 +230,18 @@ class RedisCacheServiceTest {
   }
 
   @Test
+  void sharedBuilderAppliesOnePrefixForBlockingAndReactiveAdapters() {
+    var keys = new io.github.coreplatform.common.cache.CacheKeyBuilder("shared:dev:");
+    var writer = new RedisCacheService(redis, json, keys);
+    var reactive = new ReactiveRedisCacheReader(new ReactiveStringRedisTemplate(connection), json, keys);
+    writer.put("catalog:product:42", "Tea", Duration.ofMinutes(1));
+    assertThat(redis.opsForValue().get("shared:dev:catalog:product:42")).isEqualTo("Tea");
+    assertThat(redis.hasKey("shared:dev:shared:dev:catalog:product:42")).isFalse();
+    StepVerifier.create(reactive.get("catalog:product:42", String.class))
+        .expectNext("Tea").verifyComplete();
+  }
+
+  @Test
   void reactiveDecodingErrorsAreNotTreatedAsCacheMisses() {
     redis.opsForValue().set("test:cache:broken", "invalid-json");
     StepVerifier.create(reader.get("broken", Product.class))

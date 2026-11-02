@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import io.github.coreplatform.common.test.security.IamTokenFixture;
@@ -76,13 +77,13 @@ class LocalAuthenticationVerifierTest {
               assertThat(verified.claims().tokenVersion()).isEqualTo(1);
             })
         .verifyComplete();
-    verify(cache).get(AuthorizationSnapshot.user(user));
+    verify(cache).get(AuthorizationCacheKeys.user(user));
     verifyNoMoreInteractions(cache);
   }
 
   @Test
   void directAccessTokenVerificationRejectsRevokedVersion() {
-    String key = AuthorizationSnapshot.user(user);
+    String key = AuthorizationCacheKeys.user(user);
     when(cache.get(key))
         .thenReturn(
             Mono.just(
@@ -109,10 +110,10 @@ class LocalAuthenticationVerifierTest {
               assertThat(identity.actor().permissions()).containsExactly("tenant.view");
             })
         .verifyComplete();
-    verify(cache).get(AuthorizationSnapshot.user(user));
-    verify(cache).get(AuthorizationSnapshot.session(user));
-    verify(cache).get(AuthorizationSnapshot.tenant(tenant));
-    verify(cache).get(AuthorizationSnapshot.role(tenant, role));
+    verify(cache).get(AuthorizationCacheKeys.user(user));
+    verify(cache).get(AuthorizationCacheKeys.session(user));
+    verify(cache).get(AuthorizationCacheKeys.tenant(tenant));
+    verify(cache).get(AuthorizationCacheKeys.role(tenant, role));
     verifyNoMoreInteractions(cache);
   }
 
@@ -127,7 +128,7 @@ class LocalAuthenticationVerifierTest {
   @ParameterizedTest
   @ValueSource(strings = {"revoked", "expired", "wrong-user", "wrong-version"})
   void rejectsInvalidSessionBeforeUsingTenantPermissions(String kind) {
-    String key = AuthorizationSnapshot.session(user);
+    String key = AuthorizationCacheKeys.session(user);
     when(cache.get(key))
         .thenReturn(
             Mono.just(
@@ -143,14 +144,14 @@ class LocalAuthenticationVerifierTest {
                     kind.equals("wrong-user") ? UUID.randomUUID() : user,
                     Instant.now().plusSeconds(kind.equals("expired") ? -1 : 3600))));
     rejects(issue(tokens), true);
-    verify(cache, never()).get(AuthorizationSnapshot.tenant(tenant));
-    verify(cache, never()).get(AuthorizationSnapshot.role(tenant, role));
+    verify(cache, never()).get(AuthorizationCacheKeys.tenant(tenant));
+    verify(cache, never()).get(AuthorizationCacheKeys.role(tenant, role));
   }
 
   @Test
   void permissionEditsApplyToSameCredentialWithoutRevocationOrRefresh() {
     String jwt = issue(tokens);
-    String key = AuthorizationSnapshot.role(tenant, role);
+    String key = AuthorizationCacheKeys.role(tenant, role);
     StepVerifier.create(verifier.authenticate(jwt, true))
         .assertNext(
             identity -> assertThat(identity.actor().permissions()).containsExactly("tenant.view"))
@@ -169,14 +170,14 @@ class LocalAuthenticationVerifierTest {
 
   @Test
   void rejectsRevokedVersionBeforeUsingJwtRole() {
-    String key = AuthorizationSnapshot.user(user);
+    String key = AuthorizationCacheKeys.user(user);
     when(cache.get(key))
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2)));
     rejects(issue(tokens), true);
-    verify(cache, never()).get(AuthorizationSnapshot.tenant(tenant));
-    verify(cache, never()).get(AuthorizationSnapshot.role(tenant, role));
+    verify(cache, never()).get(AuthorizationCacheKeys.tenant(tenant));
+    verify(cache, never()).get(AuthorizationCacheKeys.role(tenant, role));
   }
 
   @ParameterizedTest
@@ -184,9 +185,9 @@ class LocalAuthenticationVerifierTest {
   void deniesInactiveUserTenantOrRole(String kind) {
     String key =
         switch (kind) {
-          case "user" -> AuthorizationSnapshot.user(user);
-          case "tenant" -> AuthorizationSnapshot.tenant(tenant);
-          default -> AuthorizationSnapshot.role(tenant, role);
+          case "user" -> AuthorizationCacheKeys.user(user);
+          case "tenant" -> AuthorizationCacheKeys.tenant(tenant);
+          default -> AuthorizationCacheKeys.role(tenant, role);
         };
     when(cache.get(key))
         .thenReturn(
@@ -238,12 +239,12 @@ class LocalAuthenticationVerifierTest {
 
   @Test
   void rejectsRoleSnapshotFromAnotherTenant() {
-    String key = AuthorizationSnapshot.role(tenant, role);
+    String key = AuthorizationCacheKeys.role(tenant, role);
     when(cache.get(key))
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(
-                    AuthorizationSnapshot.role(UUID.randomUUID(), role),
+                    AuthorizationCacheKeys.role(UUID.randomUUID(), role),
                     "1",
                     "ACTIVE",
                     null,
@@ -276,8 +277,8 @@ class LocalAuthenticationVerifierTest {
     StepVerifier.create(verifier.authenticate(jwt, true))
         .assertNext(identity -> assertThat(identity.tenantId()).isNull())
         .verifyComplete();
-    verify(cache).get(AuthorizationSnapshot.user(user));
-    verify(cache).get(AuthorizationSnapshot.session(user));
+    verify(cache).get(AuthorizationCacheKeys.user(user));
+    verify(cache).get(AuthorizationCacheKeys.session(user));
     verifyNoMoreInteractions(cache);
   }
 
@@ -291,18 +292,18 @@ class LocalAuthenticationVerifierTest {
 
   @Test
   void reloadsLaggingUserCacheBeforeAcceptingNewLoginCredential() {
-    String key = AuthorizationSnapshot.user(user);
+    String key = AuthorizationCacheKeys.user(user);
     var claims = new HashMap<String, Object>(tokens.parseClaims(issue(tokens)));
     claims.put("tokenVersion", 2);
     when(cache.refresh(key))
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2)));
-    when(cache.get(AuthorizationSnapshot.session(user)))
+    when(cache.get(AuthorizationCacheKeys.session(user)))
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(
-                    AuthorizationSnapshot.session(user),
+                    AuthorizationCacheKeys.session(user),
                     "1",
                     "ACTIVE",
                     null,
@@ -320,7 +321,7 @@ class LocalAuthenticationVerifierTest {
 
   @Test
   void newerJwtCannotRaiseVersionWithoutConfirmationFromIam() {
-    String key = AuthorizationSnapshot.user(user);
+    String key = AuthorizationCacheKeys.user(user);
     var claims = new HashMap<String, Object>(tokens.parseClaims(issue(tokens)));
     claims.put("tokenVersion", 2);
     when(cache.refresh(key))

@@ -21,8 +21,7 @@ import java.util.UUID;
  * tập rỗng và tokenVersion không dùng có thể là 0. Đây là dữ liệu cache, không phải claims JWT hay
  * entity ánh xạ bảng DB.
  *
- * @param key khóa logic của bản ghi, chưa gồm prefix ứng dụng/môi trường; xem {@link #user(UUID)},
- *     {@link #tenant(UUID)} và {@link #role(UUID, UUID)}
+ * @param key khóa logic chưa gồm prefix ứng dụng/môi trường; xem {@link AuthorizationCacheKeys}
  * @param version phiên bản tăng dần của dữ liệu cache tại cùng một key, giúp chặn bản cập nhật cũ
  *     ghi đè bản mới; biểu diễn bằng chuỗi số thập phân để tránh mất độ chính xác khi so sánh qua
  *     Redis Lua; không phải phiên bản token
@@ -64,30 +63,9 @@ public record AuthorizationSnapshot(
     this(key, version, status, systemRole, roleId, roleKey, permissions, tokenVersion, null, null);
   }
 
-  public static String session(UUID id) {
-    return "auth:session:" + id;
-  }
-
   /** Chuẩn hóa permissions rỗng và sao chép để bên gọi không thể thay đổi tập quyền đã lưu. */
   public AuthorizationSnapshot {
     permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
   }
 
-  /** Khóa trạng thái user, systemRole và phiên bản thu hồi token. */
-  public static String user(UUID id) {
-    return "auth:user:" + id;
-  }
-
-  /** Khóa trạng thái tenant, dùng để chặn truy cập khi tenant không còn hoạt động. */
-  public static String tenant(UUID id) {
-    return "auth:tenant:" + id;
-  }
-
-  /**
-   * Khóa quyền của một role trong tenant cụ thể. Luôn kèm tenantId để không dùng nhầm quyền giữa
-   * các tenant có cùng tên role. Lớp cache sẽ bổ sung prefix, ví dụ {@code vishop:dev:}.
-   */
-  public static String role(UUID tenant, UUID role) {
-    return "auth:role:" + tenant + ":" + role;
-  }
 }

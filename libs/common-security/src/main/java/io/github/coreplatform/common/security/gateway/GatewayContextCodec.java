@@ -2,6 +2,7 @@ package io.github.coreplatform.common.security.gateway;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -13,7 +14,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 /** Authenticates gateway context, independently of end-user JWT credentials. */
 public final class GatewayContextCodec {
-  public static final String HEADER = "X-Gateway-Context";
+  public static final String HEADER = SecurityHeaders.X_GATEWAY_CONTEXT;
   private final ObjectMapper json;
   private final byte[] secret;
   private final String audience;

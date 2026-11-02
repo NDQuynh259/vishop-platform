@@ -64,6 +64,11 @@ với nghiệp vụ và không tự đọc DB. Xem [luồng auth](../../docs/cor
 
 ## Principal và filter
 
+`gateway/AuthorizationCacheKeys` owns logical authorization key formats. Snapshot
+records only hold data; they do not build keys. The application injects the generic
+`CacheKeyBuilder` from common-cache to add `vishop.cache.key-prefix` before Redis
+reads/writes. Other business caches define their own namespaces and TTLs.
+
 `gateway/GatewayPrincipal` là principal của giao thức context nội bộ, độc lập với JWT.
 Backend nhận nó sau khi xác thực context do gateway ký.
 

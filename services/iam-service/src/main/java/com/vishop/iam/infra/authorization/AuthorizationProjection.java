@@ -2,12 +2,13 @@ package com.vishop.iam.infra.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.modules.identity.application.api.IdentityApi.AuthorizationDeliveryPort;
+import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
+import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,17 +23,14 @@ public class AuthorizationProjection implements AuthorizationDeliveryPort {
   private final EntityManager db;
   private final StringRedisTemplate redis;
   private final ObjectMapper json;
-  private final String prefix;
+  private final CacheKeyBuilder keys;
 
   public AuthorizationProjection(
-      EntityManager db,
-      StringRedisTemplate redis,
-      ObjectMapper json,
-      @Value("${vishop.security.authorization.cache-prefix:vishop:}") String prefix) {
+      EntityManager db, StringRedisTemplate redis, ObjectMapper json, CacheKeyBuilder keys) {
     this.db = db;
     this.redis = redis;
     this.json = json;
-    this.prefix = prefix;
+    this.keys = keys;
   }
 
   @Transactional(readOnly = true)
@@ -74,7 +72,7 @@ public class AuthorizationProjection implements AuthorizationDeliveryPort {
       var rows =
           db.createNativeQuery(
                   "SELECT payload::text FROM authorization_outbox WHERE state_key=:key FOR UPDATE")
-              .setParameter("key", AuthorizationSnapshot.session(sessionId))
+              .setParameter("key", AuthorizationCacheKeys.session(sessionId))
               .getResultList();
       if (rows.isEmpty()) throw new IllegalStateException("Missing session projection");
       write(decode((String) rows.getFirst()));
@@ -89,7 +87,7 @@ public class AuthorizationProjection implements AuthorizationDeliveryPort {
       Long accepted =
           redis.execute(
               new DefaultRedisScript<Long>(VersionedAuthorizationCache.WRITE, Long.class),
-              List.of(prefix + state.key()),
+              List.of(keys.withPrefix(state.key())),
               state.version(),
               json.writeValueAsString(state),
               state.expiresAt() == null ? "" : Long.toString(state.expiresAt().getEpochSecond()));

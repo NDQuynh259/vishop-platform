@@ -38,103 +38,123 @@ flowchart TD
 
 ---
 
-## 2. Sơ đồ Phân tách Dịch vụ Tổng thể (Service Decomposition Map)
+## 2. Sơ đồ Phân tách Dịch vụ Tổng thể (Target Microservices Decomposition Map)
 
-Dựa trên khung tiêu chí trên, hệ thống ViShop Platform áp dụng mô hình **Pragmatic Modular Microservices** gồm **1 API Gateway + 1 Core Modular Monolith + 2 Satellite Microservices**:
+Hệ thống **ViShop Platform** áp dụng chiến lược tiến hóa kiến trúc theo mô hình **Pragmatic Microservices (Strangler Fig Pattern)**: chuyển dịch từ lõi Bounded Contexts sang **10 Microservices chuyên biệt + 2 Service vệ tinh hỗ trợ**:
 
 ```mermaid
 flowchart TB
-    Client["Client Applications\n(Web Admin, POS, Mobile, TikTok Platform)"]
+    Client["Client Applications\n(Web Admin, POS, Mobile App)"]
+    Marketplaces["Marketplace Webhooks\n(TikTok Shop, Shopee, Lazada)"]
+    PayGateways["Payment Gateways IPN\n(VNPay, MoMo, VietQR)"]
     
-    subgraph Edge["Tầng Cổng (Edge & Routing)"]
-        Gateway["api-gateway (:8000)\n- Dynamic Routing\n- X-Correlation-Id & X-Request-Id\n- Multi-Tenancy Filter (X-Tenant-Id)\n- Rate Limiting & Auth Check"]
+    subgraph Edge["Tầng Cổng & Điều Phối (Edge Layer)"]
+        Gateway["1. api-gateway (:8000)\n- Dynamic Reverse Proxy & Route Aggregation\n- X-Correlation-Id & X-Request-Id Propagation\n- Multi-Tenancy Filter & Context Resolution\n- Global Rate Limiting (Redis Token Bucket)"]
     end
 
-    Client -->|REST HTTPS| Gateway
+    Client -->|REST HTTPS / WSS| Gateway
+    Marketplaces -->|Webhooks| Gateway
+    PayGateways -->|IPN Webhooks| Gateway
 
-    subgraph CoreDomain["Tầng Nghiệp Vụ Giao Dịch ACID (Core Transactional)"]
-        subgraph CommerceApp["commerce-core (:8080) [Modular Monolith]"]
-            direction TB
-            subgraph CoreModules["Các Module nghiệp vụ gắn kết cao"]
-                TenantM["Tenant Module\n(Org, Shop, Role)"]
-                IdentityM["Identity Module\n(User, Auth, 2FA)"]
-                CatalogM["Catalog Module\n(SKU, Combo, Pricing)"]
-                InvM["Inventory Module\n(Warehouse, Stock)"]
-                OrderM["Order Module\n(Checkout, State Machine)"]
-                FinanceM["Finance Module\n(COD, Reconciliation)"]
-            end
-            CoreOutbox["Transactional Outbox Relay"]
-        end
+    subgraph SecurityDomain["Tầng Định Danh & Phân Quyền (Identity & Security)"]
+        IAMSvc["2. iam-service (:8081)\n- Global User Identity & Sessions\n- Multi-Tenant & Multi-Shop Isolation\n- 4 Built-in Roles & Custom RBAC Matrix\n- Token Issuance & Signature Verification"]
     end
 
-    subgraph SatelliteServices["Tầng Vệ Tinh Độc Lập (Specialized Microservices)"]
-        subgraph TikTokSvc["tiktok-integration (:8083) [Tải cao / I-O Heavy]"]
-            direction TB
-            Hook["Webhook Ingestion (Fast Ack < 50ms)"]
-            Sync["Auto-sync Worker (KEDA Lag Scale)"]
-            Token["OAuth Token Vault & Refresher"]
-        end
-
-        subgraph AuditSvc["audit-service (:8082) [Bất biến / Cô lập lỗi]"]
-            AuditConsumer["Idempotent Consumer"]
-            AuditLog["Append-only Log Writer"]
-        end
+    subgraph CommerceCoreDomains["Tầng Nghiệp Vụ Bán Hàng & Kho Vận (Core OMS & WMS)"]
+        CatalogSvc["3. product-catalog-service (:8087)\n- Master SKU, Variations & Combos\n- Barcode/QR Code Management\n- Cross-marketplace SKU Mapping\n- Read-heavy Cache (Redis Multi-tier)"]
+        
+        InvSvc["4. inventory-service (WMS) (:8085)\n- 7-tier Stock States (OnHand, Available, Reserved, Locked...)\n- Weighted Average Cost (MAC)\n- Batch & Expiry Date Management (FEFO/FIFO)\n- Multi-warehouse Internal Transfers\n- Stocktake Audit & Stock Debt Resolution"]
+        
+        OrderSvc["5. order-service (OMS) (:8086)\n- Omnichannel Order Lifecycle & State Machine\n- Distributed Allocation & Saga Orchestration\n- Order Cancellation & Return/Refunds"]
+        
+        ShipSvc["6. shipping-fulfillment-service (:8091)\n- 3PL Courier Integration (GHN, GHTK, Viettel Post)\n- Thermal AWB Shipping Label Printing\n- Real-time Courier Tracking Webhooks"]
     end
 
-    subgraph DataTier["Tầng Cơ Sở Dữ Liệu Độc Lập (Database-per-Service)"]
-        DBCore[("vishop_commerce\n(orders, stock, catalog, tenants)")]
-        DBTikTok[("vishop_tiktok\n(webhook_inbox, tokens, sync_state)")]
-        DBAudit[("vishop_audit\n(audit_logs, consumed_messages)")]
-        RedisCore[("Redis 7\n(Locks, Cache, Rate Limit)")]
+    subgraph IntegrationAndWorker["Tầng Tích Hợp & Chịu Tải Cao (I/O Heavy & Ingestion)"]
+        WorkerSvc["7. marketplace-worker (:8083)\n- TikTok Shop, Shopee, Lazada Webhook Ingestion\n- Queue Workers (BullMQ / Kafka)\n- Omnichannel Push Routes (Tỷ lệ phân bổ tồn)\n- Redis Idempotency Engine"]
     end
 
-    subgraph MessageBus["Hạ Tầng Sự Kiện (Event-Driven Backbone)"]
-        Kafka["Apache Kafka KRaft\nTopics: vishop.order.events | vishop.stock.events | vishop.tiktok.events"]
+    subgraph FinanceDomain["Tầng Tài Chính & Thanh Toán (Finance & Billing)"]
+        FinanceSvc["8. payment-finance-service (:8088)\n- SaaS Subscription Billing (VNPay, MoMo, VietQR)\n- Automated Settlement Reconciliation (Sao kê sàn)\n- 6+ Marketplace Fee Breakdown & Tax\n- Negative Profit Alerting"]
+    end
+
+    subgraph UserExperienceAndAI["Tầng Trải Nghiệm & Tự Động Hóa (Realtime & Agentic Ops)"]
+        NotifSvc["9. notification-service (:8089)\n- In-app Realtime Web Push (Socket.IO + Redis Streams)\n- Urgent Telegram Bot Alerts (Hết hàng, Lệch đối soát)\n- Background Email Queue (Mời Tenant, Báo cáo kho)"]
+        
+        AISvc["10. ai-assistant-service (:8090)\n- Autonomous Operations via MCP (Model Context Protocol)\n- Standardized Tool Catalog (Stock, Order, Push Route)\n- Tenant & RBAC Context-aware Guardrails"]
+    end
+
+    subgraph SatelliteAndAsync["Tầng Báo Cáo & Vệ Tinh Độc Lập (OLAP & Audit)"]
+        ReportSvc["11. report-analytics-service (:8092)\n- Scheduled Daily Business Summary (OLAP)\n- Bulk Async File Export Engine (Excel/CSV to S3/R2)"]
+        
+        AuditSvc["12. audit-service (:8082)\n- Immutable Append-only Audit Trail\n- Idempotent Kafka Consumer"]
+    end
+
+    subgraph MessageBus["Hạ Tầng Sự Kiện Phân Tán (Event-Driven Backbone)"]
+        Kafka["Apache Kafka KRaft / Redis Streams\nTopics: order.events | stock.events | webhook.events | finance.events | audit.events"]
     end
 
     %% Gateway Routing
-    Gateway -->|/api/v1/tenants, /orders, /products...| CommerceApp
-    Gateway -->|/api/v1/tiktok/**| TikTokSvc
-    Gateway -->|/api/v1/audit/**| AuditSvc
+    Gateway -->|/api/v1/auth, /tenants, /roles| IAMSvc
+    Gateway -->|/api/v1/products, /catalog| CatalogSvc
+    Gateway -->|/api/v1/inventories, /warehouses| InvSvc
+    Gateway -->|/api/v1/orders| OrderSvc
+    Gateway -->|/api/v1/shipping, /labels| ShipSvc
+    Gateway -->|/api/v1/webhooks/marketplaces| WorkerSvc
+    Gateway -->|/api/v1/billing, /reconciliation| FinanceSvc
+    Gateway -->|/api/v1/assistant/chat, /mcp| AISvc
+    Gateway -->|/api/v1/reports| ReportSvc
+    Gateway -->|/api/v1/audit| AuditSvc
 
-    %% Database Connections
-    CommerceApp --> DBCore
-    TikTokSvc --> DBTikTok
-    TikTokSvc --> RedisCore
-    AuditSvc --> DBAudit
+    %% Internal Communication & Events
+    OrderSvc -.->|gRPC: Fast Stock Check| InvSvc
+    AISvc -.->|gRPC / Internal MCP Tool Calls| InvSvc
+    AISvc -.->|gRPC / Internal MCP Tool Calls| OrderSvc
+    
+    OrderSvc ==>|Publish: order.created / cancelled| Kafka
+    InvSvc ==>|Publish: stock.changed / debt.alert| Kafka
+    WorkerSvc ==>|Publish: order.synced / stock.pushed| Kafka
+    FinanceSvc ==>|Publish: payment.success / mismatch.detected| Kafka
 
-    %% Event Flows
-    CommerceApp -.->|Ghi Outbox| CoreOutbox
-    CoreOutbox ==>|Publish Domain Events| Kafka
-    TikTokSvc ==>|Publish TikTok Events| Kafka
-    Kafka ==>|Subscribe TikTok Order/Stock| CommerceApp
-    Kafka ==>|Subscribe All Events| AuditConsumer
+    Kafka ==>|Subscribe| NotifSvc
+    Kafka ==>|Subscribe| AuditSvc
+    Kafka ==>|Subscribe| ReportSvc
+    Kafka ==>|Subscribe: Order sync to WMS| InvSvc
 
     %% Styling
-    classDef pres fill:#EBF5FB,stroke:#2980B9,stroke-width:2px,color:#1B4F72;
-    classDef app fill:#F4ECF7,stroke:#8E44AD,stroke-width:2px,color:#512E5F;
-    classDef domain fill:#E8F8F5,stroke:#16A085,stroke-width:2px,color:#0E6251;
-    classDef infra fill:#FEF9E7,stroke:#D4AC0D,stroke-width:2px,color:#7D6608;
-    classDef ext fill:#EAEDED,stroke:#5D6D7E,stroke-width:2px,color:#2C3E50;
+    classDef edge fill:#EBF5FB,stroke:#2980B9,stroke-width:2px,color:#1B4F72;
+    classDef core fill:#E8F8F5,stroke:#16A085,stroke-width:2px,color:#0E6251;
+    classDef worker fill:#FEF9E7,stroke:#D4AC0D,stroke-width:2px,color:#7D6608;
+    classDef ai fill:#F4ECF7,stroke:#8E44AD,stroke-width:2px,color:#512E5F;
+    classDef bus fill:#EAEDED,stroke:#5D6D7E,stroke-width:2px,color:#2C3E50;
 
-    class Gateway pres;
-    class CommerceApp domain;
-    class TikTokSvc,AuditSvc infra;
-    class DBCore,DBTikTok,DBAudit,RedisCore,Kafka ext;
+    class Gateway,IAMSvc edge;
+    class CatalogSvc,InvSvc,OrderSvc,ShipSvc,FinanceSvc core;
+    class WorkerSvc,ReportSvc,AuditSvc worker;
+    class NotifSvc,AISvc ai;
+    class Kafka bus;
 ```
 
 ---
 
-## 3. Ranh giới Bounded Contexts & Cơ sở Dữ liệu
+## 3. Ranh giới Bounded Contexts, Cơ sở Dữ liệu & Giao thức
 
-Mỗi Service sở hữu hoàn toàn Bounded Context và Database riêng của mình:
+Hệ thống tuân thủ nghiêm ngặt nguyên tắc **Database-per-Service** và phân chia ranh giới theo Bounded Context:
 
-| Dịch vụ / Module | Bounded Context | Trách nhiệm chính | Database Schema |
-| :--- | :--- | :--- | :--- |
-| **`api-gateway`** | Edge / Gateway | Routing, xác thực token thô, phân giải `X-Tenant-Id`, tạo `X-Correlation-Id`, chuẩn hóa RFC 9457 | *Không có DB* |
-| **`commerce-core`** *(Modular Monolith)* | Tenants, Users, Catalog, Inventory, Orders, Finance | Quản lý toàn bộ vòng đời sản phẩm, tồn kho, đơn hàng, thanh toán và tổ chức trong cùng 1 đơn vị transaction ACID | `vishop_commerce` (PostgreSQL) |
-| **`tiktok-integration`** *(Specialized Microservice)* | TikTok Marketplace, Webhooks, OAuth | Nhận webhook TikTok cực nhanh, quản lý OAuth Token, đồng bộ đơn hàng và tồn kho 2 chiều theo rate limit của sàn | `vishop_tiktok` (PostgreSQL) + Redis |
-| **`audit-service`** *(Isolated Consumer)* | Audit Trails | Lắng nghe toàn bộ event từ Kafka để ghi nhận nhật ký kiểm toán bất biến (append-only) | `vishop_audit` (PostgreSQL) |
+| STT | Tên Microservice | Bounded Context | Trách nhiệm chính | Database Schema | Giao tiếp đối ngoại / đối nội |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| **1** | **`api-gateway`** | Edge / Gateway | Reverse proxy, cân bằng tải, Rate Limiting, xác thực JWT, phân giải Tenant/Shop context, inject Correlation ID. | *Không có DB* | REST (HTTP/2), WebSocket |
+| **2** | **`iam-service`** | Identity, Tenancy & RBAC | Quản lý User toàn cầu, Tenant/Shop Scope, phân quyền RBAC đa cấp, cấp phát và verify Access/Refresh JWT. | `vishop_iam` (PostgreSQL) + Redis Session | REST (Downstream), Kafka Outbox |
+| **3** | **`product-catalog-service`** | Catalog & Products | Master SKU, sản phẩm nhiều biến thể, Combo/Bundle, Barcode, ánh xạ SKU đa sàn (TikTok/Shopee mapping). | `vishop_catalog` (PostgreSQL) + Redis Read Cache | REST, gRPC (Product Query) |
+| **4** | **`inventory-service` (WMS)** | Warehouse & Inventory | Vòng đời tồn kho 7 trạng thái, FIFO/FEFO, Giá vốn MAC, Nhập/Xuất kho, Chuyển kho nội bộ, Kiểm kê, Nợ kho. | `vishop_inventory` (PostgreSQL) + Redis Lock | REST, gRPC (Stock Reserve), Kafka |
+| **5** | **`order-service` (OMS)** | Orders & Checkout | Quản lý vòng đời đơn hàng đa kênh, State Machine, điều phối trừ kho, Saga Pattern cho giao dịch bù trừ, xử lý trả hàng. | `vishop_order` (PostgreSQL) | REST, gRPC, Kafka Events |
+| **6** | **`shipping-fulfillment-service`** | Logistics & Shipping | Tích hợp cổng vận chuyển (GHN, GHTK, Viettel Post), sinh mã AWB, in tem vận đơn nhiệt, Webhook tracking bưu tá. | `vishop_shipping` (PostgreSQL) | REST, 3PL Webhooks, Kafka |
+| **7** | **`marketplace-worker`** | Omnichannel Integrations | Ingestion Webhook từ TikTok Shop / Shopee / Lazada, Worker nền (BullMQ), cơ chế phân luồng đẩy tồn (**Push Routes**), Idempotency. | `vishop_worker` (PostgreSQL) + Redis Queue | Inbound Webhooks, Kafka Outbox |
+| **8** | **`payment-finance-service`** | Billing & Finance | Thanh toán gói cước SaaS (VNPay, MoMo, VietQR IPN), tự động đối soát sao kê tiền về từ sàn TMĐT, bóc tách 6+ loại phí, cảnh báo đơn lỗ. | `vishop_finance` (PostgreSQL) | IPN Webhooks, Kafka Events |
+| **9** | **`notification-service`** | Realtime & Notifications | Bắn thông báo In-app realtime cho Dashboard (Socket.IO), gửi cảnh báo khẩn cấp qua **Telegram Bot**, gửi Email hàng đợi (BullMQ). | `vishop_notification` (PostgreSQL) + Redis Pub/Sub | Socket.IO (WSS), Telegram API, SMTP |
+| **10** | **`ai-assistant-service`** | Agentic AI & Ops | Chatbot vận hành tự động qua chuẩn **Model Context Protocol (MCP)**, Tool Catalog cho WMS/OMS, Context-aware RBAC guardrails. | *Stateless / Vector DB (nếu có)* | MCP Protocol, gRPC sang Core |
+| **11** | **`report-analytics-service`** | Reporting & OLAP | Tổng hợp số liệu kinh doanh định kỳ, báo cáo tồn kho & quay vòng vốn, xử lý ngầm xuất file Excel/CSV dung lượng lớn. | `vishop_analytics` (PostgreSQL Read-replica) | REST, Kafka Consumer, S3/R2 |
+| **12** | **`audit-service`** | Audit & Compliance | Ghi nhận nhật ký kiểm toán (Audit Trail) bất biến cho mọi sự kiện thay đổi dữ liệu trên toàn hệ thống. | `vishop_audit` (PostgreSQL Append-only) | Kafka Consumer thuần túy |
 
 ---
 

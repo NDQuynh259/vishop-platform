@@ -1,6 +1,7 @@
 package com.vishop.gateway.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
@@ -26,7 +27,7 @@ public class AuthorizationCacheReader {
   private final ObjectMapper json;
   private final GatewayContextCodec iam;
   private final WebClient http;
-  private final String prefix;
+  private final CacheKeyBuilder keys;
   private final long maxAge;
   private final java.util.concurrent.Semaphore permits = new java.util.concurrent.Semaphore(32);
   private final ConcurrentHashMap<String, Mono<AuthorizationSnapshot>> loads =
@@ -37,7 +38,7 @@ public class AuthorizationCacheReader {
       ObjectMapper json,
       GatewayContextSigners signers,
       @Value("${IAM_SERVICE_URL:http://localhost:8080}") String url,
-      @Value("${vishop.security.authorization.cache-prefix:vishop:}") String prefix,
+      CacheKeyBuilder keys,
       @Value("${vishop.security.authorization.max-age-seconds:30}") long maxAge) {
     if (maxAge < 1 || maxAge > 300)
       throw new IllegalArgumentException("Authorization max age must be 1..300 seconds");
@@ -45,7 +46,7 @@ public class AuthorizationCacheReader {
     this.json = json;
     this.iam = signers.forService("iam-service");
     this.http = WebClient.builder().baseUrl(url).build();
-    this.prefix = prefix;
+    this.keys = keys;
     this.maxAge = maxAge;
   }
 
@@ -76,7 +77,7 @@ public class AuthorizationCacheReader {
     return redis
         .execute(
             new DefaultRedisScript<String>(VersionedAuthorizationCache.READ, String.class),
-            List.of(prefix + key),
+            List.of(keys.withPrefix(key)),
             List.of(Long.toString(maxAge)))
         .next()
         .map(
@@ -116,7 +117,7 @@ public class AuthorizationCacheReader {
                 return redis
                     .execute(
                         new DefaultRedisScript<Long>(VersionedAuthorizationCache.WRITE, Long.class),
-                        List.of(prefix + key),
+                        List.of(keys.withPrefix(key)),
                         List.of(
                             state.version(),
                             json.writeValueAsString(state),

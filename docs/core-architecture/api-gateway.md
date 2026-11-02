@@ -152,7 +152,7 @@ Trong hệ thống **ViShop Platform**, cả hai công nghệ được phối h�
 ## Khởi chạy
 
 Đặt `IAM_SERVICE_URL` cho routing, `JWT_ACCESS_SECRET` giống IAM và `ALLOWED_ORIGINS` phù hợp rồi chạy.
-Cấu hình thêm Auth Redis, AUTH_CACHE_PREFIX và context secret khớp IAM;
+Cấu hình thêm Auth Redis, CACHE_KEY_PREFIX và context secret khớp IAM;
 áp dụng migration V12 trước. Xem [cấu hình luồng auth](authentication-flow.md):
 
 ```powershell

@@ -229,7 +229,7 @@ services:
       GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:?Set IAM gateway context secret}
       AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Set AUTH_REDIS_PASSWORD}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
-      AUTH_CACHE_PREFIX: ${AUTH_CACHE_PREFIX:-vishop:prod:}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
       AUTH_REDIS_HOST: auth-redis
       AUTH_REDIS_PORT: 6379
       AUTH_REDIS_DATABASE: 0
@@ -385,13 +385,12 @@ services:
       GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
       GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
       GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
-      AUTH_CACHE_PREFIX: ${AUTH_CACHE_PREFIX:-vishop:prod:}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
       AUTH_REDIS_HOST: auth-redis
       AUTH_REDIS_PORT: 6379
       AUTH_REDIS_DATABASE: 0
       AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Set AUTH_REDIS_PASSWORD}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set the same access JWT key as IAM}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set the same refresh key as IAM}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       SPRING_PROFILES_ACTIVE: prod
       IAM_SERVICE_URL: http://iam-service:8080

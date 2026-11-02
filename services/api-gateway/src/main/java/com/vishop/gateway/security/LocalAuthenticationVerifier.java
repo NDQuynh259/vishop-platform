@@ -1,5 +1,6 @@
 package com.vishop.gateway.security;
 
+import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
@@ -41,7 +42,7 @@ public class LocalAuthenticationVerifier {
             })
         .flatMap(
             claims -> {
-              String key = AuthorizationSnapshot.user(claims.userId());
+              String key = AuthorizationCacheKeys.user(claims.userId());
               return cache
                   .get(key)
                   .flatMap(
@@ -70,10 +71,10 @@ public class LocalAuthenticationVerifier {
     // tokenVersion đúng chưa đủ: logout chỉ thu hồi sid, không tăng version toàn user.
     // Kiểm tra chủ sở hữu và hạn phiên trước khi đọc quyền của tenant.
     return cache
-        .get(AuthorizationSnapshot.session(claims.sessionId()))
+        .get(AuthorizationCacheKeys.session(claims.sessionId()))
         .flatMap(
             session -> {
-              if (!AuthorizationSnapshot.session(claims.sessionId()).equals(session.key()))
+              if (!AuthorizationCacheKeys.session(claims.sessionId()).equals(session.key()))
                 return Mono.error(new IllegalStateException("Cached session key mismatch"));
               if (!"ACTIVE".equals(session.status())
                   || session.expiresAt() == null
@@ -108,14 +109,14 @@ public class LocalAuthenticationVerifier {
     UUID role = claims.tenantRoleId();
     // Role cùng tên ở hai tenant có thể có quyền khác nhau: cache luôn dùng tenant + roleId.
     return Mono.zip(
-            cache.get(AuthorizationSnapshot.tenant(tenant)),
-            cache.get(AuthorizationSnapshot.role(tenant, role)))
+            cache.get(AuthorizationCacheKeys.tenant(tenant)),
+            cache.get(AuthorizationCacheKeys.role(tenant, role)))
         .map(
             pair -> {
               active(pair.getT1());
               var grant = pair.getT2();
               active(grant);
-              String roleKey = AuthorizationSnapshot.role(tenant, role);
+              String roleKey = AuthorizationCacheKeys.role(tenant, role);
               if (!roleKey.equals(grant.key()) || !role.equals(grant.roleId())) {
                 throw new IllegalStateException("Cached role mismatch");
               }

@@ -9,6 +9,9 @@ springBoot {
 }
 
 dependencies {
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
+
     implementation(project(":libs:common-domain"))
     testImplementation(project(":libs:common-test"))
     implementation(project(":libs:common-cache"))

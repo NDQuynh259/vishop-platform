@@ -67,13 +67,8 @@ public class LogoutCommandHandler implements CommandHandler<LogoutCommand, Void>
       if (command.refreshToken() != null)
         return tokens.verifyRefresh(command.refreshToken()).identity();
     } catch (RuntimeException invalid) {
-      /* Có thể dùng access còn hạn nếu refresh không hợp lệ. */
-    }
-    try {
-      if (command.accessToken() != null)
-        return tokens.verifyAccess(command.accessToken()).identity();
-    } catch (RuntimeException invalid) {
-      /* Logout không biến token rác thành actor hay audit. */
+      // Access đã được gateway verify và chuyển thành actor; IAM chỉ verify refresh gốc.
+      // Refresh không hợp lệ thì chỉ xóa cookie, không tạo actor hay audit từ token rác.
     }
     return null;
   }

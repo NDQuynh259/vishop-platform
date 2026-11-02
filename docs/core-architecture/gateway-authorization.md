@@ -7,7 +7,26 @@ Gateway verify access JWT HS256 bằng access key và hợp đồng claims IAM:
 issuer, audience, token_use, thời gian, userId, sid, tokenVersion và role theo tenant.
 Permissions lấy từ Redis, không nằm trong JWT.
 
+Gateway chỉ cấu hình access key, không giữ refresh key. Chỉ POST /api/v1/auth/refresh
+và POST /api/v1/auth/logout trên route IAM nhận refresh cookie. Access JWT gốc và
+Authorization không được chuyển xuống service; user/tenant/role/permissions/sid đi
+trong header X-Gateway-Context đã được gateway ký. Refresh không phụ thuộc access
+còn hạn; logout có thể dùng refresh khi access thiếu/hết hạn. Chi tiết và bảng
+forwarding nằm trong [luồng auth](authentication-flow.md#gateway-chuyển-tiếp-credential-và-context).
+
 ## Thứ tự xác minh
+
+Code chia theo trách nhiệm:
+
+| Component | Trách nhiệm |
+| --- | --- |
+| AuthenticationGlobalFilter | Điều phối policy, xác thực và chuyển tiếp |
+| GatewayRequestPolicy | Origin/CSRF, route public, API chưa chọn tenant và quy tắc forward refresh |
+| GatewayRequestForwarder | Đọc access, bỏ header giả, lọc cookie và ký context gửi service |
+| AuthenticationErrorResponse | Ghi lỗi từ chối xác thực theo Problem Details |
+
+LocalAuthenticationVerifier tiếp tục verify JWT và đọc trạng thái/quyền từ Redis.
+Lỗi từ service phía sau đi tới GatewayExceptionHandler, không bị bắt thành lỗi token.
 
 1. AuthenticationGlobalFilter phân loại route, kiểm tra Origin/write header và lấy credential.
 2. LocalAuthenticationVerifier.verifyAccessToken verify JWT, đọc user snapshot,
@@ -28,7 +47,10 @@ Permissions lấy từ Redis, không nằm trong JWT.
 | auth:tenant:{tenantId} | status |
 | auth:role:{tenantId}:{roleId} | status, roleKey, permissions |
 
-Key thực có AUTH_CACHE_PREFIX theo môi trường. Session có TTL tuyệt đối theo hạn
+Key logic do AuthorizationCacheKeys tạo. IAM/gateway dùng CacheKeyBuilder từ common-cache
+để thêm prefix chung, cấu hình qua vishop.cache.key-prefix hoặc CACHE_KEY_PREFIX.
+AUTH_CACHE_PREFIX cũ vẫn là giá trị dự phòng. AuthorizationSnapshot chỉ chứa dữ liệu.
+Session có TTL tuyệt đối theo hạn
 refresh. User/tenant/role giữ revision và dùng freshness riêng; không xóa revision
 sớm để tránh relay cũ ghi đè trạng thái mới.
 

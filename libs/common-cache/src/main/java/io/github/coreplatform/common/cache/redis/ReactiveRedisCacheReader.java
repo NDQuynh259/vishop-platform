@@ -1,6 +1,7 @@
 package io.github.coreplatform.common.cache.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.ReactiveCacheReader;
 import java.util.List;
 import java.util.Objects;
@@ -12,13 +13,18 @@ import reactor.core.publisher.Mono;
 public final class ReactiveRedisCacheReader implements ReactiveCacheReader {
   private final ReactiveStringRedisTemplate redis;
   private final CacheValueCodec codec;
-  private final String keyPrefix;
+  private final CacheKeyBuilder keys;
 
   public ReactiveRedisCacheReader(
       ReactiveStringRedisTemplate redis, ObjectMapper json, String keyPrefix) {
+    this(redis, json, new CacheKeyBuilder(keyPrefix));
+  }
+
+  public ReactiveRedisCacheReader(
+      ReactiveStringRedisTemplate redis, ObjectMapper json, CacheKeyBuilder keys) {
     this.redis = Objects.requireNonNull(redis, "redis");
     this.codec = new CacheValueCodec(json);
-    this.keyPrefix = Objects.requireNonNull(keyPrefix, "keyPrefix");
+    this.keys = Objects.requireNonNull(keys, "keys");
   }
 
   @Override
@@ -65,7 +71,6 @@ public final class ReactiveRedisCacheReader implements ReactiveCacheReader {
   }
 
   private String redisKey(String key) {
-    if (key == null || key.isBlank()) throw new IllegalArgumentException("key must not be blank");
-    return keyPrefix + key;
+    return keys.withPrefix(key);
   }
 }

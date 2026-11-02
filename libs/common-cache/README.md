@@ -23,32 +23,64 @@ entries. No business use case is cached just by adding this dependency.
 
 ## Wiring
 
+`CacheAutoConfiguration` registers `CacheProperties` and `CacheKeyBuilder`. It does
+not create Redis connections or cache adapters. Configure the application/environment
+prefix once in the consuming service:
+
+```yaml
+vishop:
+  cache:
+    key-prefix: ${CACHE_KEY_PREFIX:${AUTH_CACHE_PREFIX:vishop:}}
+```
+
+`CACHE_KEY_PREFIX` is the shared variable for all namespaces. The IAM/gateway YAML
+keeps `AUTH_CACHE_PREFIX` as a fallback for existing deployments. The library alone
+defaults to an empty prefix; it does not assume an application or environment name.
+
+`CacheKeyBuilder.build(namespace, parts...)` returns a full Redis key:
+
+```java
+keys.build("subscription", "plan", planId);
+// vishop:dev:subscription:plan:{planId}, when prefix is vishop:dev:
+```
+
+Segments cannot be blank, null or contain `:`. UUIDs and numeric IDs are supported.
+The prefix is literal; include its trailing `:` when using colon-separated namespaces.
+`withPrefix(logicalKey)` accepts a prebuilt logical key, including its separators.
+Each module owns its logical keys, invalidation and TTL; there is no global list of
+all business keys. Security keys live in `common-security/AuthorizationCacheKeys`.
+
 Add `implementation(project(":libs:common-cache"))` and
 `implementation("org.springframework.boot:spring-boot-starter-data-redis")`.
 Register a bean in the consuming service's infrastructure configuration:
 
 ```java
 @Bean
-CacheService cacheService(StringRedisTemplate redis, ObjectMapper objectMapper) {
-  return new RedisCacheService(redis, objectMapper, "catalog:cache:");
+CacheService cacheService(
+    StringRedisTemplate redis, ObjectMapper objectMapper, CacheKeyBuilder keys) {
+  return new RedisCacheService(redis, objectMapper, keys);
 }
 ```
 
 Use the application's configured `ObjectMapper` for JSON, including modules for
 date/time types. Read with the same DTO type that was stored. String values use
 Redis's native string format; objects use JSON without embedded Java type metadata.
-The namespace is prepended to every supplied key. Use a service-specific prefix for
-business caches; an empty prefix is supported for existing fully qualified keys.
+Adapters receive logical keys (for example `catalog:product:42`) and add the configured
+prefix themselves. Do not pass `keys.build(...)` to an adapter using the same prefix:
+that would apply the prefix twice. Full keys from `build(...)` are for direct Redis
+operations or adapters explicitly configured with an empty prefix. String-prefix
+constructors remain available for existing callers and preserve their literal prefix.
+Both blocking and reactive adapters accept the shared `CacheKeyBuilder`.
 
-IAM registers the default `CacheService` in `infra/config/CacheConfiguration`, with
-prefix `${vishop.cache.key-prefix:iam:cache:}`. It also registers a qualified
-`securityCache` adapter with an empty prefix for shared security keys.
 Business modules use cache through an infrastructure adapter implementing a port.
+IAM's authorization projection and gateway's authorization reader inject the same
+key builder. They keep their versioned hash/Lua protocol rather than treating
+authorization data as an ordinary string cache.
 
 Redis deployment, password, volumes and networking remain in
 [`infra/compose`](../../infra/compose). Spring Boot configures connections from each
-service's `spring.data.redis` properties. This library does not create connections
-or auto-register beans.
+service's `spring.data.redis` properties. The auto-configuration registers only
+properties and the key builder; callers still register the adapters they need.
 
 ## Reactive reads and atomic operations
 
@@ -65,15 +97,15 @@ The script must return a non-null result. On Redis Cluster, all script keys must
 share a hash slot. This Redis-specific method belongs to the infrastructure adapter,
 while `CacheService` remains independent of Redis APIs.
 
-Cache keys, invalidation and scripts are owned by each caller. No security rules live
-in this library; stateless JWT authentication does not use a security projection.
+Cache keys, invalidation and scripts are owned by each caller. Authorization rules
+remain outside this library; its versioned Lua protocol is used by IAM/gateway.
 
 ## Example for future callers
 
 ```java
-cache.put("product:" + product.id(), product, Duration.ofMinutes(5));
-Optional<ProductDto> cached = cache.get("product:" + id, ProductDto.class);
-cache.evict("product:" + id);
+cache.put("catalog:product:" + product.id(), product, Duration.ofMinutes(5));
+Optional<ProductDto> cached = cache.get("catalog:product:" + id, ProductDto.class);
+cache.evict("catalog:product:" + id);
 ```
 
 Run `./gradlew :libs:common-cache:test` for tests against embedded Redis.
