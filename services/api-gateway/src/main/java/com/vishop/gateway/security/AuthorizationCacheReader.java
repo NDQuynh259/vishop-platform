@@ -3,6 +3,8 @@ package com.vishop.gateway.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
+import io.github.coreplatform.common.domain.exception.ForbiddenException;
+import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
@@ -104,13 +106,19 @@ public class AuthorizationCacheReader {
         .retrieve()
         .onStatus(
             s -> s.value() == 404,
-            r -> Mono.error(new AuthenticationFailure(403, "access-not-active")))
+            r ->
+                Mono.error(
+                    new ForbiddenException(
+                        key.startsWith("auth:member:")
+                            ? "membership-inactive"
+                            : "access-not-active",
+                        "No active authorization state")))
         .bodyToMono(AuthorizationSnapshot.class)
         .switchIfEmpty(Mono.error(new IllegalStateException("Empty authorization projection")))
         .flatMap(
             state -> {
               if (state.expiresAt() != null && !state.expiresAt().isAfter(java.time.Instant.now()))
-                return Mono.error(new AuthenticationFailure(401, "session-expired"));
+                return Mono.error(new UnauthorizedException("session-expired", "session-expired"));
               if (!key.equals(state.key()))
                 return Mono.error(new IllegalStateException("Authorization key mismatch"));
               try {

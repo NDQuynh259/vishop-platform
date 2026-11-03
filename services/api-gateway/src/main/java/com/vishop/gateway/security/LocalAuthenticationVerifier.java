@@ -1,6 +1,9 @@
 package com.vishop.gateway.security;
 
 import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
+import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.domain.exception.ForbiddenException;
+import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
@@ -25,7 +28,7 @@ public class LocalAuthenticationVerifier {
   record VerifiedAccessToken(IamAccessTokenClaims claims, AuthorizationSnapshot userState) {}
 
   public Mono<Identity> authenticate(String credential, boolean bearer) {
-    if (!bearer) return Mono.error(new AuthenticationFailure(401, "unauthorized"));
+    if (!bearer) return Mono.error(new UnauthorizedException("unauthorized", "unauthorized"));
     return verifyAccessToken(credential).flatMap(this::resolveAuthorization);
   }
 
@@ -38,29 +41,31 @@ public class LocalAuthenticationVerifier {
                   throw new IllegalArgumentException();
                 return IamAccessTokenClaims.from(tokens.verify(credential));
               } catch (RuntimeException invalid) {
-                throw new AuthenticationFailure(401, "unauthorized");
+                throw new UnauthorizedException("unauthorized", "unauthorized");
               }
             })
         .flatMap(
             claims -> {
               String key = AuthorizationCacheKeys.user(claims.userId());
-              return cache
-                  .get(key)
+              return snapshot(key)
                   .flatMap(
-                      state ->
-                          claims.tokenVersion() > state.tokenVersion()
-                              ? cache.refresh(key)
-                              : Mono.just(state))
+                      state -> {
+                        validUserState(state);
+                        return claims.tokenVersion() > state.tokenVersion()
+                            ? checkedSnapshot(key, cache.refresh(key))
+                            : Mono.just(state);
+                      })
                   .map(
                       state -> {
+                        validUserState(state);
                         if (state.status() != AuthorizationStatus.ACTIVE)
-                          throw new AuthenticationFailure(403, "access-not-active");
+                          throw new ForbiddenException("access-not-active", "access-not-active");
                         if (state.tokenVersion() < claims.tokenVersion()) {
                           throw new IllegalStateException(
                               "Credential version is ahead of confirmed user state");
                         }
                         if (state.tokenVersion() != claims.tokenVersion())
-                          throw new AuthenticationFailure(401, "token-revoked");
+                          throw new UnauthorizedException("token-revoked", "token-revoked");
                         return new VerifiedAccessToken(claims, state);
                       });
             });
@@ -68,22 +73,20 @@ public class LocalAuthenticationVerifier {
 
   private Mono<Identity> resolveAuthorization(VerifiedAccessToken verified) {
     var claims = verified.claims();
-    active(verified.userState());
     // tokenVersion đúng chưa đủ: logout chỉ thu hồi sid, không tăng version toàn user.
     // Kiểm tra chủ sở hữu và hạn phiên trước khi đọc quyền của tenant.
-    return cache
-        .get(AuthorizationCacheKeys.session(claims.sessionId()))
+    return snapshot(AuthorizationCacheKeys.session(claims.sessionId()))
         .flatMap(
             session -> {
-              if (!AuthorizationCacheKeys.session(claims.sessionId()).equals(session.key()))
-                return Mono.error(new IllegalStateException("Cached session key mismatch"));
-              if (session.status() != AuthorizationStatus.ACTIVE
-                  || session.expiresAt() == null
-                  || !session.expiresAt().isAfter(java.time.Instant.now()))
-                return Mono.error(new AuthenticationFailure(401, "session-revoked"));
+              if (session.status() != AuthorizationStatus.ACTIVE)
+                return Mono.error(new UnauthorizedException("session-revoked", "session-revoked"));
+              if (session.expiresAt() == null)
+                return Mono.error(new IllegalStateException("Cached session expiry is missing"));
+              if (!session.expiresAt().isAfter(java.time.Instant.now()))
+                return Mono.error(new UnauthorizedException("session-expired", "session-expired"));
               if (!claims.userId().equals(session.userId())
                   || session.tokenVersion() != claims.tokenVersion())
-                return Mono.error(new AuthenticationFailure(401, "invalid-session"));
+                return Mono.error(new UnauthorizedException("invalid-session", "invalid-session"));
               return resolveTenant(verified);
             });
   }
@@ -107,36 +110,73 @@ public class LocalAuthenticationVerifier {
                   java.util.Set.of(),
                   claims.sessionId())));
     }
-    UUID role = claims.tenantRoleId();
-    // Role cùng tên ở hai tenant có thể có quyền khác nhau: cache luôn dùng tenant + roleId.
+    // Resolve the current role from membership, never from stale JWT role claims.
     return Mono.zip(
-            cache.get(AuthorizationCacheKeys.tenant(tenant)),
-            cache.get(AuthorizationCacheKeys.role(tenant, role)))
-        .map(
+            snapshot(AuthorizationCacheKeys.tenant(tenant)),
+            snapshot(AuthorizationCacheKeys.member(tenant, user)))
+        .flatMap(
             pair -> {
               active(pair.getT1());
-              var grant = pair.getT2();
-              active(grant);
+              var membership = pair.getT2();
+              if (!user.equals(membership.userId()))
+                return Mono.error(new IllegalStateException("Cached membership mismatch"));
+              if (membership.status() != AuthorizationStatus.ACTIVE)
+                return Mono.error(
+                    new ForbiddenException("membership-inactive", "Membership is not active"));
+              UUID role = membership.roleId();
+              if (role == null)
+                return Mono.error(new IllegalStateException("Membership role is missing"));
               String roleKey = AuthorizationCacheKeys.role(tenant, role);
-              if (!roleKey.equals(grant.key()) || !role.equals(grant.roleId())) {
-                throw new IllegalStateException("Cached role mismatch");
-              }
-              return new Identity(
-                  user,
-                  tenant,
-                  role,
-                  new GatewayPrincipal(
-                      user,
-                      tenant,
-                      userState.systemRole(),
-                      grant.roleKey(),
-                      grant.permissions(),
-                      claims.sessionId()));
+              return snapshot(roleKey)
+                  .map(
+                      grant -> {
+                        active(grant);
+                        if (!role.equals(grant.roleId()))
+                          throw new IllegalStateException("Cached role mismatch");
+                        if (grant.roleKey() == null || grant.roleKey().isBlank())
+                          throw new IllegalStateException("Cached role key is missing");
+                        return new Identity(
+                            user,
+                            tenant,
+                            role,
+                            new GatewayPrincipal(
+                                user,
+                                tenant,
+                                userState.systemRole(),
+                                grant.roleKey(),
+                                grant.permissions(),
+                                claims.sessionId()));
+                      });
             });
   }
 
   private void active(AuthorizationSnapshot state) {
     if (state.status() != AuthorizationStatus.ACTIVE)
-      throw new AuthenticationFailure(403, "access-not-active");
+      throw new ForbiddenException("access-not-active", "access-not-active");
+  }
+
+  private Mono<AuthorizationSnapshot> snapshot(String key) {
+    return checkedSnapshot(key, cache.get(key));
+  }
+
+  private Mono<AuthorizationSnapshot> checkedSnapshot(
+      String key, Mono<AuthorizationSnapshot> source) {
+    return source
+        .switchIfEmpty(Mono.error(new IllegalStateException("Authorization snapshot is missing")))
+        .map(
+            state -> {
+              if (!key.equals(state.key()))
+                throw new IllegalStateException("Cached authorization key mismatch");
+              return state;
+            });
+  }
+
+  private void validUserState(AuthorizationSnapshot state) {
+    // Denial tombstones may omit account details; only active accounts need a full profile.
+    if (state.status() != AuthorizationStatus.ACTIVE) return;
+    if (state.tokenVersion() < 1)
+      throw new IllegalStateException("Cached user token version is invalid");
+    if (!SystemRole.isValid(state.systemRole()))
+      throw new IllegalStateException("Cached system role is invalid");
   }
 }

@@ -1,8 +1,8 @@
 package com.vishop.iam.modules.identity.application.command.auth;
 
-import com.vishop.iam.modules.identity.application.api.IdentityApi.AuthorizationDeliveryPort;
 import com.vishop.iam.modules.identity.application.port.AuthTokens;
 import com.vishop.iam.modules.identity.domain.port.AuthSessionRepositoryPort;
+import com.vishop.iam.shared.application.port.AuthorizationDeliveryPort;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import java.util.Map;

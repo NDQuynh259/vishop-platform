@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.cache.CacheKeyBuilder;
+import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
 import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
@@ -163,7 +164,7 @@ class AuthorizationCacheReaderTest {
                 reader
                     .get(AuthorizationCacheKeys.role(UUID.randomUUID(), UUID.randomUUID()))
                     .block(Duration.ofSeconds(5)))
-        .isInstanceOf(AuthenticationFailure.class);
+        .isInstanceOf(ForbiddenException.class);
   }
 
   @Test
@@ -179,5 +180,32 @@ class AuthorizationCacheReaderTest {
     assertThat(reader.get(key).block().tokenVersion()).isEqualTo(1);
     assertThat(reader.refresh(key).block().tokenVersion()).isEqualTo(2);
     assertThat(calls.get()).isEqualTo(2);
+  }
+
+  @Test
+  void membershipAndUserHaveSeparateKeysAndIndependentRevisionsAndFreshness() {
+    UUID user = UUID.randomUUID(), tenant = UUID.randomUUID(), role = UUID.randomUUID();
+    String profile = AuthorizationCacheKeys.user(user);
+    current.set(
+        new AuthorizationSnapshot(
+            profile, "20", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 1));
+    reader.get(profile).block();
+    String member = AuthorizationCacheKeys.member(tenant, user);
+    current.set(
+        new AuthorizationSnapshot(
+            member, "2", AuthorizationStatus.ACTIVE, null, role, null, Set.of(), 0, user, null));
+    assertThat(reader.get(member).block().roleId()).isEqualTo(role);
+    String physical = "test:" + profile;
+    assertThat(redis.hasKey("test:" + member)).isTrue();
+    assertThat(redis.opsForHash().get(physical, "version")).isEqualTo("20");
+    assertThat(redis.opsForHash().get("test:" + member, "version")).isEqualTo("2");
+    redis.opsForHash().put("test:" + member, "checkedAt", "1");
+    assertThat(redis.opsForHash().keys(physical))
+        .containsExactlyInAnyOrder("payload", "version", "checkedAt");
+    iam.stop(0);
+    iam = null;
+    assertThat(reader.get(profile).block().status()).isEqualTo(AuthorizationStatus.ACTIVE);
+    assertThatThrownBy(() -> reader.get(member).block(Duration.ofSeconds(5)))
+        .isInstanceOf(RuntimeException.class);
   }
 }

@@ -11,10 +11,10 @@ lần đăng nhập tạo một `sid` mới. JWT đi cùng trạng thái phiên 
 | `JwtTokenService` trong common-security | Sinh và verify JWT bằng đúng key access/refresh; đặt `iat`, `exp`, `jti` |
 | `JwtAuthTokens` trong IAM | Quy định claims IAM, issuer, audience, token_use và thời hạn |
 | `SessionAuthenticationService` | Đối chiếu user, phiên, tokenVersion và quyền hiện tại trong DB |
-| `LocalAuthenticationVerifier` trong gateway | Verify access JWT, đối chiếu user/session/tenant/role từ Auth Redis |
+| `LocalAuthenticationVerifier` trong gateway | Verify access JWT, đối chiếu user/session/tenant/membership/role từ Auth Redis |
 | `AuthorizationProjection` | Đẩy projection đã commit trong authorization_outbox sang Redis |
 | `CacheKeyBuilder` trong common-cache | Thêm prefix ứng dụng/môi trường, dùng chung cho mọi namespace cache |
-| `AuthorizationCacheKeys` trong common-cache | Quy ước key logic user/session/tenant/role, độc lập với dữ liệu snapshot |
+| `AuthorizationCacheKeys` trong common-cache | Key riêng cho user/session/tenant/member/role |
 | `GatewayContextCodec` | Ký và kiểm tra context nội bộ, ràng buộc service đích, method, URI và thời gian |
 
 Common JWT không quy định claims nghiệp vụ và không truy cập DB/Redis.
@@ -95,7 +95,8 @@ Quyền của role yêu cầu MFA chưa được cấp qua luồng login chưa h
 
 Access chứa `sub`, `sid`, `tenantId`, `systemRole`, `tenantRoleId`, `tenantRole`,
 `tokenVersion` và metadata JWT. Refresh chứa metadata, `sub`, `sid`, `tenantId`,
-`tokenVersion`. Permissions không nhồi vào JWT.
+`tokenVersion`. Permissions không nhồi vào JWT. Từ V13 gateway lấy role hiện tại từ
+membership cache; các claim tenantRoleId/tenantRole trong JWT chỉ còn để tương thích.
 
 ## Một request nghiệp vụ qua gateway
 
@@ -106,7 +107,8 @@ flowchart TD
     V --> U[Redis user: ACTIVE và tokenVersion khớp]
     U --> S[Redis session: ACTIVE, chưa hết hạn, đúng user và version]
     S --> T{Có tenantId?}
-    T -->|Có| P[Redis tenant ACTIVE và role ACTIVE: lấy permissions mới]
+    T -->|Có| M[Redis tenant và membership ACTIVE: lấy roleId hiện tại]
+    M --> P[Redis role ACTIVE: lấy permissions mới]
     T -->|Không| N[Context identity chưa chọn tenant]
     P --> X[Ký gateway context gồm user, tenant, role, permissions, sid]
     N --> X
@@ -124,7 +126,7 @@ bảo mật; audit/subscription không phải gọi IAM cho từng request đã 
 
 Các key dưới đây do `AuthorizationCacheKeys` tạo, chưa có prefix. `CacheKeyBuilder`
 trong common-cache thêm prefix môi trường, ví dụ `vishop:dev:`. `AuthorizationSnapshot`
-chỉ chứa dữ liệu. SQL projection IAM giữ cùng định dạng key logic nên không cần migration.
+chỉ chứa dữ liệu. V13 bổ sung key membership riêng theo tenant và user.
 
 Prefix dùng chung mọi loại cache, cấu hình qua `vishop.cache.key-prefix` hoặc biến
 `CACHE_KEY_PREFIX`. IAM/gateway vẫn nhận `AUTH_CACHE_PREFIX` làm giá trị dự phòng.
@@ -132,7 +134,8 @@ Namespace và TTL của cache nghiệp vụ khác do module sở hữu quyết �
 
 | Key logic | Nội dung | TTL |
 | --- | --- | --- |
-| `auth:user:{userId}` | status, systemRole, tokenVersion | Giữ revision, kiểm tra freshness riêng |
+| `auth:user:{userId}` | status, systemRole, tokenVersion | Revision/freshness riêng của user |
+| `auth:member:{tenantId}:{userId}` | status, userId, roleId của membership | Revision/freshness riêng từng membership |
 | `auth:session:{sid}` | status, userId, tokenVersion, expiresAt | Hết hạn tuyệt đối theo refresh/session |
 | `auth:tenant:{tenantId}` | status | Giữ revision, kiểm tra freshness riêng |
 | `auth:role:{tenantId}:{roleId}` | status, roleKey, permissions | Giữ revision, kiểm tra freshness riêng |
@@ -173,13 +176,13 @@ Thiết bị khác có sid khác vẫn dùng được access/refresh. Request đ
 | Thay đổi | Hành vi |
 | --- | --- |
 | Logout | Thu hồi sid hiện tại |
-| Đổi role, khóa/xóa membership | Tăng user tokenVersion, phiên cũ phải đăng nhập lại |
+| Đổi role, khóa/xóa membership | Cập nhật membership đúng tenant, giữ phiên; inactive trả 403 |
 | Khóa/xóa tài khoản | Tăng user tokenVersion, chặn truy cập; không login khi bị khóa |
 | Đổi mật khẩu hoặc systemRole | Tăng user tokenVersion, phải đăng nhập lại |
 | Sửa permissions của role | Cập nhật role projection, dùng quyền mới, không tăng tokenVersion |
 
 Các thay đổi toàn user/tenant/role đồng bộ qua outbox; gateway có freshness check để
-giới hạn việc dùng projection cũ. Logout thành công có thêm bước chờ Redis nêu trên.
+giới hạn việc dùng projection cũ. Logout và API ghi membership có thêm bước chờ Redis sau commit.
 Các hàng `auth_sessions` hết hạn hiện chưa có job dọn tự động; TTL chỉ dọn Redis,
 không dọn PostgreSQL. Không xóa hàng phiên còn hiệu lực khi bổ sung retention.
 
@@ -193,7 +196,8 @@ không dọn PostgreSQL. Không xóa hàng phiên còn hiệu lực khi bổ sun
   Khi chưa đặt biến mới, `AUTH_CACHE_PREFIX` cũ vẫn được dùng làm giá trị dự phòng.
 - Production bắt buộc cấu hình secrets và `ALLOWED_ORIGINS`; cookies Secure,
   frontend gửi credentials. SameSite=None yêu cầu Secure và HTTPS.
-- JPA chỉ validate. Áp dụng V12 trước khi chạy bản mới; không tự migrate khi startup.
+- JPA chỉ validate. Áp dụng V13 trong đợt cutover IAM/gateway; không tự migrate khi startup.
+  Không cho gateway cũ nhận traffic với schema V13. Xem [layout và cutover](membership-cache.md).
 - JWT cũ thiếu sid không được chấp nhận; rollout issuer và gateway cùng đợt, người
   dùng đăng nhập lại. Không có chuyển đổi ngầm credential cũ sang phiên mới.
 

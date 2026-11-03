@@ -30,7 +30,7 @@ giữa các service. Phạm vi sử dụng phải tính cả JSON/cache và quy�
 | `SagaStatus` | Vòng đời của framework saga | Giữ `common-saga` |
 | `UserStatus` | IAM sở hữu vòng đời; gateway tiêu thụ trạng thái qua snapshot | `common-domain/constants` |
 | `TenantStatus` | IAM sở hữu vòng đời; gateway tiêu thụ trạng thái qua snapshot | `common-domain/constants` |
-| `MembershipStatus` | Từ vựng membership dùng trong cấp/thu hồi quyền; gateway nhận hiệu lực qua tokenVersion | `common-domain/constants` |
+| `MembershipStatus` | IAM và gateway dùng trạng thái membership theo tenant qua cache | `common-domain/constants` |
 | `InvitationStatus` | Vòng đời lời mời trong IAM | Giữ module tenant |
 | `TenantApi.Status` | Hợp đồng API giữa các module trong IAM | Giữ API của module tenant; ánh xạ với `TenantStatus` tại boundary |
 | `BillingCycle` | Subscription | Giữ module subscription |
@@ -40,9 +40,9 @@ giữa các service. Phạm vi sử dụng phải tính cả JSON/cache và quy�
 `AuthorizationStatus` là từ vựng chung của snapshot user/tenant/role/session; nó không thay thế
 `UserStatus`, `TenantStatus`, `MembershipStatus` dùng trong domain và JPA. Snapshot hiện gộp nhiều
 loại bản ghi vào cùng một trường `status`, nên vẫn cần enum projection này để đọc JSON/cache.
-Gateway không đọc membership snapshot riêng: V11 đã bỏ projection đó và giữ cơ chế thu hồi
-credential khi membership thay đổi. Vì vậy không thêm một bước kiểm tra membership vào gateway
-chỉ để tạo tham chiếu Java tới enum dùng chung.
+V13 khôi phục membership projection, lưu thành key Redis riêng theo tenant/user. Gateway kiểm tra
+membership và lấy roleId hiện tại thay vì dùng role trong JWT; thay đổi membership không
+thu hồi credential toàn user.
 `PaymentStatus` mô tả mức thanh toán của đơn (`UNPAID`, `PARTIAL`, `PAID`, `OVERPAID`), khác trạng thái
 giao dịch ngân hàng (`ALLOCATED`, `REVIEW`). Không gộp hai khái niệm này.
 

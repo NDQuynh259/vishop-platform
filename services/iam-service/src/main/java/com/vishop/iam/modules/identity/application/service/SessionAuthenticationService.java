@@ -60,7 +60,10 @@ public class SessionAuthenticationService {
     if (tenantId == null) return null;
     return tenants
         .activeGrant(userId, tenantId)
-        .orElseThrow(() -> new ForbiddenException("No active membership in the selected tenant"));
+        .orElseThrow(
+            () ->
+                new ForbiddenException(
+                    "membership-inactive", "No active membership in the selected tenant"));
   }
 
   public UUID selectAtLogin(User user, UUID requested) {
@@ -128,14 +131,15 @@ public class SessionAuthenticationService {
     }
     var identity = claims.identity();
     requireCurrent(identity);
+    var currentGrant = grant(identity.userId(), identity.tenantId());
     return resolveContext(
         new AuthenticatedUser(
             identity.userId(),
             identity.tenantId(),
             claims.systemRole().name(),
-            claims.tenantRole(),
+            currentGrant == null ? null : currentGrant.roleKey(),
             java.util.Set.of(),
             identity.sessionId()),
-        claims.tenantRoleId());
+        currentGrant == null ? null : currentGrant.roleId());
   }
 }

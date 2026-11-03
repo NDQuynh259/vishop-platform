@@ -100,6 +100,13 @@ while `CacheService` remains independent of Redis APIs.
 Cache keys, invalidation and scripts are owned by each caller. Authorization rules
 remain outside this library; its versioned Lua protocol is used by IAM/gateway.
 
+For authorization, `AuthorizationCacheKeys` defines separate user, session, tenant,
+membership and role keys. Every key is a Hash with `payload`, `version`, and `checkedAt`.
+Membership uses `auth:member:{tenantId}:{userId}`, independently of `auth:user:{userId}`.
+Session keys retain absolute TTLs; other authorization keys retain revision watermarks.
+See [membership cache V13](../../docs/core-architecture/membership-cache.md) for the
+physical layout and coordinated rollout requirements.
+
 ## Example for future callers
 
 ```java

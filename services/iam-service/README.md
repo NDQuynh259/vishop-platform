@@ -43,7 +43,9 @@ infra/.env.example. Browser writes send X-Requested-With: XMLHttpRequest and cre
 ## Migrate, run and verify
 
 Hibernate validates mappings; migrations do not run on application startup. Set
-IAM_DB_URL, IAM_DB_USER and IAM_DB_PASSWORD, then apply migrations including V12:
+IAM_DB_URL, IAM_DB_USER and IAM_DB_PASSWORD, then apply migrations including V13.
+Drain old gateway traffic during the coordinated cutover: V13 requires membership
+checks in the new gateway. See [membership cache](../../docs/core-architecture/membership-cache.md).
 
 ```powershell
 .\gradlew.bat :services:iam-service:migrateIamDb

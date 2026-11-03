@@ -15,6 +15,14 @@ public final class AuthorizationCacheKeys {
     return "auth:session:" + Objects.requireNonNull(sessionId, "sessionId");
   }
 
+  /** Membership authority is scoped to one user in one tenant. */
+  public static String member(UUID tenantId, UUID userId) {
+    return "auth:member:"
+        + Objects.requireNonNull(tenantId, "tenantId")
+        + ":"
+        + Objects.requireNonNull(userId, "userId");
+  }
+
   public static String tenant(UUID tenantId) {
     return "auth:tenant:" + Objects.requireNonNull(tenantId, "tenantId");
   }

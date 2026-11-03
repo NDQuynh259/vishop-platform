@@ -12,6 +12,8 @@ import java.util.UUID;
  * <ul>
  *   <li>User: dùng {@code status}, {@code systemRole}, {@code tokenVersion}.
  *   <li>Tenant: dùng {@code status}.
+ *   <li>Membership: member key, {@code status}, {@code roleId}, {@code userId}; stored separately
+ *       for each tenant/user pair with its own revision and freshness.
  *   <li>Role của tenant: dùng {@code status}, {@code roleId}, {@code roleKey}, {@code permissions}.
  *   <li>Session: dùng {@code status}, {@code userId}, {@code tokenVersion}, {@code expiresAt}; key
  *       có TTL theo hạn tuyệt đối của phiên, để logout riêng thiết bị.
@@ -26,7 +28,7 @@ import java.util.UUID;
  * @param version phiên bản tăng dần của dữ liệu cache tại cùng một key, giúp chặn bản cập nhật cũ
  *     ghi đè bản mới; biểu diễn bằng chuỗi số thập phân để tránh mất độ chính xác khi so sánh qua
  *     Redis Lua; không phải phiên bản token
- * @param status trạng thái của user, tenant hoặc role; gateway chỉ cho phép sử dụng khi ACTIVE
+ * @param status trạng thái user, tenant, membership, role hoặc session; chỉ ACTIVE cho phép sử dụng
  * @param systemRole quyền hệ thống của user, ví dụ USER hoặc PLATFORM_ADMIN; độc lập với role
  *     tenant
  * @param roleId ID role thuộc tenant trong key; không phải ID membership hay ID user
@@ -37,7 +39,7 @@ import java.util.UUID;
  * @param tokenVersion phiên bản thu hồi token của user; gateway đối chiếu với tokenVersion trong
  *     JWT. Tăng giá trị này làm token phiên bản cũ không còn hợp lệ, khác với version của bản ghi
  *     cache
- * @param userId chủ sở hữu session; gateway so với subject JWT để không dùng phiên của user khác
+ * @param userId user của session hoặc membership; gateway đối chiếu với subject JWT
  * @param expiresAt hạn tuyệt đối của session; không gia hạn khi refresh và không áp dụng cho key
  *     role/user/tenant
  */

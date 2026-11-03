@@ -33,7 +33,9 @@ Lỗi từ service phía sau đi tới GatewayExceptionHandler, không bị bắ
    so sánh tokenVersion. JWT mới hơn cache sẽ tải lại snapshot để xác nhận.
 3. resolveAuthorization kiểm tra user ACTIVE, rồi session ACTIVE, chưa hết hạn,
    đúng user và tokenVersion.
-4. Nếu có tenant, đọc tenant và role snapshot; kiểm tra ACTIVE và đúng role thuộc tenant.
+4. Nếu có tenant, đọc tenant và membership hiện tại; cả hai phải ACTIVE. Lấy roleId từ
+   membership rồi đọc role snapshot, kiểm tra ACTIVE và đúng role thuộc tenant. Role claims
+   trong JWT chỉ được giữ để tương thích, không quyết định quyền hiện tại.
 5. Tạo GatewayPrincipal với permissions hiện tại và sid; ký context gửi service đích.
 6. Service kiểm tra chữ ký context, permission, tenant scope và điều kiện nghiệp vụ.
    IAM đối chiếu thêm user/session/membership/quyền trong DB của mình.
@@ -43,6 +45,7 @@ Lỗi từ service phía sau đi tới GatewayExceptionHandler, không bị bắ
 | Key logic | Dữ liệu |
 | --- | --- |
 | auth:user:{userId} | status, systemRole, tokenVersion |
+| auth:member:{tenantId}:{userId} | status, userId, roleId của membership |
 | auth:session:{sid} | status, userId, tokenVersion, expiresAt |
 | auth:tenant:{tenantId} | status |
 | auth:role:{tenantId}:{roleId} | status, roleKey, permissions |
@@ -55,6 +58,10 @@ Session có TTL tuyệt đối theo hạn
 refresh. User/tenant/role giữ revision và dùng freshness riêng; không xóa revision
 sớm để tránh relay cũ ghi đè trạng thái mới.
 
+Mỗi key là Redis Hash riêng, có `payload`, `version`, `checkedAt` độc lập.
+Membership không được gộp vào Hash user.
+Xem [thiết kế cache membership V13](membership-cache.md) cho layout và cách triển khai.
+
 Cache miss/quá freshness gọi GET /internal/authorization của IAM với context kỹ
 thuật được ký. Projection trong authorization_outbox là nguồn tải lại sau khi cache
 mất. Lua ghi theo revision; lỗi cache/loader chặn truy cập. Gateway không đọc IAM DB.
@@ -64,7 +71,8 @@ mất. Lua ghi theo revision; lỗi cache/loader chặn truy cập. Gateway khô
 IAM commit thu hồi sid và projection trước, rồi đẩy REVOKED sang Redis đồng bộ.
 Chỉ trả 204 sau Redis xác nhận. Lỗi sau commit trả 503; retry logout sẽ phát lại
 projection mà không nhân event. Thiết bị có sid khác vẫn hoạt động. Các thay đổi
-user/tenant/role khác dùng outbox và freshness; xem tài liệu chính sách.
+membership qua API cũng chờ Redis sau commit; retry deactivate không nhân event.
+Các thay đổi user/tenant/role khác dùng outbox và freshness; xem tài liệu chính sách.
 
 Downstream audit/subscription không gọi IAM cho mỗi request đã có context hợp lệ.
 Các service được bảo vệ ở network và vẫn kiểm tra quyền/tenant tại endpoint/use case.

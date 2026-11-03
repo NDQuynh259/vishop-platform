@@ -1,7 +1,7 @@
 package com.vishop.iam.infra.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vishop.iam.modules.identity.application.api.IdentityApi.AuthorizationDeliveryPort;
+import com.vishop.iam.shared.application.port.AuthorizationDeliveryPort;
 import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
@@ -13,6 +13,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** DB là nguồn sự thật. Redis chỉ nhận snapshot đã commit, theo revision tăng dần từng key. */
@@ -68,13 +69,23 @@ public class AuthorizationProjection implements AuthorizationDeliveryPort {
   @Override
   @Transactional
   public void deliverSession(UUID sessionId) {
+    deliver(AuthorizationCacheKeys.session(sessionId));
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void deliverMembership(UUID tenantId, UUID userId) {
+    deliver(AuthorizationCacheKeys.member(tenantId, userId));
+  }
+
+  private void deliver(String key) {
     try {
       var rows =
           db.createNativeQuery(
                   "SELECT payload::text FROM authorization_outbox WHERE state_key=:key FOR UPDATE")
-              .setParameter("key", AuthorizationCacheKeys.session(sessionId))
+              .setParameter("key", key)
               .getResultList();
-      if (rows.isEmpty()) throw new IllegalStateException("Missing session projection");
+      if (rows.isEmpty()) throw new IllegalStateException("Missing authorization projection");
       write(decode((String) rows.getFirst()));
     } catch (RuntimeException failure) {
       throw new AuthorizationDeliveryPort.Unavailable(failure);
@@ -91,7 +102,8 @@ public class AuthorizationProjection implements AuthorizationDeliveryPort {
               state.version(),
               json.writeValueAsString(state),
               state.expiresAt() == null ? "" : Long.toString(state.expiresAt().getEpochSecond()));
-      if (accepted == null) throw new IllegalStateException("No Redis acknowledgement");
+      if (!Long.valueOf(1).equals(accepted))
+        throw new IllegalStateException("No Redis acknowledgement");
       db.createNativeQuery("UPDATE authorization_outbox SET pending=false WHERE state_key=:key")
           .setParameter("key", state.key())
           .executeUpdate();

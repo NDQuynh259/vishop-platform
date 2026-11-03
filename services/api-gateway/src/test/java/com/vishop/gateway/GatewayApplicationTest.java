@@ -157,13 +157,17 @@ class GatewayApplicationTest {
                       "1",
                       AuthorizationStatus.ACTIVE,
                       "PLATFORM_ADMIN",
-                      key.startsWith("auth:role:")
-                          ? java.util.UUID.fromString(key.substring(key.lastIndexOf(':') + 1))
-                          : null,
+                      key.startsWith("auth:member:")
+                          ? java.util.UUID.nameUUIDFromBytes(
+                              (key.split(":")[2] + ":OWNER")
+                                  .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                          : key.startsWith("auth:role:")
+                              ? java.util.UUID.fromString(key.substring(key.lastIndexOf(':') + 1))
+                              : null,
                       "OWNER",
                       java.util.Set.of("audit_log.view"),
                       1,
-                      key.startsWith("auth:session:")
+                      (key.startsWith("auth:session:") || key.startsWith("auth:member:"))
                           ? java.util.UUID.fromString(key.substring(key.lastIndexOf(':') + 1))
                           : null,
                       key.startsWith("auth:session:")

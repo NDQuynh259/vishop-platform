@@ -6,7 +6,7 @@ phiên trong PostgreSQL/Redis. Xem [luồng auth](authentication-flow.md).
 | Thay đổi | Hành vi |
 | --- | --- |
 | Logout | Thu hồi sid hiện tại; phiên khác vẫn hoạt động |
-| Đổi role, khóa/xóa membership | Tăng tokenVersion toàn user, phải đăng nhập lại |
+| Đổi role, khóa/xóa membership | Cập nhật key membership của đúng tenant, giữ phiên và tokenVersion |
 | Khóa/xóa tài khoản | Tăng tokenVersion, chặn truy cập và đăng nhập |
 | Đổi mật khẩu hoặc systemRole | Tăng tokenVersion, phải đăng nhập lại |
 | Sửa permissions của role | Đẩy role projection mới, không đăng xuất |
@@ -27,12 +27,25 @@ Nguồn thật là users.token_version. Access và refresh đều chứa version
 Session giữ bản chụp version lúc tạo; refresh không thay version để cứu phiên cũ.
 
 Trigger tăng version cùng transaction khi đổi password/status/systemRole/deletedAt
-của user hoặc đổi role/status/xóa membership. Gateway so với user projection;
+của user. Gateway so với user projection;
 IAM refresh/verifyAccessToken so với DB. Mở khóa không khôi phục credential cũ.
 Profile và lastTenantId không tăng tokenVersion.
 
-Một user version dùng chung mọi tenant và thiết bị; thay đổi membership ở một
-tenant sẽ yêu cầu đăng nhập lại trên các phiên khác của user đó.
+Một user version dùng chung mọi tenant và thiết bị. Từ V13, thay đổi membership
+không tăng version này: inactive tenant A không làm mất quyền tại tenant B.
+
+## Quyền theo membership
+
+Redis lưu `auth:user:{userId}` và `auth:member:{tenantId}:{userId}` thành hai Hash riêng,
+mỗi key có payload, revision và freshness độc lập.
+Gateway lấy roleId từ membership hiện tại, sau đó đọc permissions từ role cache.
+Membership inactive/đã xóa trả 403 `membership-inactive`. Session vẫn có thể refresh
+vào tenant khác còn active; không cần đăng nhập lại. Kích hoạt lại membership có thể
+cho token còn hạn truy cập lại theo quyền hiện tại; không có membershipVersion trong JWT.
+
+API đổi role/deactivate/ghi membership chờ Redis sau commit. Redis lỗi trả 503,
+DB/outbox vẫn giữ thay đổi để retry. Retry deactivate không tạo thêm MemberDeactivated.
+Thay đổi DB trực tiếp vẫn qua relay nền và giới hạn freshness.
 
 ## Cập nhật quyền role
 
@@ -46,9 +59,11 @@ với tokenVersion thu hồi credential và version optimistic lock của auth_s
 
 ## Độ trễ và triển khai
 
-Logout 204 chờ Redis xác nhận. Những thay đổi khác đồng bộ qua authorization_outbox
+Logout và API ghi membership chờ Redis xác nhận. Những thay đổi khác đồng bộ qua authorization_outbox
 và giới hạn freshness của gateway; không hứa mọi thay đổi có hiệu lực tức thời trên
 request đang chạy. Cache/loader lỗi thì chặn request.
 
-V12 thêm session và projection/trigger; migrate trước khi chạy bản mới. JWT cũ
+V12 thêm session và projection/trigger. V13 thêm membership projection và bỏ trigger
+thu hồi toàn user khi membership thay đổi. Không chạy lẫn gateway cũ với schema V13;
+xem [thứ tự cutover](membership-cache.md). JWT cũ
 không có sid bị từ chối. Chưa có job dọn các hàng auth_sessions hết hạn trong DB.

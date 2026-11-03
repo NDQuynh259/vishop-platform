@@ -1,6 +1,6 @@
 # Database và luồng auth đi qua từng hàm
 
-Đối chiếu mã nguồn ngày 30/10/2026, IAM migration **V1–V12**, Subscription **V1–V2**, Audit **V1–V2**. Đây là sơ đồ theo source code và migration, không phải introspection database đang chạy. Các sơ đồ dùng Mermaid; cột được chọn lọc để dễ đọc, SQL migration giữ định nghĩa đầy đủ.
+Đối chiếu mã nguồn và IAM migration **V1–V13**, Subscription **V1–V2**, Audit **V1–V2**. Đây là sơ đồ theo source code và migration, không phải introspection database đang chạy. Các sơ đồ dùng Mermaid; cột được chọn lọc để dễ đọc, SQL migration giữ định nghĩa đầy đủ.
 
 Runtime hiện tại: **gateway verify access JWT → đọc trạng thái/quyền trong Auth Redis → ký context cho service**. IAM kiểm tra lại dữ liệu bảo mật trong DB; Audit/Subscription xác minh context và phân quyền tại chỗ. Tài liệu này mô tả code hiện tại.
 
@@ -30,7 +30,7 @@ Gateway không có database riêng. PostgreSQL tách theo service; `tenant_id`/`
 | `vishop_billing` | `subscription_plans`, `subscription_prices`, `subscriptions`, `subscription_orders`, `subscription_terms`, `payment_transactions`, `payment_allocations`, `sepay_webhook_inbox`, `outbox_events` |
 | `vishop_audit` | `audit_logs`, `consumed_messages` |
 
-Lịch sử cần phân biệt: `sessions` và `security_states` cũ bị xóa tại V4; V12 tạo **`auth_sessions` mới** để thu hồi phiên theo `sid`. V11 bỏ projection `auth:member:*`, nhưng **không xóa** bảng `tenant_members` hoặc trigger thu hồi token khi membership thay đổi.
+Lịch sử cần phân biệt: `sessions` và `security_states` cũ bị xóa tại V4; V12 tạo **`auth_sessions` mới** để thu hồi phiên theo `sid`. V11 bỏ projection `auth:member:*`; V13 khôi phục member projection thành key Redis riêng và bỏ trigger thu hồi toàn user khi membership thay đổi.
 
 ## 2. ERD IAM: user, phiên và quyền tenant
 
@@ -437,9 +437,11 @@ sequenceDiagram
     V->>R: resolveAuthorization → get(auth:session:sid)
     V->>V: Kiểm tra status, expiresAt, userId và tokenVersion của session
     opt JWT có tenantId
-        V->>R: resolveTenant → get(tenantKey) và get(roleKey)
-        R->>Cache: Đọc tenant và role theo tenantId + tenantRoleId trong JWT
-        V->>V: active tenant/role, kiểm tra role key/id, lấy permissions hiện hành
+        V->>R: resolveTenant → get(tenantKey) và get(memberKey)
+        R->>Cache: Đọc key tenant và key membership riêng theo tenant/user
+        V->>V: active tenant/membership, lấy roleId hiện tại
+        V->>R: get(roleKey) theo roleId của membership
+        V->>V: active role, kiểm tra role key/id, lấy permissions hiện hành
     end
     V-->>G: Identity + GatewayPrincipal có sid
     G->>G: forwardWithContext → signContext → targetService
@@ -449,7 +451,7 @@ sequenceDiagram
     B-->>C: Response qua gateway
 ```
 
-`roleId` lấy từ claim **`tenantRoleId`**, không tra member key trong Redis. Khi membership đổi, V10 tăng `users.token_version` để access/refresh cũ bị thu hồi. Permissions lấy từ role snapshot, không lấy từ JWT.
+`roleId` lấy từ **membership hiện tại** trong key `auth:member:{tenantId}:{userId}`. V13 không tăng `users.token_version` khi membership đổi; tenant khác và session vẫn hoạt động. Permissions lấy từ role snapshot, không lấy từ JWT. Chi tiết tại [membership cache V13](membership-cache.md).
 
 Cache thiếu/quá hạn áp dụng cho từng key qua chuỗi:
 
@@ -531,8 +533,8 @@ Nếu không tìm thấy phiên thuộc user thì không có phiên để delive
 ```mermaid
 flowchart TD
     A[Thay đổi user, tenant, role, permission hoặc session] --> B[Trigger trong PostgreSQL]
-    M[Membership UPDATE hoặc DELETE] --> N[iam_membership_token_version - tăng users.token_version]
-    N --> B
+    M[Membership INSERT, UPDATE hoặc DELETE] --> N[iam_membership_authorization_changed]
+    N --> D
     B --> C[iam_authorization_changed → iam_authorization_refresh]
     B --> S[iam_session_changed cho auth_sessions]
     C --> D[(authorization_outbox: version tăng, pending true)]
@@ -547,16 +549,17 @@ flowchart TD
     R --> K[pending false sau acknowledgement]
 ```
 
-Trigger user tăng tokenVersion khi password/status/systemRole/deleted_at đổi. Membership đổi role/status/identity/deleted_at hoặc bị xóa tăng tokenVersion toàn user. Role permission edit chỉ cập nhật role snapshot. Các nhánh trigger trong sơ đồ tùy loại bảng, không phải mọi thay đổi đều gọi cả hai hàm projection.
+Trigger user tăng tokenVersion khi password/status/systemRole/deleted_at đổi. Membership đổi role/status/identity/deleted_at hoặc bị xóa cập nhật revision của chính membership đó. API ghi membership chờ delivery sau commit; direct SQL dùng relay. Role permission edit chỉ cập nhật role snapshot. Các nhánh trigger tùy loại bảng, không phải mọi thay đổi đều gọi tất cả hàm projection.
 
 | Redis logical key, thêm prefix môi trường | Nội dung |
 | --- | --- |
 | `auth:user:{userId}` | status, systemRole, tokenVersion |
+| `auth:member:{tenantId}:{userId}` | status, userId, roleId của membership |
 | `auth:session:{sid}` | status, userId, tokenVersion, expiresAt; TTL theo deadline phiên |
 | `auth:tenant:{tenantId}` | status |
 | `auth:role:{tenantId}:{roleId}` | status, roleId, roleKey, permissions |
 
-User/tenant/role giữ watermark revision không TTL; freshness mặc định 30 giây. Session TTL tuyệt đối không trượt khi refresh/relay. `authorization_outbox.version` khác `users.token_version` và khác optimistic-lock `version` của entity. Relay chỉ xử lý dữ liệu đã commit; Lua ngăn revision cũ ghi đè mới. Đồng bộ thay đổi quyền là bất đồng bộ; request đang chạy không bị hủy giữa chừng.
+Profile/membership/tenant/role giữ watermark revision không TTL; freshness riêng mặc định 30 giây. Session TTL tuyệt đối không trượt khi refresh/relay. `authorization_outbox.version` khác `users.token_version` và khác optimistic-lock `version` của entity. Relay chỉ xử lý dữ liệu đã commit; Lua ngăn revision cũ ghi đè mới. API ghi membership chờ Redis sau commit; các thay đổi khác có relay nền. Request đang chạy không bị hủy giữa chừng.
 
 ## 12. Cookie, token và nhánh lỗi
 

@@ -62,6 +62,8 @@ public class DeactivateMemberCommandHandler
         roleRepository.role(tenant, member.roleId()).builtinKey(),
         MembershipStatus.INACTIVE);
     membershipRepository.updateMembership(user, tenant, member.roleId(), MembershipStatus.INACTIVE);
+    // Retry after failed cache delivery without duplicating the event.
+    if (member.status() == MembershipStatus.INACTIVE) return null;
     outbox.append(
         "MemberDeactivated",
         "Tenant",

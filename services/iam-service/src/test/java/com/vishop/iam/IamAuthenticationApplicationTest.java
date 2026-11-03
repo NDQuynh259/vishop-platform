@@ -423,7 +423,7 @@ class IamAuthenticationApplicationTest {
   void retryAfterCacheFailureDoesNotDuplicateLogoutAudit() throws Exception {
     var c = register("retry-logout@example.com");
     org.mockito.Mockito.doThrow(
-            new IdentityApi.AuthorizationDeliveryPort.Unavailable(
+            new com.vishop.iam.shared.application.port.AuthorizationDeliveryPort.Unavailable(
                 new RuntimeException("Redis down")))
         .doCallRealMethod()
         .when(projection)
@@ -490,7 +490,7 @@ class IamAuthenticationApplicationTest {
         "UPDATE tenant_members SET status='INACTIVE' WHERE user_id=? AND tenant_id=?",
         selected.userId(),
         tenant);
-    http.perform(refresh(selected)).andExpect(status().isUnauthorized());
+    http.perform(refresh(selected)).andExpect(status().isForbidden());
   }
 
   @Test
@@ -508,6 +508,105 @@ class IamAuthenticationApplicationTest {
     http.perform(get("/api/v1/tenants").header("Authorization", "Bearer " + a.access()))
         .andExpect(status().isUnauthorized());
     http.perform(protectedRequest(a, "GET", "/api/v1/cms/users")).andExpect(status().isForbidden());
+  }
+
+  @Test
+  void deactivatingMembershipPreservesTheOtherDevicesTenantAndSessions() throws Exception {
+    var managerIdentity = register("membership-manager@example.com");
+    UUID first = tenant(managerIdentity, "member-first");
+    var manager = select(managerIdentity, first);
+    var user = register("two-devices@example.com");
+    UUID second = tenant(user, "member-second");
+    UUID firstRole =
+        db.queryForObject(
+            "SELECT id FROM roles WHERE tenant_id=? AND builtin_key='WAREHOUSE'",
+            UUID.class,
+            first);
+    db.update(
+        "INSERT INTO tenant_members(id,tenant_id,user_id,role_id) VALUES (?,?,?,?)",
+        UUID.randomUUID(),
+        first,
+        user.userId(),
+        firstRole);
+    var firstDevice = select(user, first);
+    var secondDevice = select(login("two-devices@example.com"), second);
+    assertThat(sid(firstDevice)).isNotEqualTo(sid(secondDevice));
+    String path = "/api/v1/tenants/" + first + "/members/" + user.userId();
+
+    http.perform(protectedRequest(manager, "DELETE", path)).andExpect(status().isNoContent());
+
+    assertThat(
+            db.queryForObject(
+                "SELECT token_version FROM users WHERE id=?", Long.class, user.userId()))
+        .isEqualTo(1L);
+    assertThatThrownBy(() -> identity.verifyAccessToken(firstDevice.access()))
+        .isInstanceOf(io.github.coreplatform.common.domain.exception.ForbiddenException.class);
+    assertThat(identity.verifyAccessToken(secondDevice.access()).tenantId()).isEqualTo(second);
+    http.perform(refresh(firstDevice)).andExpect(status().isForbidden());
+    http.perform(refresh(secondDevice)).andExpect(status().isOk());
+    // A live identity session can switch away from the inactive tenant without logging in again.
+    select(firstDevice, second);
+    String firstKey = "iam-test:cache:" + AuthorizationCacheKeys.member(first, user.userId());
+    String secondKey = "iam-test:cache:" + AuthorizationCacheKeys.member(second, user.userId());
+    assertThat(redis.<String, String>opsForHash().get(firstKey, "payload")).contains("INACTIVE");
+    assertThat(redis.<String, String>opsForHash().get(secondKey, "payload")).contains("ACTIVE");
+    assertThat(
+            redis.hasKey("iam-test:cache:" + AuthorizationCacheKeys.member(first, user.userId())))
+        .isTrue();
+  }
+
+  @Test
+  void membershipCacheDeliveryFailureCanBeRetriedWithoutDuplicateAudit() throws Exception {
+    var managerIdentity = register("retry-member-manager@example.com");
+    UUID tenant = tenant(managerIdentity, "retry-member");
+    var manager = select(managerIdentity, tenant);
+    var member = register("retry-member@example.com");
+    UUID role =
+        db.queryForObject(
+            "SELECT id FROM roles WHERE tenant_id=? AND builtin_key='WAREHOUSE'",
+            UUID.class,
+            tenant);
+    db.update(
+        "INSERT INTO tenant_members(id,tenant_id,user_id,role_id) VALUES (?,?,?,?)",
+        UUID.randomUUID(),
+        tenant,
+        member.userId(),
+        role);
+    org.mockito.Mockito.doThrow(
+            new com.vishop.iam.shared.application.port.AuthorizationDeliveryPort.Unavailable(
+                new RuntimeException("Redis down")))
+        .doCallRealMethod()
+        .when(projection)
+        .deliverMembership(tenant, member.userId());
+    String path = "/api/v1/tenants/" + tenant + "/members/" + member.userId();
+
+    http.perform(protectedRequest(manager, "DELETE", path))
+        .andExpect(status().isServiceUnavailable());
+    assertThat(
+            db.queryForObject(
+                "SELECT status FROM tenant_members WHERE tenant_id=? AND user_id=?",
+                String.class,
+                tenant,
+                member.userId()))
+        .isEqualTo("INACTIVE");
+    assertThat(
+            db.queryForObject(
+                "SELECT pending FROM authorization_outbox WHERE state_key=?",
+                Boolean.class,
+                AuthorizationCacheKeys.member(tenant, member.userId())))
+        .isTrue();
+    http.perform(protectedRequest(manager, "DELETE", path)).andExpect(status().isNoContent());
+    assertThat(
+            db.queryForObject(
+                "SELECT count(*) FROM outbox_events WHERE event_type='MemberDeactivated'",
+                Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            db.queryForObject(
+                "SELECT pending FROM authorization_outbox WHERE state_key=?",
+                Boolean.class,
+                AuthorizationCacheKeys.member(tenant, member.userId())))
+        .isFalse();
   }
 
   @Test
@@ -559,7 +658,7 @@ class IamAuthenticationApplicationTest {
   }
 
   @Test
-  void customRoleCreationEditingAndAssignmentUseCurrentPermissionsAndRevokeOldCredentials()
+  void customRoleEditsAndAssignmentsUseCurrentPermissionsWithoutRevokingSessions()
       throws Exception {
     var ownerIdentity = register("role-owner@example.com");
     UUID tenant = tenant(ownerIdentity, "custom-role-flow");
@@ -609,8 +708,10 @@ class IamAuthenticationApplicationTest {
                     "/api/v1/tenants/" + tenant + "/members/" + member.userId() + "/role"),
                 Map.of("roleId", nextRole)))
         .andExpect(status().isNoContent());
-    http.perform(refresh(member)).andExpect(status().isUnauthorized());
-    http.perform(protectedRequest(member, "GET", rolesPath)).andExpect(status().isUnauthorized());
+    var updated = credentials(http.perform(refresh(member)).andExpect(status().isOk()).andReturn());
+    http.perform(protectedRequest(updated, "GET", rolesPath)).andExpect(status().isForbidden());
+    assertThat(identity.verifyAccessToken(member.access()).permissions())
+        .containsExactly("tenant.view");
     var loggedIn = login("sales@example.com");
     assertThat(jwt.verifyAccessToken(loggedIn.access()).get("tenantRoleId", String.class))
         .isEqualTo(nextRole.toString());

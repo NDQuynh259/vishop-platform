@@ -6,16 +6,6 @@ import java.util.UUID;
 
 /** Public in-process identity contract; implementation and persistence stay inside this module. */
 public interface IdentityApi {
-  interface AuthorizationDeliveryPort {
-    void deliverSession(UUID sessionId);
-
-    class Unavailable extends RuntimeException {
-      public Unavailable(Throwable cause) {
-        super("Authorization cache is unavailable", cause);
-      }
-    }
-  }
-
   record TenantGrant(UUID roleId, String roleKey, java.util.Set<String> permissions) {
     public TenantGrant {
       permissions = java.util.Set.copyOf(permissions);

@@ -5,13 +5,14 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.vishop.gateway.handler.AuthenticationErrorResponse;
-import com.vishop.gateway.security.AuthenticationFailure;
 import com.vishop.gateway.security.GatewayContextSigners;
 import com.vishop.gateway.security.GatewayRequestForwarder;
 import com.vishop.gateway.security.GatewayRequestPolicy;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
 import com.vishop.gateway.security.LocalAuthenticationVerifier.Identity;
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.domain.exception.ForbiddenException;
+import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
 import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
@@ -65,7 +66,7 @@ class AuthenticationGlobalFilterTest {
                 user, tenant, "USER", "OWNER", Set.of("tenant.view"), session));
     when(chain.filter(any())).thenReturn(Mono.empty());
     when(authentication.authenticate(anyString(), anyBoolean()))
-        .thenReturn(Mono.error(new AuthenticationFailure(401, "unauthorized")));
+        .thenReturn(Mono.error(new UnauthorizedException("unauthorized", "unauthorized")));
     when(authentication.authenticate("valid-token", true)).thenReturn(Mono.just(identity));
   }
 
@@ -73,6 +74,27 @@ class AuthenticationGlobalFilterTest {
     var exchange = MockServerWebExchange.from(request);
     StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
     return exchange;
+  }
+
+  @ParameterizedTest
+  @CsvSource({"401, token-revoked", "403, access-not-active"})
+  void commonExceptionsPreserveAuthenticationStatusAndCode(int status, String code) {
+    RuntimeException failure =
+        status == 401
+            ? new UnauthorizedException(code, "Credential rejected")
+            : new ForbiddenException(code, "Access denied");
+    when(authentication.authenticate("rejected-token", true)).thenReturn(Mono.error(failure));
+
+    var exchange =
+        run(
+            MockServerHttpRequest.get("/api/v1/tenants")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer rejected-token")
+                .build());
+
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.valueOf(status));
+    assertThat(exchange.getResponse().getBodyAsString().block())
+        .contains("\"type\":\"/errors/" + code + "\"");
+    verify(chain, never()).filter(any());
   }
 
   private ServerWebExchange forwarded() {

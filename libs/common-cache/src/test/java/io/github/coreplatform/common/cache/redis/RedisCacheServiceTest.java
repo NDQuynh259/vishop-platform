@@ -233,12 +233,14 @@ class RedisCacheServiceTest {
   void sharedBuilderAppliesOnePrefixForBlockingAndReactiveAdapters() {
     var keys = new io.github.coreplatform.common.cache.CacheKeyBuilder("shared:dev:");
     var writer = new RedisCacheService(redis, json, keys);
-    var reactive = new ReactiveRedisCacheReader(new ReactiveStringRedisTemplate(connection), json, keys);
+    var reactive =
+        new ReactiveRedisCacheReader(new ReactiveStringRedisTemplate(connection), json, keys);
     writer.put("catalog:product:42", "Tea", Duration.ofMinutes(1));
     assertThat(redis.opsForValue().get("shared:dev:catalog:product:42")).isEqualTo("Tea");
     assertThat(redis.hasKey("shared:dev:shared:dev:catalog:product:42")).isFalse();
     StepVerifier.create(reactive.get("catalog:product:42", String.class))
-        .expectNext("Tea").verifyComplete();
+        .expectNext("Tea")
+        .verifyComplete();
   }
 
   @Test
@@ -285,5 +287,28 @@ class RedisCacheServiceTest {
     assertThat(redis.execute(read, List.of(key), "30")).isNull();
     assertThat(redis.execute(write, List.of(key), "9007199254740993", "new")).isEqualTo(1L);
     assertThat(redis.execute(read, List.of(key), "30")).isEqualTo("new");
+  }
+
+  @Test
+  void separateUserAndMembershipKeysHaveIndependentRevisionsAndFreshness() {
+    var write = new DefaultRedisScript<Long>(VersionedAuthorizationCache.WRITE, Long.class);
+    var read = new DefaultRedisScript<String>(VersionedAuthorizationCache.READ, String.class);
+    String user = "test:auth:user:u",
+        first = "test:auth:member:a:u",
+        second = "test:auth:member:b:u";
+    redis.execute(write, List.of(user), "20", "profile");
+    redis.execute(write, List.of(first), "7", "active-a");
+    redis.execute(write, List.of(second), "2", "active-b");
+    redis.opsForHash().put(first, "checkedAt", "1");
+    assertThat(redis.execute(read, List.of(first), "30")).isNull();
+    assertThat(redis.execute(read, List.of(user), "30")).isEqualTo("profile");
+    assertThat(redis.execute(read, List.of(second), "30")).isEqualTo("active-b");
+    assertThat(redis.execute(write, List.of(first), "6", "stale-a")).isZero();
+    assertThat(redis.execute(read, List.of(first), "30")).isNull();
+    redis.execute(write, List.of(first), "8", "inactive-a");
+    assertThat(redis.execute(read, List.of(first), "30")).isEqualTo("inactive-a");
+    assertThat(redis.execute(read, List.of(second), "30")).isEqualTo("active-b");
+    assertThat(redis.getExpire(first)).isEqualTo(-1L);
+    assertThat(redis.opsForHash().get(user, "version")).isEqualTo("20");
   }
 }

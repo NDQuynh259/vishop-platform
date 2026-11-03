@@ -91,7 +91,7 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         else error(response, 401, "invalid_authentication");
         return;
       } catch (ForbiddenException denied) {
-        error(response, 403, "access_not_active");
+        error(response, 403, denied.getCode());
         return;
       } catch (RuntimeException unavailable) {
         error(response, 503, "authentication_unavailable");
