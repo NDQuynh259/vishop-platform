@@ -17,14 +17,15 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, 
   List<OutboxEventEntity> lockPendingEvents();
 
   // #region findPendingEvents
-  @Query("SELECT e FROM OutboxEventEntity e WHERE e.status = 'PENDING' ORDER BY e.occurredAt ASC")
+  @Query(
+      "SELECT e FROM OutboxEventEntity e WHERE e.status = io.github.coreplatform.common.persistence.OutboxStatus.PENDING ORDER BY e.occurredAt ASC")
   List<OutboxEventEntity> findPendingEvents(Pageable pageable);
 
   // #endregion
 
   // #region findPendingEventsByTenant
   @Query(
-      "SELECT e FROM OutboxEventEntity e WHERE e.status = 'PENDING' AND e.tenantId = :tenantId ORDER BY e.occurredAt ASC")
+      "SELECT e FROM OutboxEventEntity e WHERE e.status = io.github.coreplatform.common.persistence.OutboxStatus.PENDING AND e.tenantId = :tenantId ORDER BY e.occurredAt ASC")
   List<OutboxEventEntity> findPendingEventsByTenant(
       @Param("tenantId") UUID tenantId, Pageable pageable);
   // #endregion

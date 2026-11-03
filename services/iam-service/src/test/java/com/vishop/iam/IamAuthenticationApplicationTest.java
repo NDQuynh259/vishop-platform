@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.infra.authorization.AuthorizationProjection;
 import com.vishop.iam.modules.identity.application.api.IdentityApi;
+import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.gateway.*;
@@ -34,8 +35,10 @@ import redis.embedded.RedisServer;
 @SpringBootTest(
     properties = {
       "vishop.cache.key-prefix=iam-test:cache:",
-      "vishop.outbox.enabled=false", "vishop.security.authorization.initial-delay-ms=600000",
-      "vishop.security.authorization.eager-publish=false", "management.tracing.enabled=false",
+      "vishop.outbox.enabled=false",
+      "vishop.security.authorization.initial-delay-ms=600000",
+      "vishop.security.authorization.eager-publish=false",
+      "management.tracing.enabled=false",
       "vishop.security.cookies.secure=true"
     })
 @AutoConfigureMockMvc

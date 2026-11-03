@@ -2,6 +2,7 @@ package com.vishop.iam.modules.identity.infrastructure.persistence.entities;
 
 import com.vishop.iam.modules.identity.domain.entity.User;
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.domain.constants.UserStatus;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
@@ -33,8 +34,9 @@ public class UserJpaEntity {
   @Column(name = "system_role", nullable = false, length = 30)
   private SystemRole systemRole;
 
+  @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 30)
-  private String status;
+  private UserStatus status;
 
   @Column(name = "last_tenant_id")
   private UUID lastTenantId;
@@ -74,7 +76,7 @@ public class UserJpaEntity {
     entity.email = email;
     entity.passwordHash = hash;
     entity.systemRole = SystemRole.USER;
-    entity.status = "ACTIVE";
+    entity.status = UserStatus.ACTIVE;
     return entity;
   }
 

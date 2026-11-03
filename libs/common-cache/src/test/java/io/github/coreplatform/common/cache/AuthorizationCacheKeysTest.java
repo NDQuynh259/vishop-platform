@@ -1,4 +1,4 @@
-package io.github.coreplatform.common.security.gateway;
+package io.github.coreplatform.common.cache;
 
 import static org.assertj.core.api.Assertions.*;
 

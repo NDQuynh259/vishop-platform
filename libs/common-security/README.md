@@ -64,7 +64,7 @@ với nghiệp vụ và không tự đọc DB. Xem [luồng auth](../../docs/cor
 
 ## Principal và filter
 
-`gateway/AuthorizationCacheKeys` owns logical authorization key formats. Snapshot
+`AuthorizationCacheKeys` in common-cache owns logical authorization key formats. Snapshot
 records only hold data; they do not build keys. The application injects the generic
 `CacheKeyBuilder` from common-cache to add `vishop.cache.key-prefix` before Redis
 reads/writes. Other business caches define their own namespaces and TTLs.
@@ -76,3 +76,10 @@ Nếu dùng filter JWT tổng quát `InternalHeaderAuthFilter`, service phải c
 `JwtAuthenticationConverter` để kiểm tra claims và tạo `Authentication`. Thư viện
 không tự suy ra quyền từ các claim cố định của IAM. Khi không có converter, cấu hình
 mặc định không cài filter JWT và không tự xác thực request được bảo vệ.
+
+## Enum ownership
+
+- Shared identity and authorization domain types (`SystemRole`, `UserStatus`, `TenantStatus`, `MembershipStatus`) belong in `common-domain/constants`. Include consumption through JSON/cache when assessing shared use.
+- Service-local lifecycle enums such as `InvitationStatus` and `OrderStatus` belong in the owning module under `domain/valueobject`.
+- `gateway/AuthorizationStatus` belongs in `common-security` because it is part of the IAM/gateway authorization snapshot contract. `AuthorizationSnapshot.status` uses this enum; JSON still contains the existing uppercase strings from the IAM outbox.
+- The projection accepts `ACTIVE`, `INACTIVE`, `SUSPENDED`, `ARCHIVED`, `REVOKED`, and `EXPIRED`. Only `ACTIVE` permits access. Unknown values fail deserialization; missing status also fails the gateway active check.

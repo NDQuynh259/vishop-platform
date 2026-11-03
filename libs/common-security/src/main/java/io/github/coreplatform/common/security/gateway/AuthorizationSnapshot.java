@@ -21,7 +21,8 @@ import java.util.UUID;
  * tập rỗng và tokenVersion không dùng có thể là 0. Đây là dữ liệu cache, không phải claims JWT hay
  * entity ánh xạ bảng DB.
  *
- * @param key khóa logic chưa gồm prefix ứng dụng/môi trường; xem {@link AuthorizationCacheKeys}
+ * @param key khóa logic chưa gồm prefix ứng dụng/môi trường, theo định dạng AuthorizationCacheKeys
+ *     trong common-cache
  * @param version phiên bản tăng dần của dữ liệu cache tại cùng một key, giúp chặn bản cập nhật cũ
  *     ghi đè bản mới; biểu diễn bằng chuỗi số thập phân để tránh mất độ chính xác khi so sánh qua
  *     Redis Lua; không phải phiên bản token
@@ -43,7 +44,7 @@ import java.util.UUID;
 public record AuthorizationSnapshot(
     String key,
     String version,
-    String status,
+    AuthorizationStatus status,
     String systemRole,
     UUID roleId,
     String roleKey,
@@ -54,7 +55,7 @@ public record AuthorizationSnapshot(
   public AuthorizationSnapshot(
       String key,
       String version,
-      String status,
+      AuthorizationStatus status,
       String systemRole,
       UUID roleId,
       String roleKey,
@@ -67,5 +68,4 @@ public record AuthorizationSnapshot(
   public AuthorizationSnapshot {
     permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
   }
-
 }

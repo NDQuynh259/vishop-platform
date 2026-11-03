@@ -1,4 +1,4 @@
-package com.vishop.iam.modules.tenant.domain.valueobject;
+package io.github.coreplatform.common.domain.constants;
 
 public enum TenantStatus {
   ACTIVE,

@@ -4,6 +4,7 @@ import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
+import io.github.coreplatform.common.domain.constants.UserStatus;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -52,6 +53,6 @@ class IdentityApplicationApi implements IdentityApi {
   }
 
   public boolean isActive(UUID userId) {
-    return users.user(userId).map(user -> "ACTIVE".equals(user.status())).orElse(false);
+    return users.user(userId).map(user -> user.status() == UserStatus.ACTIVE).orElse(false);
   }
 }

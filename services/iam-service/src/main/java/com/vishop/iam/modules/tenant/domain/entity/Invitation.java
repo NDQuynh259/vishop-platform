@@ -1,5 +1,6 @@
 package com.vishop.iam.modules.tenant.domain.entity;
 
+import com.vishop.iam.modules.tenant.domain.valueobject.InvitationStatus;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -9,5 +10,5 @@ public record Invitation(
     String email,
     UUID roleId,
     UUID invitedBy,
-    String status,
+    InvitationStatus status,
     Instant expiresAt) {}

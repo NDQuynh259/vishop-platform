@@ -47,7 +47,8 @@ Lỗi từ service phía sau đi tới GatewayExceptionHandler, không bị bắ
 | auth:tenant:{tenantId} | status |
 | auth:role:{tenantId}:{roleId} | status, roleKey, permissions |
 
-Key logic do AuthorizationCacheKeys tạo. IAM/gateway dùng CacheKeyBuilder từ common-cache
+Key logic do AuthorizationCacheKeys trong common-cache (package io.github.coreplatform.common.cache) tạo,
+dùng chung cho IAM và gateway. IAM/gateway dùng CacheKeyBuilder từ common-cache
 để thêm prefix chung, cấu hình qua vishop.cache.key-prefix hoặc CACHE_KEY_PREFIX.
 AUTH_CACHE_PREFIX cũ vẫn là giá trị dự phòng. AuthorizationSnapshot chỉ chứa dữ liệu.
 Session có TTL tuyệt đối theo hạn

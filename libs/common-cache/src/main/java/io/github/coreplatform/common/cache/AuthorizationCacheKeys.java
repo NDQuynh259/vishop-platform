@@ -1,9 +1,9 @@
-package io.github.coreplatform.common.security.gateway;
+package io.github.coreplatform.common.cache;
 
 import java.util.Objects;
 import java.util.UUID;
 
-/** Key logic phân quyền, cùng định dạng với authorization_outbox của IAM, chưa có prefix Redis. */
+/** Key logic phân quyền dùng chung cho IAM và gateway, chưa có prefix Redis. */
 public final class AuthorizationCacheKeys {
   private AuthorizationCacheKeys() {}
 

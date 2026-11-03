@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.security.constants.AuthCookies;
+import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,10 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"management.health.redis.enabled=false", "vishop.cache.key-prefix=gateway-test:cache:"})
+    properties = {
+      "management.health.redis.enabled=false",
+      "vishop.cache.key-prefix=gateway-test:cache:"
+    })
 class GatewayApplicationTest {
   private static final java.util.concurrent.atomic.AtomicReference<com.sun.net.httpserver.Headers>
       FORWARDED = new java.util.concurrent.atomic.AtomicReference<>();
@@ -151,7 +155,7 @@ class GatewayApplicationTest {
                   new io.github.coreplatform.common.security.gateway.AuthorizationSnapshot(
                       key,
                       "1",
-                      "ACTIVE",
+                      AuthorizationStatus.ACTIVE,
                       "PLATFORM_ADMIN",
                       key.startsWith("auth:role:")
                           ? java.util.UUID.fromString(key.substring(key.lastIndexOf(':') + 1))
@@ -381,8 +385,11 @@ class GatewayApplicationTest {
   @DisplayName("Application context loads successfully")
   void contextLoads() {
     assertThat(port).isPositive();
-    assertThat(application.getBean(io.github.coreplatform.common.cache.CacheKeyBuilder.class)
-        .build("catalog", "product", 42)).isEqualTo("gateway-test:cache:catalog:product:42");
+    assertThat(
+            application
+                .getBean(io.github.coreplatform.common.cache.CacheKeyBuilder.class)
+                .build("catalog", "product", 42))
+        .isEqualTo("gateway-test:cache:catalog:product:42");
     // Gateway chỉ có access verifier; refresh issuer/verifier cùng key nằm ở IAM.
     assertThat(
             application.getBeansOfType(

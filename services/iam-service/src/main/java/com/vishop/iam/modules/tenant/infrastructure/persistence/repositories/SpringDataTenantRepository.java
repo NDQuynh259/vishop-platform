@@ -17,8 +17,6 @@ public interface SpringDataTenantRepository
   @Query("select t from TenantJpaEntity t where t.id = :id")
   Optional<TenantJpaEntity> findLockedById(@Param("id") UUID id);
 
-  @Query(
-      value = "SELECT * FROM tenants ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset",
-      nativeQuery = true)
+  @Query(value = "SELECT * FROM tenants ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset", nativeQuery = true)
   List<TenantJpaEntity> findWindow(@Param("limit") int limit, @Param("offset") int offset);
 }

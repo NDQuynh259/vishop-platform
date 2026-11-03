@@ -8,6 +8,7 @@ import com.vishop.iam.modules.tenant.domain.port.RoleRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.service.RoleAssignmentPolicy;
 import com.vishop.iam.modules.tenant.domain.valueobject.TenantAuthority;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import io.github.coreplatform.common.security.constants.CommonPermissions;
@@ -56,8 +57,11 @@ public class DeactivateMemberCommandHandler
             .orElseThrow(() -> new EntityNotFoundException("Member", user));
     rolePolicy.protectOwnerManagement(manager, member);
     rolePolicy.protectOwner(
-        tenant, member, roleRepository.role(tenant, member.roleId()).builtinKey(), "INACTIVE");
-    membershipRepository.updateMembership(user, tenant, member.roleId(), "INACTIVE");
+        tenant,
+        member,
+        roleRepository.role(tenant, member.roleId()).builtinKey(),
+        MembershipStatus.INACTIVE);
+    membershipRepository.updateMembership(user, tenant, member.roleId(), MembershipStatus.INACTIVE);
     outbox.append(
         "MemberDeactivated",
         "Tenant",

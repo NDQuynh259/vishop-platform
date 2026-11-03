@@ -5,6 +5,7 @@ import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.modules.identity.infrastructure.persistence.entities.UserJpaEntity;
 import com.vishop.iam.modules.identity.infrastructure.persistence.repositories.SpringDataUserRepository;
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.domain.constants.UserStatus;
 import jakarta.persistence.EntityManager;
 import java.util.*;
 import org.springframework.stereotype.Repository;
@@ -42,8 +43,8 @@ public class UserRepositoryAdapter implements UserRepositoryPort {
     users.rememberTenant(userId, tenantId);
   }
 
-  public void updateUserStatus(UUID user, String status) {
-    users.updateStatus(user, status);
+  public void updateUserStatus(UUID user, UserStatus status) {
+    users.updateStatus(user, status.name());
   }
 
   public void lockSystemRoles() {

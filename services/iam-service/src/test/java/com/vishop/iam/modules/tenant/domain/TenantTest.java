@@ -6,7 +6,7 @@ import com.vishop.iam.modules.tenant.domain.entity.Tenant;
 import com.vishop.iam.modules.tenant.domain.event.TenantCreatedEvent;
 import com.vishop.iam.modules.tenant.domain.event.TenantStatusChangedEvent;
 import com.vishop.iam.modules.tenant.domain.valueobject.TenantCode;
-import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
+import io.github.coreplatform.common.domain.constants.TenantStatus;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import java.time.Instant;
 import java.util.UUID;

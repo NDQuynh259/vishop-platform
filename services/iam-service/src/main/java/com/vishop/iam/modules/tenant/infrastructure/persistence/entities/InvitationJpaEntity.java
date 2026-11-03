@@ -1,6 +1,7 @@
 package com.vishop.iam.modules.tenant.infrastructure.persistence.entities;
 
 import com.vishop.iam.modules.tenant.domain.entity.Invitation;
+import com.vishop.iam.modules.tenant.domain.valueobject.InvitationStatus;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
@@ -34,8 +35,9 @@ public class InvitationJpaEntity {
   @Column(name = "token_hash", nullable = false, length = 64)
   private String tokenHash;
 
+  @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 30)
-  private String status;
+  private InvitationStatus status;
 
   @Column(name = "expires_at", nullable = false)
   private Instant expiresAt;

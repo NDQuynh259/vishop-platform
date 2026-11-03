@@ -1,7 +1,8 @@
 package com.vishop.gateway.security;
 
-import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
+import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
+import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import java.util.UUID;
@@ -52,7 +53,7 @@ public class LocalAuthenticationVerifier {
                               : Mono.just(state))
                   .map(
                       state -> {
-                        if (!"ACTIVE".equals(state.status()))
+                        if (state.status() != AuthorizationStatus.ACTIVE)
                           throw new AuthenticationFailure(403, "access-not-active");
                         if (state.tokenVersion() < claims.tokenVersion()) {
                           throw new IllegalStateException(
@@ -76,7 +77,7 @@ public class LocalAuthenticationVerifier {
             session -> {
               if (!AuthorizationCacheKeys.session(claims.sessionId()).equals(session.key()))
                 return Mono.error(new IllegalStateException("Cached session key mismatch"));
-              if (!"ACTIVE".equals(session.status())
+              if (session.status() != AuthorizationStatus.ACTIVE
                   || session.expiresAt() == null
                   || !session.expiresAt().isAfter(java.time.Instant.now()))
                 return Mono.error(new AuthenticationFailure(401, "session-revoked"));
@@ -135,6 +136,7 @@ public class LocalAuthenticationVerifier {
   }
 
   private void active(AuthorizationSnapshot state) {
-    if (!"ACTIVE".equals(state.status())) throw new AuthenticationFailure(403, "access-not-active");
+    if (state.status() != AuthorizationStatus.ACTIVE)
+      throw new AuthenticationFailure(403, "access-not-active");
   }
 }

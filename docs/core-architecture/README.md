@@ -15,6 +15,7 @@ This directory is the central index for reusable Core Platform architecture and 
 | [Database and auth call flow](./database-and-auth-flow.md) | Current IAM/Billing/Audit ERDs and auth flows through controllers, handlers, session/token services, gateway filters and Redis projections |
 | [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, Kafka, and Database Persistence/Migration (Flyway/JPA) |
 | [Persistence standard](./persistence.md) | Required Spring Data JPA/EntityManager access, validate-only entities, and Flyway SQL migrations for all current services/libraries |
+| [Enum ownership](./enum-ownership.md) | Shared contracts, service-owned lifecycle enums, JPA mappings, and the system-wide enum inventory |
 | [API gateway](./api-gateway.md) | Gateway routing, filters, CORS, and error handling |
 | [Saga pattern](./saga-pattern.md) | Saga orchestration and compensation |
 | [Service decomposition](./scaling-to-services.md) | Service boundaries, decomposition criteria, and extraction playbook |

@@ -7,6 +7,7 @@ import com.vishop.iam.modules.tenant.infrastructure.persistence.entities.Members
 import com.vishop.iam.modules.tenant.infrastructure.persistence.repositories.SpringDataMembershipRepository;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.repositories.SpringDataRoleRepository;
 import io.github.coreplatform.common.domain.UuidV7;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import java.util.*;
 import org.springframework.stereotype.Repository;
 
@@ -53,7 +54,7 @@ public class MembershipRepositoryAdapter implements MembershipRepositoryPort {
     members.saveAndFlush(MembershipJpaEntity.create(UuidV7.nextId(), tenant, user, role));
   }
 
-  public void updateMembership(UUID user, UUID tenant, UUID role, String status) {
+  public void updateMembership(UUID user, UUID tenant, UUID role, MembershipStatus status) {
     members
         .findByUserIdAndTenantId(user, tenant)
         .ifPresent(

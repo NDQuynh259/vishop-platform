@@ -2,9 +2,9 @@ package com.vishop.iam.infra.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.modules.identity.application.api.IdentityApi.AuthorizationDeliveryPort;
+import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
-import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import jakarta.persistence.EntityManager;
 import java.util.List;

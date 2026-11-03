@@ -3,9 +3,10 @@ package com.vishop.gateway.security;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.domain.constants.SystemRole;
-import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
+import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
 import io.github.coreplatform.common.test.security.IamTokenFixture;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +40,7 @@ class LocalAuthenticationVerifierTest {
                     new AuthorizationSnapshot(
                         call.getArgument(0),
                         "1",
-                        "ACTIVE",
+                        AuthorizationStatus.ACTIVE,
                         "USER",
                         role,
                         "OWNER",
@@ -87,7 +88,8 @@ class LocalAuthenticationVerifierTest {
     when(cache.get(key))
         .thenReturn(
             Mono.just(
-                new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2)));
+                new AuthorizationSnapshot(
+                    key, "2", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 2)));
     StepVerifier.create(verifier.verifyAccessToken(issue(tokens)))
         .expectErrorMatches(
             error ->
@@ -135,7 +137,9 @@ class LocalAuthenticationVerifierTest {
                 new AuthorizationSnapshot(
                     key,
                     "2",
-                    kind.equals("revoked") ? "REVOKED" : "ACTIVE",
+                    kind.equals("revoked")
+                        ? AuthorizationStatus.REVOKED
+                        : AuthorizationStatus.ACTIVE,
                     null,
                     null,
                     null,
@@ -160,7 +164,14 @@ class LocalAuthenticationVerifierTest {
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(
-                    key, "2", "ACTIVE", null, role, "OWNER", Set.of("inventory.view"), 0)));
+                    key,
+                    "2",
+                    AuthorizationStatus.ACTIVE,
+                    null,
+                    role,
+                    "OWNER",
+                    Set.of("inventory.view"),
+                    0)));
     StepVerifier.create(verifier.authenticate(jwt, true))
         .assertNext(
             identity ->
@@ -174,7 +185,8 @@ class LocalAuthenticationVerifierTest {
     when(cache.get(key))
         .thenReturn(
             Mono.just(
-                new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2)));
+                new AuthorizationSnapshot(
+                    key, "2", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 2)));
     rejects(issue(tokens), true);
     verify(cache, never()).get(AuthorizationCacheKeys.tenant(tenant));
     verify(cache, never()).get(AuthorizationCacheKeys.role(tenant, role));
@@ -193,7 +205,7 @@ class LocalAuthenticationVerifierTest {
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(
-                    key, "2", "INACTIVE", "USER", role, "OWNER", Set.of(), 1)));
+                    key, "2", AuthorizationStatus.INACTIVE, "USER", role, "OWNER", Set.of(), 1)));
     StepVerifier.create(verifier.authenticate(issue(tokens), true))
         .expectErrorMatches(
             error -> error instanceof AuthenticationFailure failure && failure.status() == 403)
@@ -246,7 +258,7 @@ class LocalAuthenticationVerifierTest {
                 new AuthorizationSnapshot(
                     AuthorizationCacheKeys.role(UUID.randomUUID(), role),
                     "1",
-                    "ACTIVE",
+                    AuthorizationStatus.ACTIVE,
                     null,
                     role,
                     "OWNER",
@@ -298,14 +310,15 @@ class LocalAuthenticationVerifierTest {
     when(cache.refresh(key))
         .thenReturn(
             Mono.just(
-                new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2)));
+                new AuthorizationSnapshot(
+                    key, "2", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 2)));
     when(cache.get(AuthorizationCacheKeys.session(user)))
         .thenReturn(
             Mono.just(
                 new AuthorizationSnapshot(
                     AuthorizationCacheKeys.session(user),
                     "1",
-                    "ACTIVE",
+                    AuthorizationStatus.ACTIVE,
                     null,
                     null,
                     null,
@@ -327,7 +340,8 @@ class LocalAuthenticationVerifierTest {
     when(cache.refresh(key))
         .thenReturn(
             Mono.just(
-                new AuthorizationSnapshot(key, "1", "ACTIVE", "USER", null, null, Set.of(), 1)));
+                new AuthorizationSnapshot(
+                    key, "1", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 1)));
     StepVerifier.create(verifier.authenticate(tokens.provider().encode(claims), true))
         .expectError(IllegalStateException.class)
         .verify();

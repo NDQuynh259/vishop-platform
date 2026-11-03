@@ -4,9 +4,10 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.cache.CacheKeyBuilder;
-import io.github.coreplatform.common.security.gateway.AuthorizationCacheKeys;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
+import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
 import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import java.net.*;
 import java.time.Duration;
@@ -100,17 +101,17 @@ class AuthorizationCacheReaderTest {
     var deadline = java.time.Instant.now().plusSeconds(120);
     current.set(
         new AuthorizationSnapshot(
-            key, "1", "ACTIVE", null, null, null, Set.of(), 1, user, deadline));
+            key, "1", AuthorizationStatus.ACTIVE, null, null, null, Set.of(), 1, user, deadline));
     assertThat(reader.get(key).block().userId()).isEqualTo(user);
     assertThat(redis.getExpire("test:" + key)).isPositive().isLessThanOrEqualTo(120);
     current.set(
         new AuthorizationSnapshot(
-            key, "2", "REVOKED", null, null, null, Set.of(), 1, user, deadline));
-    assertThat(reader.refresh(key).block().status()).isEqualTo("REVOKED");
+            key, "2", AuthorizationStatus.REVOKED, null, null, null, Set.of(), 1, user, deadline));
+    assertThat(reader.refresh(key).block().status()).isEqualTo(AuthorizationStatus.REVOKED);
     current.set(
         new AuthorizationSnapshot(
-            key, "1", "ACTIVE", null, null, null, Set.of(), 1, user, deadline));
-    assertThat(reader.refresh(key).block().status()).isEqualTo("REVOKED");
+            key, "1", AuthorizationStatus.ACTIVE, null, null, null, Set.of(), 1, user, deadline));
+    assertThat(reader.refresh(key).block().status()).isEqualTo(AuthorizationStatus.REVOKED);
     assertThat(redis.getExpire("test:" + key)).isLessThanOrEqualTo(120);
   }
 
@@ -120,7 +121,14 @@ class AuthorizationCacheReaderTest {
     String key = AuthorizationCacheKeys.role(tenant, role);
     current.set(
         new AuthorizationSnapshot(
-            key, "1", "ACTIVE", null, role, "WAREHOUSE", Set.of("inventory.adjust"), 0));
+            key,
+            "1",
+            AuthorizationStatus.ACTIVE,
+            null,
+            role,
+            "WAREHOUSE",
+            Set.of("inventory.adjust"),
+            0));
     var results =
         Flux.range(0, 20).flatMap(i -> reader.get(key)).collectList().block(Duration.ofSeconds(5));
     assertThat(results).hasSize(20);
@@ -129,7 +137,14 @@ class AuthorizationCacheReaderTest {
     assertThat(calls.get()).isEqualTo(1);
     current.set(
         new AuthorizationSnapshot(
-            key, "2", "ACTIVE", null, role, "WAREHOUSE", Set.of("inventory.view"), 0));
+            key,
+            "2",
+            AuthorizationStatus.ACTIVE,
+            null,
+            role,
+            "WAREHOUSE",
+            Set.of("inventory.view"),
+            0));
     redis.opsForHash().put("test:" + key, "checkedAt", "1");
     assertThat(reader.get(key).block().permissions()).containsExactly("inventory.view");
     assertThat(calls.get()).isEqualTo(2);
@@ -154,9 +169,13 @@ class AuthorizationCacheReaderTest {
   @Test
   void explicitRefreshConfirmsStateBeforeTheNormalFreshnessDeadline() {
     String key = AuthorizationCacheKeys.user(UUID.randomUUID());
-    current.set(new AuthorizationSnapshot(key, "1", "ACTIVE", "USER", null, null, Set.of(), 1));
+    current.set(
+        new AuthorizationSnapshot(
+            key, "1", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 1));
     assertThat(reader.get(key).block().tokenVersion()).isEqualTo(1);
-    current.set(new AuthorizationSnapshot(key, "2", "ACTIVE", "USER", null, null, Set.of(), 2));
+    current.set(
+        new AuthorizationSnapshot(
+            key, "2", AuthorizationStatus.ACTIVE, "USER", null, null, Set.of(), 2));
     assertThat(reader.get(key).block().tokenVersion()).isEqualTo(1);
     assertThat(reader.refresh(key).block().tokenVersion()).isEqualTo(2);
     assertThat(calls.get()).isEqualTo(2);

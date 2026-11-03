@@ -6,6 +6,7 @@ import com.vishop.iam.modules.tenant.domain.port.MembershipRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.port.RoleRepositoryPort;
 import com.vishop.iam.modules.tenant.domain.port.UserDirectoryPort;
 import com.vishop.iam.modules.tenant.domain.valueobject.TenantAuthority;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
@@ -42,11 +43,12 @@ public final class RoleAssignmentPolicy {
       throw new ForbiddenException("Only an owner can assign the OWNER role");
   }
 
-  public void protectOwner(UUID tenant, Membership member, String newRole, String newStatus) {
-    if ("ACTIVE".equals(member.status())
+  public void protectOwner(
+      UUID tenant, Membership member, String newRole, MembershipStatus newStatus) {
+    if (member.status() == MembershipStatus.ACTIVE
         && "OWNER".equals(roleRepository.role(tenant, member.roleId()).builtinKey())
         && userDirectory.isActive(member.userId())
-        && (!"OWNER".equals(newRole) || !"ACTIVE".equals(newStatus))
+        && (!"OWNER".equals(newRole) || newStatus != MembershipStatus.ACTIVE)
         && membershipRepository.activeOwners(tenant) <= 1)
       throw new ConflictException("The final active owner cannot be removed or demoted");
   }

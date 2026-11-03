@@ -4,6 +4,7 @@ import com.vishop.iam.modules.identity.domain.entity.User;
 import com.vishop.iam.modules.identity.domain.port.UserRepositoryPort;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.domain.constants.UserStatus;
 import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
@@ -36,7 +37,7 @@ public class ChangeSystemRoleCommandHandler
         userRepository.user(user).orElseThrow(() -> new EntityNotFoundException("User", user));
     if (target.systemRole() == SystemRole.PLATFORM_ADMIN
         && role != SystemRole.PLATFORM_ADMIN
-        && "ACTIVE".equals(target.status())
+        && target.status() == UserStatus.ACTIVE
         && userRepository.activeAdmins() <= 1)
       throw new ConflictException("The final active platform administrator cannot be demoted");
     userRepository.updateSystemRole(user, role);

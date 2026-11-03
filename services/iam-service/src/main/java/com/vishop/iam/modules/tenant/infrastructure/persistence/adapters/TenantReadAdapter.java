@@ -4,11 +4,12 @@ import com.vishop.iam.modules.tenant.application.dto.TenantListCriteria;
 import com.vishop.iam.modules.tenant.application.dto.TenantResponseDto;
 import com.vishop.iam.modules.tenant.application.mapper.TenantResponseMapper;
 import com.vishop.iam.modules.tenant.application.port.TenantReadPort;
-import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.entities.MembershipJpaEntity;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.entities.TenantJpaEntity;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.pagination.TenantCursorCodec;
 import com.vishop.iam.modules.tenant.infrastructure.persistence.repositories.SpringDataTenantRepository;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
+import io.github.coreplatform.common.domain.constants.TenantStatus;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.pagination.CursorParams;
 import io.github.coreplatform.common.domain.pagination.OffsetPagination;
@@ -85,7 +86,7 @@ public class TenantReadAdapter implements TenantReadPort {
           .where(
               cb.equal(member.get("tenantId"), root.get("id")),
               cb.equal(member.get("userId"), userId),
-              cb.equal(member.get("status"), "ACTIVE"));
+              cb.equal(member.get("status"), MembershipStatus.ACTIVE));
       predicates.add(cb.exists(membership));
       predicates.add(cb.equal(root.get("status"), TenantStatus.ACTIVE));
       if (criteria.id() != null) predicates.add(cb.equal(root.get("id"), criteria.id()));

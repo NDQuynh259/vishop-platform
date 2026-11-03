@@ -1,6 +1,7 @@
 package com.vishop.iam.modules.tenant.domain.port;
 
 import com.vishop.iam.modules.tenant.domain.entity.Membership;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,7 +15,7 @@ public interface MembershipRepositoryPort {
 
   void addMembership(UUID user, UUID tenant, UUID role);
 
-  void updateMembership(UUID user, UUID tenant, UUID role, String status);
+  void updateMembership(UUID user, UUID tenant, UUID role, MembershipStatus status);
 
   int activeOwners(UUID tenant);
 }

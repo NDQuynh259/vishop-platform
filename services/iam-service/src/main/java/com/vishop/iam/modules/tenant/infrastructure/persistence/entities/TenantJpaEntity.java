@@ -2,7 +2,7 @@ package com.vishop.iam.modules.tenant.infrastructure.persistence.entities;
 
 import com.vishop.iam.modules.tenant.domain.entity.Tenant;
 import com.vishop.iam.modules.tenant.domain.valueobject.TenantCode;
-import com.vishop.iam.modules.tenant.domain.valueobject.TenantStatus;
+import io.github.coreplatform.common.domain.constants.TenantStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

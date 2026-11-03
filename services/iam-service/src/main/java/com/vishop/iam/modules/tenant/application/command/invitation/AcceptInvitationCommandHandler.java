@@ -11,6 +11,7 @@ import com.vishop.iam.modules.tenant.domain.service.RoleAssignmentPolicy;
 import com.vishop.iam.modules.tenant.domain.valueobject.TenantAuthority;
 import com.vishop.iam.shared.application.port.IamEventPublisherPort;
 import com.vishop.iam.shared.application.port.OpaqueTokenPort;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import io.github.coreplatform.common.domain.cqrs.CommandHandler;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.exception.ConflictException;
@@ -83,11 +84,11 @@ public class AcceptInvitationCommandHandler
         new TenantAuthority(inviter.roleKey(), inviter.permissions()),
         roleRepository.role(invitation.tenantId(), invitation.roleId()));
     var existing = membershipRepository.membership(user.id(), invitation.tenantId());
-    if (existing.isPresent() && "ACTIVE".equals(existing.get().status()))
+    if (existing.isPresent() && existing.get().status() == MembershipStatus.ACTIVE)
       throw new ConflictException("Already an active member");
     if (existing.isPresent())
       membershipRepository.updateMembership(
-          user.id(), invitation.tenantId(), invitation.roleId(), "ACTIVE");
+          user.id(), invitation.tenantId(), invitation.roleId(), MembershipStatus.ACTIVE);
     else membershipRepository.addMembership(user.id(), invitation.tenantId(), invitation.roleId());
     invitationRepository.acceptInvitation(invitation.id(), user.id());
     outbox.append(

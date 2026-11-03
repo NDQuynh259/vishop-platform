@@ -2,6 +2,7 @@ package com.vishop.iam.modules.tenant.infrastructure.persistence.entities;
 
 import com.vishop.iam.modules.tenant.domain.entity.Membership;
 import com.vishop.iam.modules.tenant.domain.entity.Role;
+import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
@@ -29,8 +30,9 @@ public class MembershipJpaEntity {
   @Column(name = "role_id", nullable = false)
   private UUID roleId;
 
+  @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 30)
-  private String status;
+  private MembershipStatus status;
 
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
@@ -62,11 +64,11 @@ public class MembershipJpaEntity {
     entity.tenantId = tenant;
     entity.userId = user;
     entity.roleId = role;
-    entity.status = "ACTIVE";
+    entity.status = MembershipStatus.ACTIVE;
     return entity;
   }
 
-  public void update(UUID role, String status) {
+  public void update(UUID role, MembershipStatus status) {
     this.roleId = role;
     this.status = status;
   }

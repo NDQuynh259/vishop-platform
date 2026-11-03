@@ -3,6 +3,8 @@ package io.github.coreplatform.common.persistence;
 import io.github.coreplatform.common.events.EventEnvelope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -41,8 +43,9 @@ public class OutboxEventEntity {
   @JdbcTypeCode(SqlTypes.JSON)
   private String payload;
 
+  @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 30)
-  private String status;
+  private OutboxStatus status;
 
   @Column(name = "retry_count", nullable = false)
   private int retryCount;
@@ -71,7 +74,7 @@ public class OutboxEventEntity {
     this.aggregateType = aggregateType;
     this.aggregateId = aggregateId;
     this.payload = payload;
-    this.status = "PENDING";
+    this.status = OutboxStatus.PENDING;
     this.retryCount = 0;
     this.occurredAt = occurredAt;
   }
@@ -94,7 +97,7 @@ public class OutboxEventEntity {
 
   // #region markPublished
   public void markPublished(Instant at) {
-    this.status = "PUBLISHED";
+    this.status = OutboxStatus.PUBLISHED;
     this.publishedAt = at;
   }
 
@@ -105,7 +108,7 @@ public class OutboxEventEntity {
     this.retryCount++;
     this.errorMessage = error != null && error.length() > 950 ? error.substring(0, 950) : error;
     if (this.retryCount >= maxRetries) {
-      this.status = "FAILED";
+      this.status = OutboxStatus.FAILED;
     }
   }
   // #endregion

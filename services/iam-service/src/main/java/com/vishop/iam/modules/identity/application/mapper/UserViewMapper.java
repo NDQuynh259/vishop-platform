@@ -12,7 +12,7 @@ public final class UserViewMapper {
         user.email(),
         user.fullName(),
         user.systemRole().name(),
-        user.status(),
+        user.status().name(),
         user.createdAt());
   }
 }

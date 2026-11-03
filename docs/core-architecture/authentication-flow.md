@@ -14,7 +14,7 @@ lần đăng nhập tạo một `sid` mới. JWT đi cùng trạng thái phiên 
 | `LocalAuthenticationVerifier` trong gateway | Verify access JWT, đối chiếu user/session/tenant/role từ Auth Redis |
 | `AuthorizationProjection` | Đẩy projection đã commit trong authorization_outbox sang Redis |
 | `CacheKeyBuilder` trong common-cache | Thêm prefix ứng dụng/môi trường, dùng chung cho mọi namespace cache |
-| `AuthorizationCacheKeys` trong common-security | Quy ước key logic user/session/tenant/role, độc lập với dữ liệu snapshot |
+| `AuthorizationCacheKeys` trong common-cache | Quy ước key logic user/session/tenant/role, độc lập với dữ liệu snapshot |
 | `GatewayContextCodec` | Ký và kiểm tra context nội bộ, ràng buộc service đích, method, URI và thời gian |
 
 Common JWT không quy định claims nghiệp vụ và không truy cập DB/Redis.

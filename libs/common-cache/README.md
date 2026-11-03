@@ -48,7 +48,7 @@ Segments cannot be blank, null or contain `:`. UUIDs and numeric IDs are support
 The prefix is literal; include its trailing `:` when using colon-separated namespaces.
 `withPrefix(logicalKey)` accepts a prebuilt logical key, including its separators.
 Each module owns its logical keys, invalidation and TTL; there is no global list of
-all business keys. Security keys live in `common-security/AuthorizationCacheKeys`.
+all business keys. Shared authorization keys live in `AuthorizationCacheKeys` in this module.
 
 Add `implementation(project(":libs:common-cache"))` and
 `implementation("org.springframework.boot:spring-boot-starter-data-redis")`.
