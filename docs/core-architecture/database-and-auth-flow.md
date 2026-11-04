@@ -14,7 +14,7 @@ flowchart LR
     G --> A[audit-service]
     G <-->|User, session, tenant, role| R[(Auth Redis)]
     I --> D1[(vishop_iam)]
-    S --> D2[(vishop_billing)]
+    S --> D2[(vishop_subscription)]
     A --> D3[(vishop_audit)]
     I -->|Projection đã commit| R
     I --> E[Business outbox / Kafka]
@@ -27,7 +27,7 @@ Gateway không có database riêng. PostgreSQL tách theo service; `tenant_id`/`
 | Database | Bảng hiện hành |
 | --- | --- |
 | `vishop_iam` | `users`, `auth_sessions`, `tenants`, `roles`, `role_permissions`, `tenant_members`, `tenant_invitations`, `authorization_outbox`, `outbox_events`, `consumed_messages` |
-| `vishop_billing` | `subscription_plans`, `subscription_prices`, `subscriptions`, `subscription_orders`, `subscription_terms`, `payment_transactions`, `payment_allocations`, `sepay_webhook_inbox`, `outbox_events` |
+| `vishop_subscription` | `subscription_plans`, `subscription_prices`, `subscriptions`, `subscription_orders`, `subscription_terms`, `payment_transactions`, `payment_allocations`, `sepay_webhook_inbox`, `outbox_events` |
 | `vishop_audit` | `audit_logs`, `consumed_messages` |
 
 Lịch sử cần phân biệt: `sessions` và `security_states` cũ bị xóa tại V4; V12 tạo **`auth_sessions` mới** để thu hồi phiên theo `sid`. V11 bỏ projection `auth:member:*`; V13 khôi phục member projection thành key Redis riêng và bỏ trigger thu hồi toàn user khi membership thay đổi.

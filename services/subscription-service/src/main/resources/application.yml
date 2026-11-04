@@ -9,7 +9,7 @@ spring:
     name: subscription-service
 
   datasource:
-    url: ${SUBSCRIPTION_DB_URL:${BILLING_DB_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_billing}}}
+    url: ${SUBSCRIPTION_DB_URL:${BILLING_DB_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_subscription}}}
     username: ${SUBSCRIPTION_DB_USER:${BILLING_DB_USER:${SPRING_DATASOURCE_USERNAME:vishop}}}
     password: ${SUBSCRIPTION_DB_PASSWORD:${BILLING_DB_PASSWORD:${SPRING_DATASOURCE_PASSWORD:vishop_secret}}}
     driver-class-name: org.postgresql.Driver

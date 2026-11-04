@@ -299,7 +299,7 @@ services:
       SEPAY_SUB_ACCOUNT: ${SEPAY_SUB_ACCOUNT:-}
       SEPAY_MEMO_PREFIX: ${SEPAY_MEMO_PREFIX:-}
       SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_billing
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_subscription
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-vishop_secret}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092

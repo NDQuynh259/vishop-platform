@@ -1,6 +1,6 @@
 # Thiết kế database Subscription / Payment — V2
 
-Runtime: `subscription-service`. Database PostgreSQL: **`vishop_billing`**.
+Runtime: `subscription-service`. Database PostgreSQL: **`vishop_subscription`** (hoặc `vishop_billing` fallback).
 Schema hiện tại gồm **9 bảng**, được nâng từ V1 bằng
 [V2__redesign_subscription_and_payment_tables.sql](../src/main/resources/db/migration/V2__redesign_subscription_and_payment_tables.sql).
 [Thiết kế V1](database-design-v1.md) được giữ làm tài liệu lịch sử.

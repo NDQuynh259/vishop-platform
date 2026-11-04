@@ -1,7 +1,9 @@
 # Subscription service
 
+Nghiệp vụ, thiết kế và database riêng của service: [docs/README.md](docs/README.md).
+
 Service thu phí sử dụng ViShop theo **tenant**, cổng mặc định **8083**, database
-`vishop_billing`. Triển khai hiện tại hỗ trợ mua gói mới và chủ động gia hạn bằng QR
+`vishop_subscription` (hoặc `vishop_billing` fallback). Triển khai hiện tại hỗ trợ mua gói mới và chủ động gia hạn bằng QR
 chuyển khoản SePay, chu kỳ tháng/năm lịch. Không tự thu tiền gia hạn.
 
 Thiết kế bảng, ERD, khóa và transaction: [Database Billing](docs/database-design.md).
@@ -140,11 +142,11 @@ FREE; gói trả phí hết hạn có trạng thái EXPIRED.
 
 ## Chạy local và production
 
-Tạo database `vishop_billing` trước khi chạy migration. `infra/postgres/init-db.sql`
+Tạo database `vishop_subscription` trước khi chạy migration. `infra/postgres/init-db.sql`
 chỉ tự tạo trên volume PostgreSQL mới; volume hiện có cần tạo thêm DB, không xóa dữ liệu.
 
 ```powershell
-$env:SUBSCRIPTION_DB_URL = 'jdbc:postgresql://localhost:5432/vishop_billing'
+$env:SUBSCRIPTION_DB_URL = 'jdbc:postgresql://localhost:5432/vishop_subscription'
 $env:SUBSCRIPTION_DB_USER = 'vishop'
 $env:SUBSCRIPTION_DB_PASSWORD = '<database-password>'
 $env:GATEWAY_SUBSCRIPTION_CONTEXT_SECRET = '<same subscription context secret as gateway>'
