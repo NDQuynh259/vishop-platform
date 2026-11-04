@@ -4,6 +4,7 @@ CREATE DATABASE vishop_iam OWNER :"db_owner";
 CREATE DATABASE vishop_audit OWNER :"db_owner";
 CREATE DATABASE vishop_subscription OWNER :"db_owner";
 CREATE DATABASE vishop_billing OWNER :"db_owner";
+CREATE DATABASE vishop_notification OWNER :"db_owner";
 
 
 \connect vishop_iam

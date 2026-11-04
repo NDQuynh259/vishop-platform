@@ -1,5 +1,7 @@
 # Audit service
 
+Service business rules, architecture and database design: [docs/README.md](docs/README.md).
+
 Audit is an event-driven bounded context organized as a single `modules.auditlog` module.
 
 ```text

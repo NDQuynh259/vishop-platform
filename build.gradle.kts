@@ -115,6 +115,7 @@ val projectCommands = linkedMapOf(
     "runAudit" to ("Start audit service (:8082)." to listOf(":services:audit-service:dev")),
     "migrateIam" to ("Run IAM migrations; requires IAM_DB_URL/USER/PASSWORD." to listOf(":services:iam-service:migrate")),
     "migrateAudit" to ("Run audit migrations; requires AUDIT_DB_URL/USER/PASSWORD." to listOf(":services:audit-service:migrate")),
+    "migrateNotification" to ("Run notification migrations; requires NOTIFICATION_DB_URL/USER/PASSWORD." to listOf(":services:notification-service:migrate")),
     "packageAll" to ("Package all four service boot JARs." to listOf(
         ":services:iam-service:bootJar",
         ":services:api-gateway:bootJar",

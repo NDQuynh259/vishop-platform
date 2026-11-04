@@ -36,4 +36,5 @@ Examples: `feat(observability): propagate trace context through kafka`, `docs: d
 - Add or update tests for behavior changes.
 - Run `./gradlew clean test` before requesting review.
 - Do not include generated build outputs or secrets.
+- Keep service-specific business rules, architecture and database designs in `services/<service>/docs/` and update them alongside related changes. See the [service documentation convention](docs/services/README.md).
 - Follow the [persistence standard](docs/core-architecture/persistence.md): Spring Data JPA/EntityManager for runtime access, `ddl-auto: validate`, and versioned Flyway SQL for schema changes. Do not add direct JDBC or Hibernate schema generation.

@@ -1,5 +1,7 @@
 # IAM service
 
+Service business rules, architecture and database design: [docs/README.md](docs/README.md).
+
 IAM owns identity and tenant management. Authentication uses JWT HS256 with separate
 access/refresh keys, a sid per login and revocable device sessions. It does not use
 HttpSession. See the [authentication flow](../../docs/core-architecture/authentication-flow.md)

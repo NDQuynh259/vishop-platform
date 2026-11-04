@@ -1,0 +1,176 @@
+# Notification database
+
+Service business rules, architecture and database ERDs: [docs/README.md](docs/README.md).
+
+This module currently contains the database schema and standalone Flyway migration CLI.
+HTTP APIs, JPA mappings, event consumers, authorization checks, realtime and provider
+workers are subsequent work. It does not start an application or send notifications.
+
+## Migrate
+
+Use PostgreSQL 16 and a dedicated `vishop_notification` database. Fresh infrastructure
+volumes create it through `infra/postgres/init-db.sql`. For an existing PostgreSQL
+volume, create the database explicitly as an administrator; do not reset the volume:
+
+```sql
+CREATE DATABASE vishop_notification OWNER vishop;
+```
+
+Replace `vishop` with your database owner. Configure migration credentials explicitly:
+
+```powershell
+$env:NOTIFICATION_DB_URL = 'jdbc:postgresql://localhost:5432/vishop_notification'
+$env:NOTIFICATION_DB_USER = 'vishop'
+$env:NOTIFICATION_DB_PASSWORD = '<database-password>'
+.\gradlew.bat migrateNotification
+```
+
+The equivalent module task is `:services:notification-service:migrate`. Migrations
+do not baseline existing unmanaged schemas or clean databases. No runtime migration
+or database creation occurs in the CLI. Application UUIDs require no extensions.
+
+## Tables
+
+| Table | Purpose |
+| --- | --- |
+| `notifications` | Shared title/body, type, severity, source event, subject, permission and optional shop scope |
+| `notification_recipients` | In-app inbox and independent read timestamp per tenant/user |
+| `notification_alert_rules` | Per-tenant/type channel settings, thresholds and cooldown (at least 24 hours) |
+| `notification_alert_rule_recipients` | Explicit users selected for a rule |
+| `notification_user_preferences` | Per-tenant/user/type opt-out preferences for in-app, email and Telegram |
+| `notification_features` | Global catalog of feature groups available for notification subscriptions |
+| `notification_types` | Global catalog of SYSTEM/BUSINESS types and default channel choices |
+| `notification_tenant_features` | Tenant switches for feature groups they want notifications from |
+| `notification_settings` | Tenant channel switches and provider/bot connection configuration |
+| `notification_deduplication` | Rolling cooldown state per tenant/type/subject/user/channel |
+| `notification_deliveries` | Durable email jobs, attempt limits, retry date and worker lease |
+| `notification_delivery_attempts` | Provider attempt outcomes, including unknown outcomes |
+| `consumed_messages` | Event processing idempotency, compatible with common-persistence |
+| `outbox_events` | Transactional publication, including future realtime signals |
+
+Tenant/user/shop IDs are external references to their owning services; no cross-database
+foreign keys. Local foreign keys include tenant ID to reject mismatched tenant links.
+These constraints do not replace authorization: every API query must scope by tenant
+and user, and recheck membership, permission and shop access before exposing content.
+
+In-app list and unread queries use `(tenant_id, user_id)` on recipients; join notifications
+on both tenant and notification ID. Read-all should use a cutoff timestamp so it does not
+mark concurrently arriving notifications as read. Timestamp and version updates on mutable
+rows must be performed explicitly by future application/JPA code.
+
+V5 adds common audit columns to business/configuration tables: `created_at`/`updated_at`
+default to `now()`, `deleted_at` defaults to NULL and `version` defaults to 0 with a
+nonnegative constraint. Queue rows have timestamps/version without soft deletion;
+delivery attempt history only gains `created_at`. Operational outbox, consumed-message
+and cooldown rows retain their specialized columns. See the [database design](docs/database-design.md)
+for the per-table policy, backfill and soft-delete query requirements.
+
+`notification_alert_rules` configures tenant policies; `notification_user_preferences` configures
+personal preferences, unique by `(tenant_id, user_id, type)`. Settings have an `enabled`
+switch and independent `in_app_enabled`/`email_enabled`/`telegram_enabled` switches. All default to true,
+meaning allow the tenant policy; missing rows also inherit that policy. Effective delivery
+requires active catalog entries, tenant feature/channel switches, the tenant type rule and
+channel, the personal setting and channel, recipient selection, and authorization to all
+permit it. Personal settings cannot turn on a disabled tenant
+channel or grant data access. Changes apply to future notifications; existing in-app
+history remains readable subject to authorization. Transactional email policy for external
+invitees is separate. Enforcement will be implemented with the consumers/workers.
+
+## Tenant choices and system notifications
+
+V3 adds a global catalog so configuration screens can list notification types grouped by
+feature. Catalogs are platform-managed; tenant admins edit tenant settings, and users edit
+their personal settings. Existing custom type codes are preserved under `LEGACY` on upgrade.
+Unknown new codes must be registered before notification/configuration writes.
+
+Tenant configuration is evaluated in this order (each disabled gate suppresses delivery):
+
+1. Active catalog feature and type.
+2. Feature subscription in `notification_tenant_features` (missing row: enabled).
+3. Tenant-wide channel in `notification_settings` (missing row: in-app on, email/Telegram off).
+4. Per-type `notification_alert_rules` enabled/channel switches (missing row: catalog defaults).
+5. Personal `notification_user_preferences` enabled/channel switches (missing row: allow tenant policy).
+6. Recipient selection, authorization and cooldown checks.
+
+There are no default recipient lists: domain recipient resolution and tenant-selected users
+must be implemented by consumers. Settings cannot grant access to data or features outside
+a tenant's entitlements. `connection_ref` identifies provider configuration held outside this
+schema; do not place SMTP passwords or access tokens here. V3 preserves enabled email channels
+for tenants with existing enabled email rules. New tenants default to in-app delivery only.
+
+Seeded feature groups include system, IAM, subscriptions, shops, inventory, products,
+fulfillment, finance and synchronization. Seeded types cover M14 alerts, shipment exceptions,
+invitations, subscription activation/expiry, and system announcements/maintenance/incidents.
+Catalog entries describe configurable capabilities; they do not imply source event producers
+or senders are implemented.
+
+`SYSTEM` is a type category, not a tenant bypass. Platform announcements are materialized
+into separate tenant-scoped `notifications` and recipient rows using the same source event
+ID, so content access and read states remain tenant/user scoped. V3 does not add an
+announcement CMS, audience expansion job or mandatory notification exceptions. System
+notifications follow the same feature/type/channel choices and permission checks as other
+notifications. All notifications still require an explicit permission; category alone never
+grants access. The future producer/consumer contract must map each type to the correct IAM
+permission and recipients.
+
+## Channel connection settings
+
+V4 renames the original personal `notification_settings` table to
+`notification_user_preferences`, and `notification_tenant_channels` to
+`notification_settings`. Both existing personal preferences and tenant provider references
+are preserved. `notification_settings` is now unique by `(tenant_id, channel)` and holds
+channel connection information, not a user's choice of notification types.
+
+| Field | Meaning |
+| --- | --- |
+| `tenant_id`, `channel` | Tenant and channel: `IN_APP`, `EMAIL`, `TELEGRAM` |
+| `enabled` | Enable this channel for the tenant |
+| `connection_ref` | Optional external provider configuration reference (e.g. SMTP settings) |
+| `credentials_ref` | Secret-store reference for a Telegram bot token or email credentials |
+| `telegram_bot_username` | Optional display/identification of the connected bot |
+| `telegram_chat_id` | Destination chat, group or channel ID; supports negative IDs |
+| `telegram_message_thread_id` | Optional destination topic ID |
+
+A Telegram configuration can be saved disabled while incomplete. Enabling it requires a
+nonblank chat ID and credentials reference. Bot-specific fields cannot be attached to
+another channel, and in-app needs no provider credentials. A reference is not a token:
+the future configuration API must accept/store bot credentials using secrets storage and
+return only masked connection information. This database-only module does not implement
+that secrets storage or verify the token/chat with Telegram.
+
+Tenant type rules and the type catalog now have Telegram switches (default off); personal
+preferences default to allowing the tenant policy. These configure future delivery routing.
+The durable delivery queue and cooldown channel constraints still support in-app/email as
+originally specified; the Telegram sender, queue expansion and test-connection API remain
+subsequent work. Creating a bot configuration does not itself send any messages.
+
+Consumers must record consumed messages, notifications, recipients, email jobs and outbox
+events in one transaction. To enforce BR-14-02, upsert and lock the deduplication key,
+then suppress notifications within the cooldown unless severity increases
+(`INFO < WARNING < CRITICAL`). The table supplies concurrency keys; time and escalation
+decisions remain application logic. Threshold evaluation belongs to the source domain.
+
+Email jobs can target users independently of in-app preferences; `user_id` is optional
+for external invitees. Destinations are snapshots and case-insensitively deduplicated
+per notification/channel. Workers must recheck recipient eligibility, claim jobs with
+`FOR UPDATE SKIP LOCKED`, set a unique lock token and lease, and fence every completion
+by that token. Expired leases can be recovered. `SENT` records require `sent_at`;
+terminal failures retain their history. SMTP cannot guarantee exactly-once delivery after
+an ambiguous provider timeout; use provider idempotency where available and record
+`UNKNOWN` outcomes. No provider secrets belong in these tables or template data.
+
+Realtime outbox payloads should only contain `{ notificationId, tenantId }`; clients
+fetch content through authorized APIs. Telegram sending, Zalo and digest are not implemented.
+
+## Verification
+
+```powershell
+.\gradlew.bat :services:notification-service:check
+```
+
+Tests use an isolated embedded PostgreSQL 16 instance. They verify fresh/repeated
+migrations, per-user read state, tenant foreign keys, destination deduplication,
+delivery state constraints, event transaction rollback, cooldown key isolation,
+personal preference isolation, feature/channel/type choices per tenant, system type categories,
+Telegram configuration constraints, and upgrades from V1/V2/V3 without loss of existing
+notifications, custom type configuration, personal preferences or provider connections.

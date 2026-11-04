@@ -162,6 +162,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for Conventional Commit messages, branch 
 
 ## Architecture documentation
 
+Service-specific business rules, architecture and database designs are indexed in
+[Service documentation](docs/services/README.md) and stored under each service's `docs/` directory.
+
 Start with the [Core Architecture index](docs/core-architecture/README.md) for all architecture documents and the reusable core module boundaries. Original architecture documents remain preserved under `docs/architecture/`; product documentation and other guides remain in their existing locations.
 
 Subscription service handles tenant subscription purchases and manual renewals through SePay QR. See the [Billing API and setup guide](services/subscription-service/README.md). Configure actual prices in CMS and enable SePay explicitly; no commercial prices are seeded.
+
+Notification has a [database-only module](services/notification-service/README.md) for in-app
+inboxes, alert settings and durable email delivery. Run `migrateNotification` with explicit
+`NOTIFICATION_DB_URL/USER/PASSWORD` credentials. Its HTTP/Kafka runtime is not implemented yet.
