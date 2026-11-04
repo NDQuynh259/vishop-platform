@@ -169,6 +169,6 @@ Start with the [Core Architecture index](docs/core-architecture/README.md) for a
 
 Subscription service handles tenant subscription purchases and manual renewals through SePay QR. See the [Billing API and setup guide](services/subscription-service/README.md). Configure actual prices in CMS and enable SePay explicitly; no commercial prices are seeded.
 
-Notification has a [database-only module](services/notification-service/README.md) for in-app
-inboxes, alert settings and durable email delivery. Run `migrateNotification` with explicit
+Notification has [domain/application modules and schema](services/notification-service/README.md) for in-app
+inboxes, alert settings and delivery workflows. Run `migrateNotification` with explicit
 `NOTIFICATION_DB_URL/USER/PASSWORD` credentials. Its HTTP/Kafka runtime is not implemented yet.

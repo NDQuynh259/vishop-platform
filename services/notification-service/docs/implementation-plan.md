@@ -1,7 +1,11 @@
 # Kế hoạch triển khai Notification-service
 
 Ngày lập: 04/11/2026. Trạng thái: kế hoạch đề xuất, chưa triển khai runtime/API.
-Nền hiện có: schema V1–V5, migration CLI và kiểm thử PostgreSQL.
+Nền hiện có: schema V1–V7, migration CLI và kiểm thử PostgreSQL; catalog enum trong code.
+Đã bổ sung nền domain/application của 4 module và composition, xem
+[trạng thái module](module-design.md). Các đợt runtime/API bên dưới vẫn là backlog.
+Module/API catalog đã bỏ; dùng [shared constants](constants.md) và danh mục phía FE.
+Chưa có main HTTP runtime hoặc Gateway integration.
 [API dự kiến](api-contract.md), [nghiệp vụ](business-rules.md), [DB](database-design.md).
 
 ## 1. Phạm vi và ưu tiên
@@ -26,7 +30,8 @@ Bản đầu backend cung cấp API/contract cho FE; việc xây màn hình là 
 ## 2. Module đề xuất
 
 - `inbox`: thông báo, recipient, đọc/ẩn và policy đọc.
-- `configuration`: catalog, tenant feature/type/channel và personal preference.
+- `shared/constants`: enum feature/type/defaults dùng chung, không phải module/API.
+- `configuration`: tenant feature/type/channel và personal preference.
 - `delivery`: template, routing, jobs, attempts, email/Telegram adapter.
 - `announcement`: draft, audience, publish và fan-out thông báo hệ thống.
 - `composition`: phối hợp policy/recipient resolution với các module qua application API.
@@ -42,7 +47,7 @@ Docker/Compose, Gateway route và context secret riêng khi triển khai runtime
 
 - Dựng runtime theo mẫu service hiện hành; giữ migration CLI riêng.
 - Bổ sung quyền IAM cho notification, cấu hình Gateway HTTP và WebSocket.
-- JPA mappings validate V5, JSON mapping, optimistic locking, soft-delete filtering.
+- JPA mappings validate schema hiện hành, JSON mapping, optimistic locking, soft-delete filtering.
 - Contract recipient/permission lookup qua IAM API hoặc projection có độ mới rõ ràng;
   không join IAM DB, không đọc repository của service khác.
 - Chốt template theo type/channel; template có version, nằm trong code ở bản đầu.
@@ -56,7 +61,7 @@ schema validate và mapping đầy đủ; đọc/ghi dùng JPA, không JDBC runt
 ### Đợt 2 — In-app, catalog và cấu hình
 
 - API inbox, detail, unread-count, read, read-all, ẩn thông báo cá nhân.
-- API catalog, tenant feature/type settings và danh sách người nhận.
+- API tenant feature/type settings và danh sách người nhận; FE dùng danh mục hardcode.
 - API preference cá nhân và effective-settings kèm lý do kênh bị tắt.
 - Lookup quyền giống nhau cho list/detail/count/realtime: membership đang active,
   quyền dữ liệu/shop còn hiệu lực, parent/recipient chưa xóa.

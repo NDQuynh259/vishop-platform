@@ -1,7 +1,11 @@
 # Thiết kế Notification
 
-Hiện có module database-only và CLI Flyway. Luồng dưới đây là thiết kế runtime,
-chưa phải thành phần đang chạy.
+Hiện có 4 module domain/application, composition contract và CLI Flyway.
+[Thiết kế module](module-design.md) ghi rõ code đã có và adapter còn thiếu.
+Danh mục nằm trong [shared constants](constants.md); không còn module/API catalog.
+PostgreSQL kiểm tra schema dữ liệu cấu hình/history. Main runtime và Gateway context
+verifier vẫn chưa triển khai.
+Luồng dưới đây là thiết kế runtime, chưa phải thành phần đang chạy.
 
 ```mermaid
 flowchart LR

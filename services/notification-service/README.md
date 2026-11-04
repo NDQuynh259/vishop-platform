@@ -1,10 +1,13 @@
-# Notification database
+# Notification service
 
 Service business rules, architecture and database ERDs: [docs/README.md](docs/README.md).
 
-This module currently contains the database schema and standalone Flyway migration CLI.
-HTTP APIs, JPA mappings, event consumers, authorization checks, realtime and provider
-workers are subsequent work. It does not start an application or send notifications.
+This service contains four domain/application modules, shared notification constants, database
+schema and standalone Flyway migration CLI. See [module design](docs/module-design.md)
+for implemented use cases and adapter contracts. [Shared constants](docs/constants.md) define
+feature/type codes and defaults; there is no catalog module, registry or catalog HTTP API.
+Persistence/HTTP adapters, event consumers, runtime gateway authentication, realtime and provider workers
+are subsequent work. It does not yet start a standalone server or send notifications.
 
 ## Migrate
 
@@ -38,8 +41,6 @@ or database creation occurs in the CLI. Application UUIDs require no extensions.
 | `notification_alert_rules` | Per-tenant/type channel settings, thresholds and cooldown (at least 24 hours) |
 | `notification_alert_rule_recipients` | Explicit users selected for a rule |
 | `notification_user_preferences` | Per-tenant/user/type opt-out preferences for in-app, email and Telegram |
-| `notification_features` | Global catalog of feature groups available for notification subscriptions |
-| `notification_types` | Global catalog of SYSTEM/BUSINESS types and default channel choices |
 | `notification_tenant_features` | Tenant switches for feature groups they want notifications from |
 | `notification_settings` | Tenant channel switches and provider/bot connection configuration |
 | `notification_deduplication` | Rolling cooldown state per tenant/type/subject/user/channel |
@@ -69,7 +70,7 @@ for the per-table policy, backfill and soft-delete query requirements.
 personal preferences, unique by `(tenant_id, user_id, type)`. Settings have an `enabled`
 switch and independent `in_app_enabled`/`email_enabled`/`telegram_enabled` switches. All default to true,
 meaning allow the tenant policy; missing rows also inherit that policy. Effective delivery
-requires active catalog entries, tenant feature/channel switches, the tenant type rule and
+requires supported type codes, tenant feature/channel switches, the tenant type rule and
 channel, the personal setting and channel, recipient selection, and authorization to all
 permit it. Personal settings cannot turn on a disabled tenant
 channel or grant data access. Changes apply to future notifications; existing in-app
@@ -78,14 +79,15 @@ invitees is separate. Enforcement will be implemented with the consumers/workers
 
 ## Tenant choices and system notifications
 
-V3 adds a global catalog so configuration screens can list notification types grouped by
-feature. Catalogs are platform-managed; tenant admins edit tenant settings, and users edit
-their personal settings. Existing custom type codes are preserved under `LEGACY` on upgrade.
-Unknown new codes must be registered before notification/configuration writes.
+V7 moves definitions from PostgreSQL to shared NotificationFeatureCode/NotificationTypeCode enums.
+The catalog module and its read APIs have been removed. FE manages its selection list using
+the same codes. Tenant settings/history remain in PostgreSQL with no catalog FK. New configuration
+writes must validate codes through the shared enums. Existing legacy codes stay stored
+but do not implicitly become supported types. Tenant admins edit settings, users edit preferences.
 
 Tenant configuration is evaluated in this order (each disabled gate suppresses delivery):
 
-1. Active catalog feature and type.
+1. Type and feature codes supported by shared constants.
 2. Feature subscription in `notification_tenant_features` (missing row: enabled).
 3. Tenant-wide channel in `notification_settings` (missing row: in-app on, email/Telegram off).
 4. Per-type `notification_alert_rules` enabled/channel switches (missing row: catalog defaults).
@@ -135,10 +137,10 @@ A Telegram configuration can be saved disabled while incomplete. Enabling it req
 nonblank chat ID and credentials reference. Bot-specific fields cannot be attached to
 another channel, and in-app needs no provider credentials. A reference is not a token:
 the future configuration API must accept/store bot credentials using secrets storage and
-return only masked connection information. This database-only module does not implement
+return only masked connection information. This module does not implement
 that secrets storage or verify the token/chat with Telegram.
 
-Tenant type rules and the type catalog now have Telegram switches (default off); personal
+Tenant type rules and code catalog defaults have Telegram switches (default off); personal
 preferences default to allowing the tenant policy. These configure future delivery routing.
 The durable delivery queue and cooldown channel constraints still support in-app/email as
 originally specified; the Telegram sender, queue expansion and test-connection API remain
@@ -172,5 +174,5 @@ Tests use an isolated embedded PostgreSQL 16 instance. They verify fresh/repeate
 migrations, per-user read state, tenant foreign keys, destination deduplication,
 delivery state constraints, event transaction rollback, cooldown key isolation,
 personal preference isolation, feature/channel/type choices per tenant, system type categories,
-Telegram configuration constraints, and upgrades from V1/V2/V3 without loss of existing
+Telegram configuration constraints, code-owned catalog metadata and upgrades from V1–V6 without loss of existing
 notifications, custom type configuration, personal preferences or provider connections.

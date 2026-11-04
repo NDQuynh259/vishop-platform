@@ -1,6 +1,8 @@
 # API Notification — hợp đồng dự kiến
 
-Ngày lập: 04/11/2026. Toàn bộ endpoint dưới đây là kế hoạch, chưa có runtime thực thi.
+Ngày lập: 04/11/2026. Các endpoint dưới đây là kế hoạch. Module/API catalog đã được bỏ;
+FE quản lý danh mục theo [shared constants](constants.md). Notification chưa có main
+runtime/Gateway wiring để phục vụ HTTP độc lập.
 [Thứ tự triển khai](implementation-plan.md). Không tạo API CRUD cho mọi bảng.
 
 ## Quy ước
@@ -33,7 +35,7 @@ Ngày lập: 04/11/2026. Toàn bộ endpoint dưới đây là kế hoạch, ch�
 | notifications.settings.manage | Sửa feature/type/recipient/channel và test kết nối |
 | notifications.deliveries.view | Xem trạng thái gửi trong tenant, không tự cấp quyền đọc nội dung nghiệp vụ |
 | notifications.deliveries.retry | Retry lỗi hợp lệ trong tenant |
-| PLATFORM_ADMIN | CMS catalog/announcement và vận hành platform theo policy |
+| PLATFORM_ADMIN | CMS announcement và vận hành platform theo policy; catalog thay đổi qua code release |
 
 Tùy chọn cá nhân yêu cầu membership active và chỉ sửa bản thân.
 Quyền notifications.view không thay thế required_permission/shop scope của từng notification.
@@ -53,18 +55,20 @@ Item: id, type, featureCode, category, severity, title, body, actionUrl, shopId,
 occurredAt, createdAt, readAt. actionUrl chỉ là đường dẫn/đích hợp lệ đã kiểm soát.
 Không có POST tạo thông báo tùy ý hoặc PATCH sửa title/body từ client.
 
-## 2. Catalog và nhóm tính năng — P0
+## 2. Nhóm tính năng — P0
+
+FE hardcode danh mục theo cùng mã trong shared/constants backend. Không có API catalog
+hoặc UUID/version metadata danh mục. Backend vẫn validate mã trước khi ghi cấu hình.
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
-| GET | /notification-catalog/features | Các nhóm tính năng có thể cấu hình; active/default |
-| GET | /notification-catalog/types | Loại theo featureCode/category; metadata ngưỡng, defaults và kênh hỗ trợ |
 | GET | /notification-settings/features | Feature settings của tenant, kèm giá trị hiệu lực |
 | PATCH | /notification-settings/features/{featureCode} | Body enabled, version; bật/tắt nhóm tính năng |
 
-Catalog bản đầu do migration/code quản lý; admin tenant không tạo/xóa type.
-Catalog không chứng minh tenant có entitlement hoặc source event đã sẵn sàng;
-trả thêm availability/reason để FE không bật tính năng chưa hỗ trợ.
+V7 bỏ hai bảng catalog; settings/history vẫn lưu business code. Constants không xác nhận
+entitlement, provider readiness hoặc source event đã sẵn sàng. Filter category/feature ở
+API nghiệp vụ phải map sang type codes từ constants trước khi truy vấn DB, không JOIN
+catalog table. Threshold schema vẫn chờ contract của domain nguồn.
 
 ## 3. Loại thông báo và người nhận — P0
 

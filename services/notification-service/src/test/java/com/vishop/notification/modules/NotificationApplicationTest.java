@@ -3,12 +3,11 @@ package com.vishop.notification.modules;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.vishop.notification.composition.publication.CatalogSystemTypePolicy;
+import com.vishop.notification.composition.publication.NotificationSystemTypePolicy;
 import com.vishop.notification.modules.announcement.application.api.AnnouncementApi;
 import com.vishop.notification.modules.announcement.application.service.AnnouncementApplicationService;
 import com.vishop.notification.modules.announcement.domain.entity.Announcement;
 import com.vishop.notification.modules.announcement.domain.port.AnnouncementRepository;
-import com.vishop.notification.modules.catalog.application.api.CatalogApi;
 import com.vishop.notification.modules.configuration.application.api.ConfigurationApi;
 import com.vishop.notification.modules.configuration.application.service.ConfigurationApplicationService;
 import com.vishop.notification.modules.configuration.domain.entity.TenantConfiguration;
@@ -111,19 +110,8 @@ class NotificationApplicationTest {
   }
 
   @Test
-  void announcementChecksCatalogAndUsesCompareAndSwapVersion() {
-    var catalog = mock(CatalogApi.class);
-    when(catalog.findType("STOCK_LOW"))
-        .thenReturn(
-            Optional.of(
-                new CatalogApi.Type(
-                    "STOCK_LOW",
-                    "INVENTORY",
-                    "BUSINESS",
-                    true,
-                    true,
-                    Set.of(NotificationChannel.IN_APP))));
-    var policy = new CatalogSystemTypePolicy(catalog);
+  void announcementChecksTypeConstantsAndUsesCompareAndSwapVersion() {
+    var policy = new NotificationSystemTypePolicy();
     assertThatThrownBy(() -> policy.requirePublishableSystemType("STOCK_LOW"))
         .isInstanceOf(IllegalArgumentException.class);
     var repo = mock(AnnouncementRepository.class);
@@ -141,16 +129,8 @@ class NotificationApplicationTest {
             0,
             null);
     when(repo.find(id)).thenReturn(Optional.of(draft));
-    when(catalog.findType("SYSTEM_MAINTENANCE"))
-        .thenReturn(
-            Optional.of(
-                new CatalogApi.Type(
-                    "SYSTEM_MAINTENANCE",
-                    "SYSTEM",
-                    "SYSTEM",
-                    true,
-                    true,
-                    Set.of(NotificationChannel.IN_APP))));
+    assertThatThrownBy(() -> policy.requirePublishableSystemType("CUSTOM_LEGACY_TYPE"))
+        .isInstanceOf(IllegalArgumentException.class);
     var service = new AnnouncementApplicationService(repo, policy, CLOCK, UUID::randomUUID);
     var published = service.publish(id, 0);
     assertThat(published.publishedAt()).isEqualTo(NOW);

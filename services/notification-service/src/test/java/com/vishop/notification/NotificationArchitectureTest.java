@@ -15,7 +15,14 @@ class NotificationArchitectureTest {
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.vishop.notification");
-    var modules = java.util.Set.of("catalog", "configuration", "inbox", "delivery", "announcement");
+    var modules = java.util.Set.of("configuration", "inbox", "delivery", "announcement");
+    assertThat(
+            classes.stream()
+                .anyMatch(
+                    type ->
+                        type.getPackageName()
+                            .startsWith("com.vishop.notification.modules.catalog")))
+        .isFalse();
     for (String module : modules) {
       String prefix = "com.vishop.notification.modules." + module + ".";
       assertThat(classes.stream().anyMatch(type -> type.getPackageName().startsWith(prefix)))
@@ -63,6 +70,28 @@ class NotificationArchitectureTest {
             "jakarta.persistence..",
             "org.springframework.data..",
             "org.apache.kafka..")
+        .check(classes);
+    noClasses()
+        .that()
+        .resideInAPackage("..presentation..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAnyPackage(
+            "com.vishop.notification.modules..domain..",
+            "..infrastructure..",
+            "..application.port..")
+        .allowEmptyShould(true)
+        .check(classes);
+    noClasses()
+        .that()
+        .resideInAPackage("..shared..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAnyPackage(
+            "com.vishop.notification.modules..",
+            "com.vishop.notification.composition..",
+            "org.springframework..",
+            "jakarta..")
         .check(classes);
     noClasses()
         .that()

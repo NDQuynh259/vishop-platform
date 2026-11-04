@@ -1,5 +1,6 @@
 // Domain/application modules and migration CLI; runtime adapters are added separately.
 dependencies {
+    implementation(project(":libs:common-domain"))
     implementation("org.flywaydb:flyway-core")
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")

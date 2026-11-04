@@ -1,9 +1,9 @@
 package com.vishop.notification.composition.dispatch;
 
-import com.vishop.notification.modules.catalog.application.api.CatalogApi;
 import com.vishop.notification.modules.configuration.application.api.ConfigurationApi;
 import com.vishop.notification.modules.delivery.application.api.DeliveryApi;
 import com.vishop.notification.modules.inbox.application.api.InboxApi;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import java.util.HashMap;
@@ -25,7 +25,6 @@ public final class NotificationDispatchCoordinator {
     }
   }
 
-  private final CatalogApi catalog;
   private final ConfigurationApi configuration;
   private final InboxApi inbox;
   private final DeliveryApi delivery;
@@ -33,13 +32,11 @@ public final class NotificationDispatchCoordinator {
   private final DispatchJournal journal;
 
   public NotificationDispatchCoordinator(
-      CatalogApi catalog,
       ConfigurationApi configuration,
       InboxApi inbox,
       DeliveryApi delivery,
       RecipientDirectory recipients,
       DispatchJournal journal) {
-    this.catalog = Objects.requireNonNull(catalog);
     this.configuration = Objects.requireNonNull(configuration);
     this.inbox = Objects.requireNonNull(inbox);
     this.delivery = Objects.requireNonNull(delivery);
@@ -56,16 +53,15 @@ public final class NotificationDispatchCoordinator {
 
   private Result dispatchOnce(NotificationMessage message) {
     var type =
-        catalog
-            .findType(message.type())
+        NotificationTypeCode.fromCode(message.type())
             .orElseThrow(() -> new IllegalArgumentException("Unknown notification type"));
     var policy =
         configuration.resolve(
             message.tenantId(),
             new ConfigurationApi.TypePolicy(
                 type.code(),
-                type.featureCode(),
-                type.available(),
+                type.feature().code(),
+                true,
                 type.defaultEnabled(),
                 type.defaultChannels()));
     if (policy.channels().isEmpty()) return skipped();

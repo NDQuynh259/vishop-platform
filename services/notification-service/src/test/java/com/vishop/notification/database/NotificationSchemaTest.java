@@ -3,6 +3,7 @@ package com.vishop.notification.database;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.coreplatform.common.domain.UuidV7;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -43,7 +44,7 @@ class NotificationSchemaTest {
     }
     String url = postgres.getJdbcUrl("postgres", name);
     flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7);
     db = DriverManager.getConnection(url, "postgres", "postgres");
     execute(
         "INSERT INTO notifications(id,tenant_id,source_event_id,type,subject_type,subject_id,required_permission,severity,title,body,occurred_at) VALUES (?,?,?,'STOCK_LOW','SKU','sku-1','inventory.view','WARNING','Low stock','Check stock',now())",
@@ -64,6 +65,19 @@ class NotificationSchemaTest {
   }
 
   @Test
+  void catalogTablesAreRemovedWhileLocalDataRelationshipsRemain() throws Exception {
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('notification_features','notification_types')"))
+        .isZero();
+    UUID user = UUID.randomUUID();
+    recipient(tenant, user);
+    rejects("23503", () -> recipient(UUID.randomUUID(), user));
+    assertThat(scalar("SELECT count(*) FROM pg_proc WHERE proname='notification_catalog_uuid_v7'"))
+        .isZero();
+  }
+
+  @Test
   void commonColumnsDefaultCorrectlyAndDeletedSettingsCanBeRestoredWithoutDuplicates()
       throws Exception {
     execute("INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'EMAIL')", tenant);
@@ -72,10 +86,6 @@ class NotificationSchemaTest {
                 "SELECT count(*) FROM notification_settings WHERE tenant_id=? AND created_at IS NOT NULL AND updated_at=created_at AND deleted_at IS NULL AND version=0",
                 tenant))
         .isEqualTo(1);
-    assertThat(
-            scalar(
-                "SELECT count(*) FROM notification_features WHERE created_at IS NOT NULL AND updated_at=created_at AND deleted_at IS NULL AND version=0"))
-        .isEqualTo(10);
     execute(
         "UPDATE notification_settings SET deleted_at=clock_timestamp(),updated_at=clock_timestamp(),version=version+1 WHERE tenant_id=? AND channel='EMAIL' AND version=0",
         tenant);
@@ -98,7 +108,7 @@ class NotificationSchemaTest {
                 tenant))
         .isEqualTo(1);
     rejects("23514", () -> execute("UPDATE notifications SET version=-1"));
-    rejects("23502", () -> execute("UPDATE notification_features SET updated_at=NULL"));
+    rejects("23502", () -> execute("UPDATE notification_settings SET updated_at=NULL"));
   }
 
   @Test
@@ -126,7 +136,7 @@ class NotificationSchemaTest {
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {1, 2, 3, 4})
+  @ValueSource(ints = {1, 2, 3, 4, 5, 6})
   void upgradesPreviousVersionsWithoutChangingExistingNotificationData(int previousVersion)
       throws Exception {
     String name = "upgrade_" + UUID.randomUUID().toString().replace("-", "");
@@ -146,9 +156,19 @@ class NotificationSchemaTest {
       statement.executeUpdate(
           "INSERT INTO notifications(id,tenant_id,source_event_id,type,subject_type,subject_id,required_permission,severity,title,body,occurred_at) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','event-1','STOCK_LOW','SKU','sku-1','inventory.view','WARNING','Low stock','Check stock',now())");
       statement.executeUpdate("UPDATE notifications SET created_at='2026-01-01 00:00:00Z'");
+      if (previousVersion >= 5)
+        statement.executeUpdate("UPDATE notifications SET updated_at=created_at");
       if (previousVersion >= 3) {
-        statement.executeUpdate(
-            "INSERT INTO notification_types(code,feature_code,category,name) VALUES ('CUSTOM_LEGACY_TYPE','LEGACY','BUSINESS','Custom')");
+        if (previousVersion >= 6) {
+          try (var insert =
+              connection.prepareStatement(
+                  "INSERT INTO notification_types(id,code,feature_code,category,name) VALUES (?,'CUSTOM_LEGACY_TYPE','LEGACY','BUSINESS','Custom')")) {
+            insert.setObject(1, UuidV7.nextId());
+            insert.executeUpdate();
+          }
+        } else
+          statement.executeUpdate(
+              "INSERT INTO notification_types(code,feature_code,category,name) VALUES ('CUSTOM_LEGACY_TYPE','LEGACY','BUSINESS','Custom')");
         String channelTable =
             previousVersion >= 4 ? "notification_settings" : "notification_tenant_channels";
         statement.executeUpdate(
@@ -167,8 +187,14 @@ class NotificationSchemaTest {
                 + "(id,tenant_id,user_id,type,email_enabled) VALUES ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000005','STOCK_LOW',false)");
       }
       var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(5 - previousVersion);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(7 - previousVersion);
       latest.validate();
+      try (var result =
+          statement.executeQuery(
+              "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('notification_features','notification_types')")) {
+        result.next();
+        assertThat(result.getLong(1)).isZero();
+      }
       try (var result =
           statement.executeQuery(
               "SELECT updated_at=created_at AND created_at='2026-01-01 00:00:00Z'::timestamptz AND deleted_at IS NULL AND version=0 FROM notifications")) {
@@ -186,9 +212,9 @@ class NotificationSchemaTest {
       }
       try (var result =
           statement.executeQuery(
-              "SELECT feature_code FROM notification_types WHERE code='CUSTOM_LEGACY_TYPE'")) {
+              "SELECT type FROM notification_alert_rules WHERE type='CUSTOM_LEGACY_TYPE'")) {
         assertThat(result.next()).isTrue();
-        assertThat(result.getString(1)).isEqualTo("LEGACY");
+        assertThat(result.getString(1)).isEqualTo("CUSTOM_LEGACY_TYPE");
       }
       try (var result =
           statement.executeQuery(
@@ -209,16 +235,14 @@ class NotificationSchemaTest {
   }
 
   @Test
-  void catalogGroupsSystemAndBusinessTypesAndRejectsUnknownTypes() throws Exception {
+  void legacyCodesRemainReadableButBlankBusinessCodesAreRejected() throws Exception {
+    setting(tenant, UUID.randomUUID(), "CUSTOM_LEGACY_TYPE");
     assertThat(
             scalar(
-                "SELECT count(*) FROM notification_types WHERE category='SYSTEM' AND feature_code='SYSTEM'"))
-        .isEqualTo(3);
-    assertThat(scalar("SELECT count(*) FROM notification_types WHERE feature_code='INVENTORY'"))
-        .isEqualTo(2);
-    rejects("23503", () -> setting(tenant, UUID.randomUUID(), "NOT_REGISTERED"));
-    rejects("23503", () -> execute("UPDATE notifications SET type='NOT_REGISTERED'"));
-    rejects("23503", () -> execute("UPDATE notification_types SET feature_code='NOT_REGISTERED'"));
+                "SELECT count(*) FROM notification_user_preferences WHERE type='CUSTOM_LEGACY_TYPE'"))
+        .isEqualTo(1);
+    rejects("23514", () -> setting(tenant, UUID.randomUUID(), " "));
+    rejects("23514", () -> execute("UPDATE notifications SET type=' '"));
   }
 
   @Test
@@ -323,10 +347,10 @@ class NotificationSchemaTest {
             execute(
                 "INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'EMAIL')", tenant));
     rejects(
-        "23503",
+        "23514",
         () ->
             execute(
-                "INSERT INTO notification_tenant_features(tenant_id,feature_code) VALUES (?,'NOT_REGISTERED')",
+                "INSERT INTO notification_tenant_features(tenant_id,feature_code) VALUES (?,' ')",
                 tenant));
     rejects(
         "23514",
