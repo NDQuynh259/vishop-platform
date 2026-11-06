@@ -1,8 +1,7 @@
 package com.vishop.notification.composition.dispatch;
 
-import com.vishop.notification.modules.configuration.application.api.ConfigurationApi;
-import com.vishop.notification.modules.delivery.application.api.DeliveryApi;
-import com.vishop.notification.modules.inbox.application.api.InboxApi;
+import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
+import com.vishop.notification.modules.inbox.application.api.NotificationInboxApi;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
@@ -25,19 +24,19 @@ public final class NotificationDispatchCoordinator {
     }
   }
 
-  private final ConfigurationApi configuration;
-  private final InboxApi inbox;
-  private final DeliveryApi delivery;
+  private final NotificationDispatchPolicy setting;
+  private final NotificationInboxApi inbox;
+  private final NotificationDeliveryApi delivery;
   private final RecipientDirectory recipients;
   private final DispatchJournal journal;
 
   public NotificationDispatchCoordinator(
-      ConfigurationApi configuration,
-      InboxApi inbox,
-      DeliveryApi delivery,
+      NotificationDispatchPolicy setting,
+      NotificationInboxApi inbox,
+      NotificationDeliveryApi delivery,
       RecipientDirectory recipients,
       DispatchJournal journal) {
-    this.configuration = Objects.requireNonNull(configuration);
+    this.setting = Objects.requireNonNull(setting);
     this.inbox = Objects.requireNonNull(inbox);
     this.delivery = Objects.requireNonNull(delivery);
     this.recipients = Objects.requireNonNull(recipients);
@@ -56,9 +55,9 @@ public final class NotificationDispatchCoordinator {
         NotificationTypeCode.fromCode(message.type())
             .orElseThrow(() -> new IllegalArgumentException("Unknown notification type"));
     var policy =
-        configuration.resolve(
+        setting.resolve(
             message.tenantId(),
-            new ConfigurationApi.TypePolicy(
+            new NotificationDispatchPolicy.TypePolicy(
                 type.code(),
                 type.feature().code(),
                 true,
@@ -70,8 +69,7 @@ public final class NotificationDispatchCoordinator {
       if (!policy.selectedRecipients().isEmpty() && !policy.selectedRecipients().contains(user))
         continue;
       var channels =
-          configuration.restrictForUser(
-              message.tenantId(), user, message.type(), policy.channels());
+          setting.restrictForUser(message.tenantId(), user, message.type(), policy.channels());
       if (!channels.isEmpty()) routes.put(user, channels);
     }
     var allowed = delivery.reserveAllowedRoutes(message, Map.copyOf(routes));

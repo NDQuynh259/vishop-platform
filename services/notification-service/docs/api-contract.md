@@ -1,6 +1,8 @@
 # API Notification — hợp đồng dự kiến
 
-Ngày lập: 04/11/2026. Các endpoint dưới đây là kế hoạch. Module/API catalog đã được bỏ;
+Ngày lập: 04/11/2026. Phần lớn endpoint dưới đây là kế hoạch. Các endpoint setting đã có
+code chỉ gồm GET list/detail và PUT channel; payload thực tế trong [module notification-setting](setting.md); xem tài liệu đó
+để phân biệt phần đã triển khai và backlog provider/IAM. Module/API catalog đã được bỏ;
 FE quản lý danh mục theo [shared constants](constants.md). Notification chưa có main
 runtime/Gateway wiring để phục vụ HTTP độc lập.
 [Thứ tự triển khai](implementation-plan.md). Không tạo API CRUD cho mọi bảng.
@@ -55,7 +57,7 @@ Item: id, type, featureCode, category, severity, title, body, actionUrl, shopId,
 occurredAt, createdAt, readAt. actionUrl chỉ là đường dẫn/đích hợp lệ đã kiểm soát.
 Không có POST tạo thông báo tùy ý hoặc PATCH sửa title/body từ client.
 
-## 2. Nhóm tính năng — P0
+## 2. Nhóm tính năng — kế hoạch, chưa triển khai
 
 FE hardcode danh mục theo cùng mã trong shared/constants backend. Không có API catalog
 hoặc UUID/version metadata danh mục. Backend vẫn validate mã trước khi ghi cấu hình.
@@ -70,7 +72,7 @@ entitlement, provider readiness hoặc source event đã sẵn sàng. Filter cat
 API nghiệp vụ phải map sang type codes từ constants trước khi truy vấn DB, không JOIN
 catalog table. Threshold schema vẫn chờ contract của domain nguồn.
 
-## 3. Loại thông báo và người nhận — P0
+## 3. Loại thông báo và người nhận — kế hoạch, chưa triển khai
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
@@ -80,52 +82,33 @@ catalog table. Threshold schema vẫn chờ contract của domain nguồn.
 | PUT | /notification-settings/types/{type}/recipients | Body recipientIds, version; thay thế danh sách user |
 | GET | /notification-settings/types/{type}/recipient-candidates | Tìm member hợp lệ có quyền, paging/filter q |
 
-JSON channels: inApp/email/telegram. Không tự thêm kênh tùy ý. Rule absent kế thừa
+JSON channels hiện triển khai là mảng enum `IN_APP`/`EMAIL`/`TELEGRAM`/`LARK`. Không tự thêm kênh tùy ý. Rule absent kế thừa
 catalog defaults. cooldownSeconds tối thiểu 86400. Threshold sai schema trả 422;
 không có source config contract thì trả unsupported thay vì báo đã áp dụng.
 Danh sách rỗng nghĩa dùng resolver theo type; nếu type không có resolver thì không gửi,
 response giải thích. Recipient candidates và mutation dùng cùng kiểm tra quyền.
 Rule dùng unique tenant/type, API upsert cùng khóa; restore nếu dòng đã xóa mềm.
 
-## 4. Cấu hình kết nối kênh — P0
+## 4. Cấu hình kết nối kênh — đã triển khai
+
+Base path `/api/v1`; tenant lấy từ GatewayPrincipal. Chi tiết schema, ví dụ và
+response đã che thông tin nhạy cảm: [API cấu hình kết nối](setting.md).
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
-| GET | /notification-settings/channels | IN_APP/EMAIL/TELEGRAM, availability và readiness |
-| GET | /notification-settings/channels/{channel} | Cấu hình hiện tại đã che bí mật |
-| PUT | /notification-settings/channels/{channel} | Tạo/cập nhật cấu hình và version; secret write-only |
-| POST | /notification-settings/channels/{channel}/test-connection | 202 operationId; kiểm tra provider, không gửi tin |
-| GET | /notification-settings/channel-operations/{operationId} | Outcome test/send thử đã che bí mật |
-| POST | /notification-settings/channels/{channel}/test-message | 202 operationId; gửi nội dung mẫu tới đích đã cấu hình |
-| POST | /notification-settings/channels/{channel}/disconnect | Tắt kênh, thu hồi credentials; audit và version check |
+| GET | /notification-settings/channels | Danh sách IN_APP/EMAIL/TELEGRAM/LARK và trạng thái cấu hình |
+| GET | /notification-settings/channels/{channel} | Chi tiết kênh, connectionConfig công khai và version |
+| PUT | /notification-settings/channels/{channel} | Upsert enabled, version và connectionConfig theo enum trên URL |
 
-IN_APP chỉ cần enabled/version, không có test provider hoặc secret.
-EMAIL nhận host, port, tlsMode, fromAddress, fromName, username, write-only password
-hoặc cấu hình provider được server hỗ trợ. Secret/config được lưu qua adapter.
-TELEGRAM nhận botToken write-only, chatId, messageThreadId tùy chọn, enabled/version.
-Bot username lấy từ kết quả provider; không dùng username client làm chứng cứ bot hợp lệ.
-Test/readiness gắn với revision cấu hình; sửa token/chat làm mất verified state.
-Chỉ enable khi cấu hình đã kiểm chứng; cấu hình Telegram draft có thể lưu disabled.
+GET yêu cầu `notifications.settings.view`; PUT yêu cầu `notifications.settings.manage`.
+PUT có `connectionConfig` sẽ thay thế toàn bộ cấu hình; không có field này thì giữ
+nguyên cấu hình và chỉ cập nhật enabled. Không có discriminator type trong JSON.
+Credentials dùng secret-store references; API không trả chúng trong response.
+External provider hiện chưa có adapter nên chỉ lưu disabled, enable trả 422.
+Version cũ trả 409; field sai schema trả 422; enum sai trả 400.
 
-Không cho test-message tới email/chat tùy ý; đích là cấu hình tenant, có rate limit/audit.
-EMAIL recipient test phải là địa chỉ đã xác minh/cho phép theo policy kết nối.
-Disconnect hủy job chưa gửi của connection; worker đang gửi cần fencing/recheck.
-Provider call đã bắt đầu có thể hoàn tất; không hứa thu hồi tin đã gửi.
-Rotate secret tạo revision mới; API không trả secret cũ.
-
-Ví dụ request Telegram, chỉ là dữ liệu minh họa:
-
-```json
-{
-  "enabled": false,
-  "botToken": "<write-only>",
-  "chatId": "-100123456789",
-  "messageThreadId": 12,
-  "version": 0
-}
-```
-
-## 5. Tùy chọn cá nhân — P0
+Test connection, gửi thử và disconnect là kế hoạch, chưa triển khai.
+## 5. Tùy chọn cá nhân — kế hoạch, chưa triển khai
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |

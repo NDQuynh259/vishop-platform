@@ -6,8 +6,15 @@ This service contains four domain/application modules, shared notification const
 schema and standalone Flyway migration CLI. See [module design](docs/module-design.md)
 for implemented use cases and adapter contracts. [Shared constants](docs/constants.md) define
 feature/type codes and defaults; there is no catalog module, registry or catalog HTTP API.
-Persistence/HTTP adapters, event consumers, runtime gateway authentication, realtime and provider workers
-are subsequent work. It does not yet start a standalone server or send notifications.
+The notification-setting module implements only notification_settings: channel HTTP APIs,
+one mapped entity, one Spring Data repository and a transactional JPA adapter; see
+[setting API and limits](docs/setting.md). Other persistence/HTTP adapters, event consumers,
+runtime gateway authentication, realtime and provider workers are subsequent work.
+It does not yet start a standalone server or send notifications.
+
+Feature/type/recipient/preference code and HTTP APIs have been removed from the setting
+module. Their existing schema and migrations remain. Routing depends on a separate
+NotificationDispatchPolicy port without a production implementation.
 
 ## Migrate
 
@@ -56,8 +63,8 @@ and user, and recheck membership, permission and shop access before exposing con
 
 In-app list and unread queries use `(tenant_id, user_id)` on recipients; join notifications
 on both tenant and notification ID. Read-all should use a cutoff timestamp so it does not
-mark concurrently arriving notifications as read. Timestamp and version updates on mutable
-rows must be performed explicitly by future application/JPA code.
+mark concurrently arriving notifications as read. Setting entities maintain timestamps through
+lifecycle callbacks and versions through `@Version`; other modules still require persistence adapters.
 
 V5 adds common audit columns to business/configuration tables: `created_at`/`updated_at`
 default to `now()`, `deleted_at` defaults to NULL and `version` defaults to 0 with a
@@ -79,6 +86,14 @@ invitees is separate. Enforcement will be implemented with the consumers/workers
 
 ## Tenant choices and system notifications
 
+V9 gives notification_settings a UUIDv7 primary key and keeps tenant/channel unique.
+The application generates new IDs with UuidV7.nextId(); the migration backfills existing
+rows without changing connection data or audit state. There is no composite ID class.
+
+V8 adds a UUIDv7 primary key to `notification_tenant_features`, retaining uniqueness on
+`(tenant_id, feature_code)` and preserving existing settings and audit fields. New IDs
+come from `UuidV7.nextId()`; there is no runtime database default.
+
 V7 moves definitions from PostgreSQL to shared NotificationFeatureCode/NotificationTypeCode enums.
 The catalog module and its read APIs have been removed. FE manages its selection list using
 the same codes. Tenant settings/history remain in PostgreSQL with no catalog FK. New configuration
@@ -96,7 +111,7 @@ Tenant configuration is evaluated in this order (each disabled gate suppresses d
 
 There are no default recipient lists: domain recipient resolution and tenant-selected users
 must be implemented by consumers. Settings cannot grant access to data or features outside
-a tenant's entitlements. `connection_ref` identifies provider configuration held outside this
+a tenant's entitlements. `connection_config.connectionRef` identifies provider configuration held outside this
 schema; do not place SMTP passwords or access tokens here. V3 preserves enabled email channels
 for tenants with existing enabled email rules. New tenants default to in-app delivery only.
 
@@ -127,18 +142,15 @@ channel connection information, not a user's choice of notification types.
 | --- | --- |
 | `tenant_id`, `channel` | Tenant and channel: `IN_APP`, `EMAIL`, `TELEGRAM` |
 | `enabled` | Enable this channel for the tenant |
-| `connection_ref` | Optional external provider configuration reference (e.g. SMTP settings) |
-| `credentials_ref` | Secret-store reference for a Telegram bot token or email credentials |
-| `telegram_bot_username` | Optional display/identification of the connected bot |
-| `telegram_chat_id` | Destination chat, group or channel ID; supports negative IDs |
-| `telegram_message_thread_id` | Optional destination topic ID |
+| `connection_config` | JSONB: `connectionRef`, `credentialsRef`, `telegramBotUsername`, `telegramChatId`, `telegramMessageThreadId` |
 
 A Telegram configuration can be saved disabled while incomplete. Enabling it requires a
 nonblank chat ID and credentials reference. Bot-specific fields cannot be attached to
 another channel, and in-app needs no provider credentials. A reference is not a token:
-the future configuration API must accept/store bot credentials using secrets storage and
-return only masked connection information. This module does not implement
-that secrets storage or verify the token/chat with Telegram.
+the setting API exposes write-only bot credentials through a provider/secret-store port and
+returns only connection metadata. The default port rejects credential writes and external
+channel enablement until secret storage and provider verification adapters are installed.
+See [setting implementation](docs/setting.md).
 
 Tenant type rules and code catalog defaults have Telegram switches (default off); personal
 preferences default to allowing the tenant policy. These configure future delivery routing.
@@ -176,3 +188,5 @@ delivery state constraints, event transaction rollback, cooldown key isolation,
 personal preference isolation, feature/channel/type choices per tenant, system type categories,
 Telegram configuration constraints, code-owned catalog metadata and upgrades from V1–V6 without loss of existing
 notifications, custom type configuration, personal preferences or provider connections.
+
+V10 migrates the five connection columns into `connection_config` JSONB, preserving existing values, audit fields and version. Credentials remain secret-store references.

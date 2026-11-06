@@ -29,8 +29,11 @@ NotificationDispatchCoordinator kiểm tra type trực tiếp qua constants, r�
 người nhận, personal preference, cooldown và gửi. NotificationSystemTypePolicy chỉ cho
 announcement sử dụng type SYSTEM đã được định nghĩa.
 
+Policy feature/type/recipient/preference hiện chỉ còn cổng NotificationDispatchPolicy
+ở composition, chưa có production implementation. notification-setting chỉ quản lý kênh.
+
 Constants không cấp quyền, không xác nhận tenant entitlement, provider readiness hoặc
-source event đã tích hợp. Các kiểm tra đó vẫn thuộc runtime/configuration/dispatch.
+source event đã tích hợp. Các kiểm tra đó vẫn thuộc runtime/setting/dispatch.
 
 ## FE và DB
 
@@ -48,7 +51,7 @@ NotificationTypeCode.fromCode / NotificationFeatureCode.fromCode trước khi gh
 
 ## Trạng thái và kiểm thử
 
-Service còn 4 module: configuration, inbox, delivery, announcement. Constants là Java
+Service còn 4 module: notification-setting, notification-inbox, notification-delivery, notification-announcement. Constants là Java
 thuần dùng chung, không phụ thuộc các module/framework. Chưa có main runtime, HTTP API
 nghiệp vụ, Kafka hoặc sender; migration CLI và các use case nền vẫn hoạt động qua ports.
 

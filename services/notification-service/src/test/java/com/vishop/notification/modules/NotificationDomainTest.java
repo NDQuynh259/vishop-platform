@@ -2,53 +2,18 @@ package com.vishop.notification.modules;
 
 import static org.assertj.core.api.Assertions.*;
 
-import com.vishop.notification.modules.announcement.domain.entity.Announcement;
-import com.vishop.notification.modules.configuration.domain.entity.TenantConfiguration;
-import com.vishop.notification.modules.configuration.domain.entity.UserPreference;
-import com.vishop.notification.modules.delivery.domain.entity.DeliveryJob;
+import com.vishop.notification.modules.announcement.domain.entity.NotificationAnnouncement;
+import com.vishop.notification.modules.delivery.domain.entity.NotificationDeliveryJob;
 import com.vishop.notification.modules.inbox.domain.entity.NotificationRecipient;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class NotificationDomainTest {
   static final Instant NOW = Instant.parse("2026-11-04T00:00:00Z");
-
-  @Test
-  void tenantAndPersonalSwitchesCanOnlyRestrictChannels() {
-    var all =
-        Set.of(NotificationChannel.IN_APP, NotificationChannel.EMAIL, NotificationChannel.TELEGRAM);
-    var tenant =
-        new TenantConfiguration(
-            true,
-            Set.of(NotificationChannel.IN_APP),
-            Optional.of(new TenantConfiguration.TypeRule(true, all, Set.of())));
-    var allowed = tenant.resolve(true, all);
-    assertThat(allowed).containsExactly(NotificationChannel.IN_APP);
-    assertThat(new UserPreference(true, all).restrict(allowed))
-        .containsExactly(NotificationChannel.IN_APP);
-    assertThat(new UserPreference(false, all).restrict(allowed)).isEmpty();
-    assertThat(new TenantConfiguration(false, all, Optional.empty()).resolve(true, all)).isEmpty();
-    assertThat(
-            new TenantConfiguration(
-                    true, all, Optional.of(new TenantConfiguration.TypeRule(false, all, Set.of())))
-                .resolve(true, all))
-        .isEmpty();
-  }
-
-  @Test
-  void missingTenantConfigurationUsesInAppDefaultAndCatalogDefaultCanDisable() {
-    assertThat(
-            TenantConfiguration.defaults()
-                .resolve(true, Set.of(NotificationChannel.IN_APP, NotificationChannel.EMAIL)))
-        .containsExactly(NotificationChannel.IN_APP);
-    assertThat(TenantConfiguration.defaults().resolve(false, Set.of(NotificationChannel.IN_APP)))
-        .isEmpty();
-  }
 
   @Test
   void recipientReadIsIdempotentAndIndependentAndArchiveDoesNotChangeContent() {
@@ -77,7 +42,7 @@ class NotificationDomainTest {
     assertThatThrownBy(() -> processing.complete(token, NOW.plusSeconds(30)))
         .isInstanceOf(IllegalStateException.class);
     var sent = processing.complete(token, NOW.plusSeconds(1));
-    assertThat(sent.status()).isEqualTo(DeliveryJob.Status.SENT);
+    assertThat(sent.status()).isEqualTo(NotificationDeliveryJob.Status.SENT);
     assertThat(sent.lockToken()).isNull();
     assertThatThrownBy(() -> sent.claim(token, NOW.plusSeconds(2), Duration.ofSeconds(30)))
         .isInstanceOf(IllegalStateException.class);
@@ -85,7 +50,7 @@ class NotificationDomainTest {
 
   @Test
   void retryHonorsDueTimeAndStopsAtBudget() {
-    DeliveryJob job = pending();
+    NotificationDeliveryJob job = pending();
     Instant time = NOW;
     for (int attempt = 1; attempt <= 5; attempt++) {
       UUID token = UUID.randomUUID();
@@ -93,7 +58,7 @@ class NotificationDomainTest {
       job = job.fail(token, time.plusSeconds(1), time.plusSeconds(10));
       time = time.plusSeconds(10);
     }
-    assertThat(job.status()).isEqualTo(DeliveryJob.Status.FAILED);
+    assertThat(job.status()).isEqualTo(NotificationDeliveryJob.Status.FAILED);
     assertThat(job.attemptCount()).isEqualTo(5);
     var failed = job;
     assertThatThrownBy(
@@ -110,10 +75,10 @@ class NotificationDomainTest {
   @Test
   void publishedAnnouncementCannotBeRevisedOrPublishedAgain() {
     var audience =
-        new Announcement.Audience(
-            Announcement.AudienceMode.SELECTED_TENANTS, Set.of(UUID.randomUUID()));
+        new NotificationAnnouncement.Audience(
+            NotificationAnnouncement.AudienceMode.SELECTED_TENANTS, Set.of(UUID.randomUUID()));
     var draft =
-        new Announcement(
+        new NotificationAnnouncement(
             UUID.randomUUID(),
             "SYSTEM_MAINTENANCE",
             "Maintenance",
@@ -128,17 +93,20 @@ class NotificationDomainTest {
         .isInstanceOf(IllegalStateException.class);
     assertThatThrownBy(() -> published.publish(NOW)).isInstanceOf(IllegalStateException.class);
     assertThatThrownBy(
-            () -> new Announcement.Audience(Announcement.AudienceMode.SELECTED_TENANTS, Set.of()))
+            () ->
+                new NotificationAnnouncement.Audience(
+                    NotificationAnnouncement.AudienceMode.SELECTED_TENANTS, Set.of()))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
-                new Announcement.Audience(
-                    Announcement.AudienceMode.ALL_ACTIVE_TENANTS, Set.of(UUID.randomUUID())))
+                new NotificationAnnouncement.Audience(
+                    NotificationAnnouncement.AudienceMode.ALL_ACTIVE_TENANTS,
+                    Set.of(UUID.randomUUID())))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  private static DeliveryJob pending() {
-    return DeliveryJob.pending(
+  private static NotificationDeliveryJob pending() {
+    return NotificationDeliveryJob.pending(
         UUID.randomUUID(),
         UUID.randomUUID(),
         UUID.randomUUID(),

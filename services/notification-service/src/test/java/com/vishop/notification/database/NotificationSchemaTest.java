@@ -44,7 +44,7 @@ class NotificationSchemaTest {
     }
     String url = postgres.getJdbcUrl("postgres", name);
     flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(11);
     db = DriverManager.getConnection(url, "postgres", "postgres");
     execute(
         "INSERT INTO notifications(id,tenant_id,source_event_id,type,subject_type,subject_id,required_permission,severity,title,body,occurred_at) VALUES (?,?,?,'STOCK_LOW','SKU','sku-1','inventory.view','WARNING','Low stock','Check stock',now())",
@@ -80,7 +80,10 @@ class NotificationSchemaTest {
   @Test
   void commonColumnsDefaultCorrectlyAndDeletedSettingsCanBeRestoredWithoutDuplicates()
       throws Exception {
-    execute("INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'EMAIL')", tenant);
+    execute(
+        "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
+        UuidV7.nextId(),
+        tenant);
     assertThat(
             scalar(
                 "SELECT count(*) FROM notification_settings WHERE tenant_id=? AND created_at IS NOT NULL AND updated_at=created_at AND deleted_at IS NULL AND version=0",
@@ -98,7 +101,9 @@ class NotificationSchemaTest {
         "23505",
         () ->
             execute(
-                "INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'EMAIL')", tenant));
+                "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
+                UuidV7.nextId(),
+                tenant));
     execute(
         "UPDATE notification_settings SET deleted_at=NULL,updated_at=clock_timestamp(),version=version+1 WHERE tenant_id=? AND channel='EMAIL' AND version=1",
         tenant);
@@ -136,7 +141,7 @@ class NotificationSchemaTest {
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {1, 2, 3, 4, 5, 6})
+  @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 8})
   void upgradesPreviousVersionsWithoutChangingExistingNotificationData(int previousVersion)
       throws Exception {
     String name = "upgrade_" + UUID.randomUUID().toString().replace("-", "");
@@ -159,16 +164,26 @@ class NotificationSchemaTest {
       if (previousVersion >= 5)
         statement.executeUpdate("UPDATE notifications SET updated_at=created_at");
       if (previousVersion >= 3) {
-        if (previousVersion >= 6) {
+        if (previousVersion == 6) {
           try (var insert =
               connection.prepareStatement(
                   "INSERT INTO notification_types(id,code,feature_code,category,name) VALUES (?,'CUSTOM_LEGACY_TYPE','LEGACY','BUSINESS','Custom')")) {
             insert.setObject(1, UuidV7.nextId());
             insert.executeUpdate();
           }
-        } else
+        } else if (previousVersion < 6)
           statement.executeUpdate(
               "INSERT INTO notification_types(code,feature_code,category,name) VALUES ('CUSTOM_LEGACY_TYPE','LEGACY','BUSINESS','Custom')");
+        if (previousVersion >= 8) {
+          try (var insert =
+              connection.prepareStatement(
+                  "INSERT INTO notification_tenant_features(id,tenant_id,feature_code,enabled) VALUES (?,'00000000-0000-0000-0000-000000000002','INVENTORY',false)")) {
+            insert.setObject(1, UuidV7.nextId());
+            insert.executeUpdate();
+          }
+        } else
+          statement.executeUpdate(
+              "INSERT INTO notification_tenant_features(tenant_id,feature_code,enabled) VALUES ('00000000-0000-0000-0000-000000000002','INVENTORY',false)");
         String channelTable =
             previousVersion >= 4 ? "notification_settings" : "notification_tenant_channels";
         statement.executeUpdate(
@@ -187,8 +202,23 @@ class NotificationSchemaTest {
                 + "(id,tenant_id,user_id,type,email_enabled) VALUES ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000005','STOCK_LOW',false)");
       }
       var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(7 - previousVersion);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(11 - previousVersion);
       latest.validate();
+      if (previousVersion >= 3) {
+        try (var result =
+            statement.executeQuery(
+                "SELECT id,enabled,created_at,version FROM notification_tenant_features WHERE tenant_id='00000000-0000-0000-0000-000000000002' AND feature_code='INVENTORY'")) {
+          assertThat(result.next()).isTrue();
+          UUID id = result.getObject("id", UUID.class);
+          assertThat(id.version()).isEqualTo(7);
+          assertThat(id.variant()).isEqualTo(2);
+          if (previousVersion < 8)
+            assertThat(id.getMostSignificantBits() >>> 16)
+                .isEqualTo(result.getTimestamp("created_at").toInstant().toEpochMilli());
+          assertThat(result.getBoolean("enabled")).isFalse();
+          assertThat(result.getLong("version")).isZero();
+        }
+      }
       try (var result =
           statement.executeQuery(
               "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('notification_features','notification_types')")) {
@@ -218,11 +248,76 @@ class NotificationSchemaTest {
       }
       try (var result =
           statement.executeQuery(
-              "SELECT enabled FROM notification_settings WHERE channel='EMAIL'")) {
+              "SELECT enabled,id,created_at,connection_config->>'connectionRef' AS connection_ref FROM notification_settings WHERE channel='EMAIL'")) {
         assertThat(result.next()).isTrue();
         assertThat(result.getBoolean(1)).isTrue();
+        var id = result.getObject("id", UUID.class);
+        assertThat(id.version()).isEqualTo(7);
+        assertThat(id.variant()).isEqualTo(2);
+        assertThat(id.getMostSignificantBits() >>> 16)
+            .isEqualTo(result.getTimestamp("created_at").toInstant().toEpochMilli());
+        if (previousVersion >= 3)
+          assertThat(result.getString("connection_ref")).isEqualTo("existing-email-provider");
       }
     }
+  }
+
+  @Test
+  void jsonMigrationPreservesAllConnectionFieldsAndAudit() throws Exception {
+    String name = "json_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+    try (var connection = postgres.getPostgresDatabase().getConnection();
+        var statement = connection.createStatement()) {
+      statement.execute("CREATE DATABASE " + name);
+    }
+    String url = postgres.getJdbcUrl("postgres", name);
+    Flyway.configure().dataSource(url, "postgres", "postgres").target("9").load().migrate();
+    try (var connection = DriverManager.getConnection(url, "postgres", "postgres");
+        var statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "INSERT INTO notification_settings(id,tenant_id,channel,enabled,connection_ref,credentials_ref,telegram_bot_username,telegram_chat_id,telegram_message_thread_id,deleted_at,version) VALUES ('00000000-0000-7000-8000-000000000001','00000000-0000-0000-0000-000000000002','TELEGRAM',true,'provider/1','secrets/1','test_bot','-100123',12,now(),7)");
+      Flyway.configure().dataSource(url, "postgres", "postgres").load().migrate();
+      try (var result =
+          statement.executeQuery(
+              "SELECT connection_config->>'connectionRef',connection_config->>'credentialsRef',connection_config->>'telegramBotUsername',connection_config->>'telegramChatId',connection_config->>'telegramMessageThreadId',enabled,deleted_at IS NOT NULL,version,updated_at=created_at FROM notification_settings")) {
+        assertThat(result.next()).isTrue();
+        assertThat(result.getString(1)).isEqualTo("provider/1");
+        assertThat(result.getString(2)).isEqualTo("secrets/1");
+        assertThat(result.getString(3)).isEqualTo("test_bot");
+        assertThat(result.getString(4)).isEqualTo("-100123");
+        assertThat(result.getLong(5)).isEqualTo(12);
+        assertThat(result.getBoolean(6)).isTrue();
+        assertThat(result.getBoolean(7)).isTrue();
+        assertThat(result.getLong(8)).isEqualTo(7);
+        assertThat(result.getBoolean(9)).isTrue();
+      }
+      try (var result =
+          statement.executeQuery(
+              "SELECT count(*) FROM information_schema.columns WHERE table_name='notification_settings' AND column_name IN ('connection_ref','credentials_ref','telegram_bot_username','telegram_chat_id','telegram_message_thread_id')")) {
+        result.next();
+        assertThat(result.getLong(1)).isZero();
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "[]",
+        "null",
+        "{\"connectionRef\":true}",
+        "{\"credentialsRef\":\" \"}",
+        "{\"telegramMessageThreadId\":1.5}",
+        "{\"telegramMessageThreadId\":9223372036854775808}"
+      })
+  void rejectsMalformedConnectionJson(String config) throws Exception {
+    rejects(
+        "23514",
+        () ->
+            execute(
+                "INSERT INTO notification_settings(id,tenant_id,channel,connection_config) VALUES (?,?,'TELEGRAM',?::jsonb)",
+                UuidV7.nextId(),
+                tenant,
+                config));
   }
 
   private void setting(UUID tenantId, UUID user, String type) throws SQLException {
@@ -247,7 +342,10 @@ class NotificationSchemaTest {
 
   @Test
   void telegramConfigurationRequiresBotCredentialsAndDestinationBeforeEnabling() throws Exception {
-    execute("INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'TELEGRAM')", tenant);
+    execute(
+        "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'TELEGRAM')",
+        UuidV7.nextId(),
+        tenant);
     rejects(
         "23514",
         () ->
@@ -255,7 +353,7 @@ class NotificationSchemaTest {
                 "UPDATE notification_settings SET enabled=true WHERE tenant_id=? AND channel='TELEGRAM'",
                 tenant));
     execute(
-        "UPDATE notification_settings SET telegram_bot_username='vishop_alert_bot',telegram_chat_id='-100123456789',telegram_message_thread_id=12,credentials_ref='secrets/tenant-a/telegram-bot' WHERE tenant_id=? AND channel='TELEGRAM'",
+        "UPDATE notification_settings SET connection_config='{\"telegramBotUsername\":\"vishop_alert_bot\",\"telegramChatId\":\"-100123456789\",\"telegramMessageThreadId\":12,\"credentialsRef\":\"secrets/tenant-a/telegram-bot\"}' WHERE tenant_id=? AND channel='TELEGRAM'",
         tenant);
     execute(
         "UPDATE notification_settings SET enabled=true WHERE tenant_id=? AND channel='TELEGRAM'",
@@ -269,33 +367,37 @@ class NotificationSchemaTest {
         "23514",
         () ->
             execute(
-                "UPDATE notification_settings SET credentials_ref=NULL WHERE tenant_id=? AND channel='TELEGRAM'",
+                "UPDATE notification_settings SET connection_config=connection_config - 'credentialsRef' WHERE tenant_id=? AND channel='TELEGRAM'",
                 tenant));
     rejects(
         "23514",
         () ->
             execute(
-                "UPDATE notification_settings SET telegram_chat_id='' WHERE tenant_id=? AND channel='TELEGRAM'",
+                "UPDATE notification_settings SET connection_config=jsonb_set(connection_config,'{telegramChatId}','\"\"') WHERE tenant_id=? AND channel='TELEGRAM'",
                 tenant));
     rejects(
         "23514",
         () ->
             execute(
-                "UPDATE notification_settings SET telegram_message_thread_id=0 WHERE tenant_id=? AND channel='TELEGRAM'",
+                "UPDATE notification_settings SET connection_config=jsonb_set(connection_config,'{telegramMessageThreadId}','0') WHERE tenant_id=? AND channel='TELEGRAM'",
                 tenant));
     execute(
-        "INSERT INTO notification_settings(tenant_id,channel,enabled,telegram_chat_id,credentials_ref) VALUES (?,'TELEGRAM',true,'-100987654321','secrets/tenant-b/telegram-bot')",
+        "INSERT INTO notification_settings(id,tenant_id,channel,enabled,connection_config) VALUES (?,?,'TELEGRAM',true,'{\"telegramChatId\":\"-100987654321\",\"credentialsRef\":\"secrets/tenant-b/telegram-bot\"}')",
+        UuidV7.nextId(),
         UUID.randomUUID());
     assertThat(
             scalar(
                 "SELECT count(*) FROM notification_settings WHERE channel='TELEGRAM' AND enabled"))
         .isEqualTo(2);
-    execute("INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'EMAIL')", tenant);
+    execute(
+        "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
+        UuidV7.nextId(),
+        tenant);
     rejects(
         "23514",
         () ->
             execute(
-                "UPDATE notification_settings SET telegram_chat_id='123' WHERE channel='EMAIL'"));
+                "UPDATE notification_settings SET connection_config='{\"telegramChatId\":\"123\"}' WHERE channel='EMAIL'"));
     setting(tenant, UUID.randomUUID(), "STOCK_LOW");
     assertThat(scalar("SELECT count(*) FROM notification_user_preferences WHERE telegram_enabled"))
         .isEqualTo(1);
@@ -314,13 +416,18 @@ class NotificationSchemaTest {
   void tenantsChooseFeaturesAndChannelsIndependently() throws Exception {
     UUID otherTenant = UUID.randomUUID();
     execute(
-        "INSERT INTO notification_tenant_features(tenant_id,feature_code,enabled) VALUES (?,'INVENTORY',false),(?,'INVENTORY',true)",
+        "INSERT INTO notification_tenant_features(id,tenant_id,feature_code,enabled) VALUES (?,?,'INVENTORY',false),(?,?,'INVENTORY',true)",
+        UuidV7.nextId(),
         tenant,
+        UuidV7.nextId(),
         otherTenant);
     execute(
-        "INSERT INTO notification_settings(tenant_id,channel,enabled,connection_ref) VALUES (?,'EMAIL',true,'email-connection-1'),(?,'EMAIL',false,NULL),(?,'IN_APP',true,NULL)",
+        "INSERT INTO notification_settings(id,tenant_id,channel,enabled,connection_config) VALUES (?,?,'EMAIL',true,'{\"connectionRef\":\"email-connection-1\"}'),(?,?,'EMAIL',false,'{}'),(?,?,'IN_APP',true,'{}')",
+        UuidV7.nextId(),
         tenant,
+        UuidV7.nextId(),
         otherTenant,
+        UuidV7.nextId(),
         tenant);
     assertThat(
             scalar(
@@ -345,24 +452,28 @@ class NotificationSchemaTest {
         "23505",
         () ->
             execute(
-                "INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'EMAIL')", tenant));
-    rejects(
-        "23514",
-        () ->
-            execute(
-                "INSERT INTO notification_tenant_features(tenant_id,feature_code) VALUES (?,' ')",
+                "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
+                UuidV7.nextId(),
                 tenant));
     rejects(
         "23514",
         () ->
             execute(
-                "INSERT INTO notification_settings(tenant_id,channel) VALUES (?,'UNSUPPORTED')",
+                "INSERT INTO notification_tenant_features(id,tenant_id,feature_code) VALUES (?,?,' ')",
+                UuidV7.nextId(),
                 tenant));
     rejects(
         "23514",
         () ->
             execute(
-                "UPDATE notification_settings SET connection_ref='secret-reference' WHERE channel='IN_APP'"));
+                "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'UNSUPPORTED')",
+                UuidV7.nextId(),
+                tenant));
+    rejects(
+        "23514",
+        () ->
+            execute(
+                "UPDATE notification_settings SET connection_config='{\"connectionRef\":\"secret-reference\"}' WHERE channel='IN_APP'"));
   }
 
   @Test

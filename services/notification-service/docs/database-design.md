@@ -1,8 +1,12 @@
 # Database Notification
 
-Database riêng: `vishop_notification`. Schema hiện hành sau V7 gồm **12 bảng**.
+Database riêng: `vishop_notification`. Schema hiện hành sau V10 gồm **12 bảng**.
 [Migration SQL](../src/main/resources/db/migration) là nguồn kiểm chứng DDL;
 [README service](../README.md) chứa hướng dẫn migrate.
+
+Code notification-setting hiện chỉ ánh xạ notification_settings. Các bảng feature,
+rule, recipient, preference vẫn có trong schema/migration, chờ adapter triển khai sau.
+Đợt rút gọn module không xóa bảng hay dữ liệu hiện có.
 
 Danh mục feature/type nằm trong [shared constants](constants.md), không phải module/bảng DB.
 Các mã feature_code/type lưu trong cấu hình và lịch sử; app kiểm tra hỗ trợ qua enum fromCode.
@@ -14,18 +18,16 @@ erDiagram
     notification_alert_rules ||--o{ notification_alert_rule_recipients : tenant_and_rule
 
     notification_settings {
-        uuid tenant_id PK
-        varchar channel PK "IN_APP EMAIL TELEGRAM"
+        uuid id PK "UUIDv7"
+        uuid tenant_id "Unique cùng channel"
+        varchar channel "IN_APP EMAIL TELEGRAM"
         boolean enabled
-        varchar connection_ref
-        varchar credentials_ref
-        varchar telegram_bot_username
-        varchar telegram_chat_id
-        bigint telegram_message_thread_id
+        jsonb connection_config
     }
     notification_tenant_features {
-        uuid tenant_id PK
-        varchar feature_code PK "Mã trong code catalog"
+        uuid id PK "UUIDv7"
+        uuid tenant_id "Unique cùng feature_code"
+        varchar feature_code "Mã trong code catalog"
         boolean enabled
     }
     notification_alert_rules {
@@ -57,8 +59,8 @@ erDiagram
 ```
 
 notification_settings unique theo tenant/channel; Telegram enable cần chat ID và
-credentials_ref không rỗng. Token thật nằm ngoài schema, không lưu plaintext.
-connection_ref trỏ cấu hình provider ngoài DB. Secrets adapter chưa triển khai.
+connection_config.credentialsRef không rỗng. Token thật nằm ngoài schema, không lưu plaintext.
+connection_config.connectionRef trỏ cấu hình provider ngoài DB. Secrets adapter chưa triển khai.
 
 Rule unique tenant/type; personal preference unique tenant/user/type. Rule recipients có
 FK tenant/rule. Feature/type code không còn FK tới catalog DB; NOT NULL/nonblank và unique
@@ -199,6 +201,10 @@ key phải restore/update dòng cũ. Không xóa marker chống trùng khi ẩn 
 | V5 | Audit/xóa mềm/version và index inbox |
 | V6 | UUIDv7 PK cho hai bảng catalog, code unique và FK theo code |
 | V7 | Chuyển catalog sang enum, bỏ hai bảng/FK catalog, giữ cấu hình/history và local FKs |
+| V8 | notification_tenant_features dùng id UUIDv7, giữ unique tenant_id/feature_code; backfill không thay đổi cấu hình/audit |
+| V9 | notification_settings dùng id UUIDv7 và unique tenant_id/channel; giữ dữ liệu kết nối/audit, bỏ composite PK |
 
 V1–V6 được giữ nguyên checksum. V7 không sửa type/feature_code trong dữ liệu tenant và
 history; chỉ metadata hai bảng catalog bị bỏ. Không phát lại event hay gửi provider khi migrate.
+
+V10: `connection_config` JSONB groups `connectionRef`, `credentialsRef`, `telegramBotUsername`, `telegramChatId`, `telegramMessageThreadId`; existing data and validation constraints are preserved.

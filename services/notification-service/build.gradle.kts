@@ -1,6 +1,13 @@
-// Domain/application modules and migration CLI; runtime adapters are added separately.
+// Notification modules, setting HTTP/JPA adapters, and standalone migration CLI.
 dependencies {
     implementation(project(":libs:common-domain"))
+    implementation(project(":libs:common-web"))
+    implementation(project(":libs:common-security"))
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
+    testImplementation("org.springframework.security:spring-security-test")
     implementation("org.flywaydb:flyway-core")
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")

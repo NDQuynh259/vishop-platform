@@ -2,7 +2,7 @@ package com.vishop.notification.shared.constants;
 
 import java.util.Optional;
 
-/** Stable feature codes stored in tenant configuration; labels are maintained in code. */
+/** Stable feature codes stored in tenant setting; labels are maintained in code. */
 public enum NotificationFeatureCode {
   SYSTEM("Hệ thống"),
   IAM("Tài khoản và thành viên"),

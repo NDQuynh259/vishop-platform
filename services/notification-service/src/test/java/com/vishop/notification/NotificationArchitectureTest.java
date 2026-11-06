@@ -15,7 +15,12 @@ class NotificationArchitectureTest {
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.vishop.notification");
-    var modules = java.util.Set.of("configuration", "inbox", "delivery", "announcement");
+    var modules =
+        java.util.Set.of(
+            "setting",
+            "inbox",
+            "delivery",
+            "announcement");
     assertThat(
             classes.stream()
                 .anyMatch(

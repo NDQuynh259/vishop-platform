@@ -1,6 +1,6 @@
 package com.vishop.notification.composition.dispatch;
 
-import com.vishop.notification.modules.delivery.application.api.DeliveryApi;
+import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import java.util.List;
@@ -18,6 +18,6 @@ import java.util.UUID;
 public interface RecipientDirectory {
   Set<UUID> eligible(NotificationMessage message, Set<UUID> selectedRecipients);
 
-  List<DeliveryApi.Target> providerTargets(
+  List<NotificationDeliveryApi.Target> providerTargets(
       NotificationMessage message, Map<UUID, Set<NotificationChannel>> allowedRoutes);
 }

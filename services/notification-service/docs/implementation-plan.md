@@ -1,9 +1,11 @@
 # Kế hoạch triển khai Notification-service
 
-Ngày lập: 04/11/2026. Trạng thái: kế hoạch đề xuất, chưa triển khai runtime/API.
-Nền hiện có: schema V1–V7, migration CLI và kiểm thử PostgreSQL; catalog enum trong code.
+Ngày lập: 04/11/2026. Trạng thái: kế hoạch tổng thể; [module notification-setting](setting.md)
+chỉ giữ HTTP/JPA cho notification_settings; feature/type/recipient/preference đã bỏ
+khỏi code để triển khai sau. Các API/provider còn thiếu ghi rõ trong tài liệu module.
+Nền hiện có: schema V1–V9, migration CLI và kiểm thử PostgreSQL; catalog enum trong code.
 Đã bổ sung nền domain/application của 4 module và composition, xem
-[trạng thái module](module-design.md). Các đợt runtime/API bên dưới vẫn là backlog.
+[trạng thái module](module-design.md). Các hạng mục chưa có trong setting bên dưới vẫn là backlog.
 Module/API catalog đã bỏ; dùng [shared constants](constants.md) và danh mục phía FE.
 Chưa có main HTTP runtime hoặc Gateway integration.
 [API dự kiến](api-contract.md), [nghiệp vụ](business-rules.md), [DB](database-design.md).
@@ -29,11 +31,11 @@ Bản đầu backend cung cấp API/contract cho FE; việc xây màn hình là 
 
 ## 2. Module đề xuất
 
-- `inbox`: thông báo, recipient, đọc/ẩn và policy đọc.
+- `notification-inbox`: thông báo, recipient, đọc/ẩn và policy đọc.
 - `shared/constants`: enum feature/type/defaults dùng chung, không phải module/API.
-- `configuration`: tenant feature/type/channel và personal preference.
-- `delivery`: template, routing, jobs, attempts, email/Telegram adapter.
-- `announcement`: draft, audience, publish và fan-out thông báo hệ thống.
+- `notification-setting`: tenant feature/type/channel và personal preference.
+- `notification-delivery`: template, routing, jobs, attempts, email/Telegram adapter.
+- `notification-announcement`: draft, audience, publish và fan-out thông báo hệ thống.
 - `composition`: phối hợp policy/recipient resolution với các module qua application API.
 - `infra`: Gateway context, IAM adapter, Kafka, secrets adapter, scheduler, realtime.
 
@@ -76,9 +78,9 @@ config thay đổi dùng version; restore cùng natural key không tạo dòng t
 ### Đợt 3 — Kết nối kênh, secrets và worker
 
 - Chọn/triển khai secrets adapter để lưu token bot/SMTP credentials; client không tự gán
-  arbitrary `credentials_ref`/`connection_ref`. GET chỉ trả cấu hình đã che bí mật.
+  arbitrary `connection_config.credentialsRef`/`connection_config.connectionRef`. GET chỉ trả cấu hình đã che bí mật.
 - API config/test-connection/test-message, token rotation và disconnect.
-- SMTP host/port/TLS/from lưu trong provider config theo connection_ref; Telegram lưu
+- SMTP host/port/TLS/from lưu trong provider config theo connection_config.connectionRef; Telegram lưu
   bot username/chat/topic tại notification_settings và token trong secrets storage.
 - Kiểm tra bot, chat và topic trước khi enable; API không chỉ tin username client nhập.
 - Migration tiếp theo mở rộng channel queue/dedup cho Telegram và liên kết job với
@@ -152,7 +154,7 @@ CMS platform role không mặc định được đọc mọi email body/token; a
 | Hạng mục | Mục đích |
 | --- | --- |
 | Telegram queue/dedup và connection reference | Routing, unique theo chat, cooldown và provider adapter |
-| Announcement draft/audience/publish run/checkpoint | CMS publish có thể resume, không sửa notification đã phát |
+| NotificationAnnouncement draft/audience/publish run/checkpoint | CMS publish có thể resume, không sửa notification đã phát |
 | Idempotency record | Cùng key/payload trả kết quả cũ, khác payload trả conflict; scope theo tenant/user/operation |
 | Connection test/verification metadata | Lưu outcome đã che bí mật và revision cấu hình đã kiểm tra |
 | Ngưỡng nghiệp vụ/config propagation | Revision và trạng thái áp dụng nếu source service cần nhận threshold config |

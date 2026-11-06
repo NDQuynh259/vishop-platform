@@ -26,9 +26,9 @@ class NotificationDatabaseMigrationTest {
               "NOTIFICATION_DB_PASSWORD",
               "postgres");
       var first = run(environment);
-      assertThat(first.exitCode()).isZero();
+      assertThat(first.exitCode()).as(first.output()).isZero();
       assertThat(first.output())
-          .contains("Notification migrations applied: 7")
+          .contains("Notification migrations applied: 11")
           .doesNotContain("Started NotificationApplication");
       var second = run(environment);
       assertThat(second.exitCode()).isZero();

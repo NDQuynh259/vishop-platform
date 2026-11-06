@@ -1,6 +1,8 @@
 # Thiết kế Notification
 
 Hiện có 4 module domain/application, composition contract và CLI Flyway.
+Module [notification-setting](setting.md) chỉ có HTTP, transaction service và JPA cho
+notification_settings. Policy feature/type/recipient/preference chờ triển khai sau.
 [Thiết kế module](module-design.md) ghi rõ code đã có và adapter còn thiếu.
 Danh mục nằm trong [shared constants](constants.md); không còn module/API catalog.
 PostgreSQL kiểm tra schema dữ liệu cấu hình/history. Main runtime và Gateway context
