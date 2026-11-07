@@ -1,8 +1,9 @@
 # Nghiệp vụ Notification
 
 Trạng thái: schema/migration, 4 domain/application module và [shared constants](constants.md)
-đã có. Không có module/API catalog. Module [notification-setting](setting.md) chỉ có HTTP/JPA
-cho notification_settings; feature/type/recipient/preference chờ triển khai sau.
+đã có. Không có module/API catalog. Module [notification-setting](setting.md) có HTTP/JPA
+cho notification_settings và notification_alert_rules; feature subscription, recipient selection
+và personal preference chờ triển khai sau. Các quy tắc mở rộng bên dưới là thiết kế dự kiến.
 consumer, realtime, sender và adapters của các module còn lại chưa triển khai. Xem
 [thiết kế module](module-design.md) cho quy tắc đã có code và adapter còn thiếu.
 

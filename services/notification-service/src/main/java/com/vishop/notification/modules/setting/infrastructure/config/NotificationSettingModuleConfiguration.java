@@ -2,14 +2,21 @@ package com.vishop.notification.modules.setting.infrastructure.config;
 
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi;
 import com.vishop.notification.modules.setting.application.command.CreateChannelCommandHandler;
+import com.vishop.notification.modules.setting.application.command.CreateRuleCommandHandler;
 import com.vishop.notification.modules.setting.application.command.UpdateChannelCommandHandler;
+import com.vishop.notification.modules.setting.application.command.UpdateRuleCommandHandler;
 import com.vishop.notification.modules.setting.application.port.NotificationSettingConnectionPolicy;
 import com.vishop.notification.modules.setting.application.query.GetChannelQueryHandler;
+import com.vishop.notification.modules.setting.application.query.GetRuleQueryHandler;
 import com.vishop.notification.modules.setting.application.query.ListChannelsQueryHandler;
+import com.vishop.notification.modules.setting.application.query.ListRulesQueryHandler;
+import com.vishop.notification.modules.setting.application.service.NotificationAlertRuleService;
 import com.vishop.notification.modules.setting.application.service.NotificationChannelSupport;
 import com.vishop.notification.modules.setting.application.service.NotificationSettingService;
 import com.vishop.notification.modules.setting.domain.entity.NotificationSettingState.Connection;
+import com.vishop.notification.modules.setting.domain.port.NotificationAlertRuleRepository;
 import com.vishop.notification.modules.setting.domain.port.NotificationSettingManagementRepository;
+import com.vishop.notification.modules.setting.infrastructure.persistence.NotificationAlertRuleJpaAdapter;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.NotificationChannelSettingJpaEntity;
 import com.vishop.notification.modules.setting.infrastructure.persistence.mapper.NotificationSettingPersistenceMapper;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationChannelSettingRepository;
@@ -29,6 +36,11 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EnableJpaRepositories(basePackageClasses = SpringDataNotificationChannelSettingRepository.class)
 @Import({
   NotificationSettingPersistenceMapper.class,
+  NotificationAlertRuleJpaAdapter.class,
+  CreateRuleCommandHandler.class,
+  UpdateRuleCommandHandler.class,
+  ListRulesQueryHandler.class,
+  GetRuleQueryHandler.class,
   NotificationChannelSupport.class,
   CqrsAutoConfiguration.class,
   UpdateChannelCommandHandler.class,
@@ -37,6 +49,12 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   ListChannelsQueryHandler.class
 })
 public class NotificationSettingModuleConfiguration {
+  @Bean
+  NotificationAlertRuleService notificationAlertRuleService(
+      NotificationAlertRuleRepository repository) {
+    return new NotificationAlertRuleService(repository);
+  }
+
   @Bean
   NotificationSettingService notificationSettingService(
       NotificationSettingManagementRepository repository,

@@ -166,5 +166,49 @@ LARK trong constraint channel. API bật/tắt giữ toàn bộ cấu hình riê
 PUT có connectionConfig thực hiện thay thế toàn bộ, bao gồm appToken của LARK.
 V12 thêm `name varchar(150) NOT NULL`, điền tên enum kênh cho bản ghi cũ và chặn tên trống.
 
-Feature/type rule/recipient/preference chưa triển khai trong module này. Main
+Feature subscription, recipient selection và personal preference chưa triển khai. Main
 HTTP runtime và Gateway verifier production vẫn chưa có trong service.
+
+## Rule loại thông báo và kênh gửi
+
+Giai đoạn này dùng hai bảng: `notification_settings` cho kết nối kênh và
+`notification_alert_rules` cho bật/tắt từng loại thông báo và chọn kênh gửi.
+
+| Method | Endpoint | Quyền |
+| --- | --- | --- |
+| GET | `/notification-settings/rules` | `notifications.settings.view` |
+| GET | `/notification-settings/rules/{ruleId}` | `notifications.settings.view` |
+| POST | `/notification-settings/rules` | `notifications.settings.manage` |
+| PUT | `/notification-settings/rules/{ruleId}` | `notifications.settings.manage` |
+
+`ruleId` là UUID bản ghi. Tenant lấy từ principal; ID tenant khác, đã xóa hoặc không tồn tại trả 404.
+`type` lúc tạo là mã enum `NotificationTypeCode`, không đổi qua PUT.
+`channels` là tập enum `IN_APP`, `EMAIL`, `TELEGRAM`, `LARK`; tập rỗng nghĩa không gửi qua kênh nào.
+Mỗi tenant chỉ có một rule cho mỗi type. POST trùng trả 409, kể cả bản ghi đã soft-delete.
+PUT yêu cầu version hiện tại; version cũ trả 409, kể cả hai request ghi đồng thời.
+
+POST không cần version, trả 201 và Location theo ID:
+
+```json
+{"type":"STOCK_LOW","enabled":true,"channels":["IN_APP","EMAIL"]}
+```
+
+PUT thay toàn bộ danh sách kênh và trạng thái bật/tắt:
+
+```json
+{"enabled":true,"channels":["IN_APP","LARK"],"version":1}
+```
+
+Danh sách GET trả các type trong code catalog với tên hiển thị và giá trị mặc định,
+được ghi đè bằng rule đã lưu của tenant. Dòng mặc định chưa lưu có id=null, version=0;
+frontend dùng POST để tạo. Dữ liệu type cũ ngoài catalog vẫn đọc được, nhưng không tạo
+hoặc cập nhật như type đang hỗ trợ.
+
+`NotificationSettingDispatchPolicy` lấy giao giữa kênh trong rule và kết nối kênh đang
+bật, available và verified. Rule bật EMAIL không tự bật kết nối EMAIL hoặc bỏ qua xác minh provider.
+Không có truy vấn feature, recipient list hoặc personal preference trong policy này;
+kiểm tra người nhận/quyền vẫn do RecipientDirectory đảm nhiệm.
+
+V13 thêm `lark_enabled` vào bảng rule. Các cột `thresholds` và `cooldown_seconds` cũ được
+giữ nguyên dữ liệu, không đưa vào API cấu hình mới. Các API test connection, gửi thử và
+provider adapter vẫn là phần chưa triển khai.

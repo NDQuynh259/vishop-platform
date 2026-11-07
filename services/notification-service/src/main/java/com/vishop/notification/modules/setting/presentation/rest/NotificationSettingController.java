@@ -9,7 +9,7 @@ import com.vishop.notification.modules.setting.application.command.UpdateChannel
 import com.vishop.notification.modules.setting.application.query.GetChannelQuery;
 import com.vishop.notification.modules.setting.application.query.ListChannelsQuery;
 import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingCreateReq;
-import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingReq;
+import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingUpdateReq;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
@@ -82,7 +82,7 @@ public class NotificationSettingController {
   public ChannelView updateChannel(
       @AuthenticationPrincipal GatewayPrincipal actor,
       @PathVariable UUID channelId,
-      @Valid @RequestBody NotificationSettingReq body) {
+      @Valid @RequestBody NotificationSettingUpdateReq body) {
     Map<String, String> config = null;
     if (body.getConnectionConfig() != null && !body.getConnectionConfig().isNull()) {
       if (body.getBotToken() != null
@@ -106,17 +106,17 @@ public class NotificationSettingController {
   }
 
   private Map<String, String> connectionConfig(NotificationChannel channel, JsonNode config) {
-    Class<? extends NotificationSettingReq.ConnectionConfig> type =
+    Class<? extends NotificationSettingUpdateReq.ConnectionConfig> type =
         switch (channel) {
-          case IN_APP -> NotificationSettingReq.InAppConfig.class;
-          case TELEGRAM -> NotificationSettingReq.TelegramConfig.class;
-          case EMAIL -> NotificationSettingReq.EmailConfig.class;
-          case LARK -> NotificationSettingReq.LarkConfig.class;
+          case IN_APP -> NotificationSettingUpdateReq.InAppConfig.class;
+          case TELEGRAM -> NotificationSettingUpdateReq.TelegramConfig.class;
+          case EMAIL -> NotificationSettingUpdateReq.EmailConfig.class;
+          case LARK -> NotificationSettingUpdateReq.LarkConfig.class;
         };
     if (!config.isObject()) {
       throw new BadRequestException("connectionConfig must be an object");
     }
-    NotificationSettingReq.ConnectionConfig connection;
+    NotificationSettingUpdateReq.ConnectionConfig connection;
     try {
       connection = json.treeToValue(config, type);
     } catch (JsonProcessingException ex) {

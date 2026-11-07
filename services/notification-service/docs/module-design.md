@@ -42,7 +42,7 @@ infrastructure và presentation. NotificationAnnouncement có thêm Notification
 
 | Module | API nội bộ | Trách nhiệm / bảng |
 | --- | --- | --- |
-| notification-setting | NotificationSettingManagementApi | Chỉ cấu hình kênh tenant; notification_settings |
+| notification-setting | NotificationSettingManagementApi, NotificationAlertRuleApi | Kết nối kênh và rule loại thông báo; notification_settings, notification_alert_rules |
 | notification-inbox | NotificationInboxApi | Immutable notification và recipient; notifications, notification_recipients |
 | notification-delivery | NotificationDeliveryApi | Cooldown, queue/retry; deliveries, delivery_attempts, deduplication |
 | notification-announcement | NotificationAnnouncementApi | Draft/publish snapshot có version; persistence announcement cần migration tiếp theo |
@@ -56,9 +56,9 @@ của module khác. Shared không phụ thuộc ngược module, composition ho�
 NotificationDispatchCoordinator tra NotificationTypeCode trực tiếp → tenant policy →
 người nhận hợp lệ → personal preference → cooldown → inbox/delivery → realtime outbox.
 
-Feature/type/recipient/preference code và API đã bỏ khỏi notification-setting, chờ
-triển khai sau. Dispatch phụ thuộc NotificationDispatchPolicy tại composition;
-chưa có implementation của policy này, không có mặc định cho phép gửi.
+NotificationSettingDispatchPolicy đã triển khai tại composition, kết hợp rule theo type
+với kết nối kênh enabled/available/verified. Giai đoạn này không áp dụng tenant feature,
+explicit recipients hoặc personal preferences. Các bảng còn lại giữ schema và dữ liệu.
 
 - DispatchJournal.once cần adapter transaction thật cho consumed marker, cooldown, inbox,
   queue và outbox; hiện chưa có implementation PostgreSQL.

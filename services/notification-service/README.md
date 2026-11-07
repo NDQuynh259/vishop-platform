@@ -6,30 +6,31 @@ This service contains four domain/application modules, shared notification const
 schema and standalone Flyway migration CLI. See [module design](docs/module-design.md)
 for implemented use cases and adapter contracts. [Shared constants](docs/constants.md) define
 feature/type codes and defaults; there is no catalog module, registry or catalog HTTP API.
-The notification-setting module implements only notification_settings: channel HTTP APIs,
-one mapped entity, one Spring Data repository and a transactional JPA adapter; see
+The setting module implements notification_settings and notification_alert_rules:
+channel and per-type rule HTTP APIs with transactional JPA adapters; see
 [setting API and limits](docs/setting.md). Other persistence/HTTP adapters, event consumers,
 runtime gateway authentication, realtime and provider workers are subsequent work.
 It does not yet start a standalone server or send notifications.
 
-Feature/type/recipient/preference code and HTTP APIs have been removed from the setting
-module. Their existing schema and migrations remain. Routing depends on a separate
-NotificationDispatchPolicy port without a production implementation.
+Feature subscriptions, explicit recipient selection and personal preferences remain schema-only.
+NotificationSettingDispatchPolicy combines per-type rules with enabled, available and verified
+channel connections. Recipient authorization still belongs to RecipientDirectory.
 
 ## CQRS
 
 The setting controller dispatches reads through `QueryBus` and writes through `CommandBus`.
-All setting handlers call `NotificationSettingService`, which owns list/get-by-ID,
+Channel handlers call `NotificationSettingService`, which owns list/get-by-ID,
 creation and update operations and calls the repository port. The service never calls
 a CQRS handler. `NotificationSettingManagementApi` remains its interface for callers
 outside the setting module. Shared connection validation and response mapping are in
 `NotificationChannelSupport`; this helper performs no persistence operations.
+Rule handlers call `NotificationAlertRuleService` through the same CQRS flow.
 Command handlers run in a write transaction; query handlers use read-only transactions.
 The buses execute synchronously in the same process; they are independent of Kafka.
 
 | Module | Queries | Commands |
 | --- | --- | --- |
-| setting | `ListChannelsQuery`, `GetChannelQuery` | `CreateChannelCommand`, `UpdateChannelCommand` |
+| setting | `ListChannelsQuery`, `GetChannelQuery`, `ListRulesQuery`, `GetRuleQuery` | `CreateChannelCommand`, `UpdateChannelCommand`, `CreateRuleCommand`, `UpdateRuleCommand` |
 | inbox | — | `CreateNotificationCommand` |
 | delivery | — | `ReserveRoutesCommand`, `EnqueueDeliveriesCommand` |
 | announcement | — | `CreateAnnouncementCommand`, `ReviseAnnouncementCommand`, `PublishAnnouncementCommand` |
@@ -126,14 +127,13 @@ the same codes. Tenant settings/history remain in PostgreSQL with no catalog FK.
 writes must validate codes through the shared enums. Existing legacy codes stay stored
 but do not implicitly become supported types. Tenant admins edit settings, users edit preferences.
 
-Tenant configuration is evaluated in this order (each disabled gate suppresses delivery):
+The current two-table routing policy evaluates:
 
-1. Type and feature codes supported by shared constants.
-2. Feature subscription in `notification_tenant_features` (missing row: enabled).
-3. Tenant-wide channel in `notification_settings` (missing row: in-app on, email/Telegram off).
-4. Per-type `notification_alert_rules` enabled/channel switches (missing row: catalog defaults).
-5. Personal `notification_user_preferences` enabled/channel switches (missing row: allow tenant policy).
-6. Recipient selection, authorization and cooldown checks.
+1. Supported type code and per-type rule (missing row: code catalog defaults).
+2. Rule channel choices intersected with enabled, available, verified channel connections.
+3. Recipient authorization and cooldown through the existing dispatch ports.
+
+Feature groups, per-rule recipient lists and personal preferences are not consulted in this phase.
 
 There are no default recipient lists: domain recipient resolution and tenant-selected users
 must be implemented by consumers. Settings cannot grant access to data or features outside

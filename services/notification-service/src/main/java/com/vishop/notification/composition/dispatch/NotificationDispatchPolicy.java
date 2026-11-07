@@ -4,7 +4,7 @@ import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.Set;
 import java.util.UUID;
 
-/** Routing policy port. Feature/type/recipient/preference persistence is not implemented yet. */
+/** Routing policy port; the current adapter combines channel settings and per-type rules. */
 public interface NotificationDispatchPolicy {
   record TypePolicy(
       String code,

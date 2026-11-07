@@ -1,9 +1,9 @@
 # Kế hoạch triển khai Notification-service
 
 Ngày lập: 04/11/2026. Trạng thái: kế hoạch tổng thể; [module notification-setting](setting.md)
-chỉ giữ HTTP/JPA cho notification_settings; feature/type/recipient/preference đã bỏ
-khỏi code để triển khai sau. Các API/provider còn thiếu ghi rõ trong tài liệu module.
-Nền hiện có: schema V1–V9, migration CLI và kiểm thử PostgreSQL; catalog enum trong code.
+có HTTP/JPA cho notification_settings và notification_alert_rules; feature subscription,
+recipient selection và personal preference để triển khai sau. Các API/provider còn thiếu ghi rõ trong tài liệu module.
+Nền hiện có: schema V1–V13, migration CLI và kiểm thử PostgreSQL; catalog enum trong code.
 Đã bổ sung nền domain/application của 4 module và composition, xem
 [trạng thái module](module-design.md). Các hạng mục chưa có trong setting bên dưới vẫn là backlog.
 Module/API catalog đã bỏ; dùng [shared constants](constants.md) và danh mục phía FE.

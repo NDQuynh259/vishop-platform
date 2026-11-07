@@ -11,7 +11,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public final class NotificationSettingReq {
+public final class NotificationSettingUpdateReq {
 
   @Size(min = 1, max = 150)
   @Pattern(regexp = "(?s).*\\S.*")
@@ -36,7 +36,7 @@ public final class NotificationSettingReq {
 
   @Override
   public String toString() {
-    return "NotificationSettingReq[redacted]";
+    return "NotificationSettingUpdateReq[redacted]";
   }
 
   public abstract static class ConnectionConfig {

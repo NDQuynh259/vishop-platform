@@ -5,17 +5,25 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vishop.notification.composition.dispatch.NotificationDispatchPolicy;
+import com.vishop.notification.composition.dispatch.NotificationSettingDispatchPolicy;
+import com.vishop.notification.modules.setting.application.api.NotificationAlertRuleApi;
+import com.vishop.notification.modules.setting.application.api.NotificationAlertRuleApi.RuleChange;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi.*;
 import com.vishop.notification.modules.setting.application.command.CreateChannelCommand;
+import com.vishop.notification.modules.setting.application.command.CreateRuleCommand;
 import com.vishop.notification.modules.setting.domain.entity.NotificationSettingState.Connection;
 import com.vishop.notification.modules.setting.domain.port.NotificationSettingManagementRepository;
 import com.vishop.notification.modules.setting.infrastructure.config.NotificationSettingModuleConfiguration;
 import com.vishop.notification.modules.setting.infrastructure.persistence.NotificationSettingJpaAdapter;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.*;
 import com.vishop.notification.modules.setting.infrastructure.persistence.model.*;
+import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationAlertRuleRepository;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationChannelSettingRepository;
+import com.vishop.notification.modules.setting.presentation.rest.NotificationRuleController;
 import com.vishop.notification.modules.setting.presentation.rest.NotificationSettingController;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.UuidV7;
 import io.github.coreplatform.common.domain.exception.BusinessRuleViolationException;
@@ -79,7 +87,199 @@ class NotificationSettingPersistenceTest {
   @Autowired SpringDataNotificationChannelSettingRepository rows;
   @Autowired ObjectMapper json;
   @Autowired jakarta.validation.Validator validator;
+  @Autowired NotificationAlertRuleApi rules;
+  @Autowired SpringDataNotificationAlertRuleRepository ruleRows;
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
   final UUID tenant = UUID.randomUUID();
+
+  @Test
+  void ruleHttpLifecycleIsTenantScopedVersionedAndStoresAllChannels() throws Exception {
+    var mvc =
+        MockMvcBuilders.standaloneSetup(new NotificationRuleController(commands, queries))
+            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .build();
+    var actor =
+        new GatewayPrincipal(
+            UUID.randomUUID(),
+            tenant,
+            "USER",
+            "OWNER",
+            Set.of("notifications.settings.view", "notifications.settings.manage"));
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, List.of()));
+    try {
+      String path = "/api/v1/notification-settings/rules";
+      var response =
+          mvc.perform(
+                  post(path)
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .content(
+                          "{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[\"IN_APP\",\"EMAIL\",\"TELEGRAM\",\"LARK\"]}"))
+              .andExpect(status().isCreated())
+              .andExpect(jsonPath("$.version").value(1))
+              .andReturn()
+              .getResponse();
+      UUID id = UUID.fromString(json.readTree(response.getContentAsString()).get("id").asText());
+      assertThat(id.version()).isEqualTo(7);
+      var stored = ruleRows.findById(id).orElseThrow();
+      assertThat(stored.getTenantId()).isEqualTo(tenant);
+      assertThat(stored.isLarkEnabled()).isTrue();
+      jdbc.update(
+          "UPDATE notification_alert_rules SET thresholds=?::jsonb,cooldown_seconds=? WHERE id=?",
+          "{\"legacyLimit\":10}",
+          172800,
+          id);
+      assertThat(rules.ruleById(tenant, id).getChannels())
+          .containsExactlyInAnyOrder(NotificationChannel.values());
+      mvc.perform(
+              post(path)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"type\":\"STOCK_LOW\",\"enabled\":false,\"channels\":[]}"))
+          .andExpect(status().isConflict());
+      String location = response.getHeader("Location");
+      mvc.perform(get(location))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.id").value(id.toString()));
+      mvc.perform(
+              put(location)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"enabled\":false,\"channels\":[\"EMAIL\"],\"version\":1}"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.version").value(2));
+      assertThat(rules.ruleById(tenant, id).getChannels())
+          .containsExactly(NotificationChannel.EMAIL);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT cooldown_seconds FROM notification_alert_rules WHERE id=?",
+                  Integer.class,
+                  id))
+          .isEqualTo(172800);
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT thresholds->>'legacyLimit' FROM notification_alert_rules WHERE id=?",
+                  String.class,
+                  id))
+          .isEqualTo("10");
+      mvc.perform(
+              put(location)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"enabled\":true,\"channels\":[],\"version\":1}"))
+          .andExpect(status().isConflict());
+      var foreign =
+          rules.createRule(
+              UUID.randomUUID(),
+              NotificationTypeCode.STOCK_LOW,
+              true,
+              Set.of(NotificationChannel.IN_APP));
+      for (UUID missing : List.of(UUID.randomUUID(), foreign.getId())) {
+        mvc.perform(get(path + "/" + missing)).andExpect(status().isNotFound());
+        mvc.perform(
+                put(path + "/" + missing)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"enabled\":false,\"channels\":[],\"version\":1}"))
+            .andExpect(status().isNotFound());
+      }
+      var row = ruleRows.findById(id).orElseThrow();
+      row.setDeletedAt(Instant.now());
+      ruleRows.saveAndFlush(row);
+      mvc.perform(get(location)).andExpect(status().isNotFound());
+      mvc.perform(
+              put(location)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"enabled\":false,\"channels\":[],\"version\":3}"))
+          .andExpect(status().isNotFound());
+      mvc.perform(
+              post(path)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[]}"))
+          .andExpect(status().isConflict());
+    } finally {
+      SecurityContextHolder.clearContext();
+    }
+  }
+
+  @Test
+  void rulesAndConnectionSettingsDetermineRoutesWithoutOtherPreferenceTables() {
+    var code = NotificationTypeCode.STOCK_LOW;
+    var type =
+        new NotificationDispatchPolicy.TypePolicy(
+            code.code(),
+            code.feature().code(),
+            true,
+            code.defaultEnabled(),
+            code.defaultChannels());
+    var policy = new NotificationSettingDispatchPolicy(settings, rules);
+    assertThat(rules.rules(tenant)).hasSize(NotificationTypeCode.values().length);
+    assertThat(rules.ruleForType(tenant, code).getId()).isNull();
+    assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.IN_APP);
+    var rule =
+        rules.createRule(
+            tenant, code, true, Set.of(NotificationChannel.IN_APP, NotificationChannel.LARK));
+    assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.IN_APP);
+    var channel = settings.createChannel(tenant, NotificationChannel.IN_APP, null, false, Map.of());
+    assertThat(policy.resolve(tenant, type).channels()).isEmpty();
+    settings.updateChannel(
+        tenant,
+        channel.id(),
+        new ChannelUpdate(true, (Map<String, String>) null, channel.version()));
+    assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.IN_APP);
+    rules.updateRule(
+        tenant, rule.getId(), new RuleChange(false, rule.getChannels(), rule.getVersion()));
+    assertThat(policy.resolve(tenant, type).channels()).isEmpty();
+    assertThat(
+            policy.restrictForUser(
+                tenant, UUID.randomUUID(), code.code(), Set.of(NotificationChannel.IN_APP)))
+        .containsExactly(NotificationChannel.IN_APP);
+  }
+
+  @Test
+  void concurrentRuleCreatesAndUpdatesHaveOneWinner() throws Exception {
+    var start = new CountDownLatch(1);
+    try (var pool = Executors.newFixedThreadPool(2)) {
+      Callable<Boolean> create =
+          () -> {
+            start.await();
+            try {
+              commands.dispatch(
+                  new CreateRuleCommand(
+                      tenant,
+                      NotificationTypeCode.STOCK_LOW,
+                      true,
+                      Set.of(NotificationChannel.LARK)));
+              return true;
+            } catch (ConflictException ex) {
+              return false;
+            }
+          };
+      var one = pool.submit(create);
+      var two = pool.submit(create);
+      start.countDown();
+      assertThat(List.of(one.get(15, TimeUnit.SECONDS), two.get(15, TimeUnit.SECONDS)))
+          .containsExactlyInAnyOrder(true, false);
+    }
+    var rule = rules.ruleForType(tenant, NotificationTypeCode.STOCK_LOW);
+    var updates = new CountDownLatch(1);
+    try (var pool = Executors.newFixedThreadPool(2)) {
+      Callable<Boolean> update =
+          () -> {
+            updates.await();
+            try {
+              rules.updateRule(
+                  tenant, rule.getId(), new RuleChange(false, Set.of(), rule.getVersion()));
+              return true;
+            } catch (ConflictException ex) {
+              return false;
+            }
+          };
+      var one = pool.submit(update);
+      var two = pool.submit(update);
+      updates.countDown();
+      assertThat(List.of(one.get(15, TimeUnit.SECONDS), two.get(15, TimeUnit.SECONDS)))
+          .containsExactlyInAnyOrder(true, false);
+    }
+    assertThat(rules.ruleById(tenant, rule.getId()).getVersion()).isEqualTo(rule.getVersion() + 1);
+  }
 
   private UUID channelId(NotificationChannel channel) {
     return rows.findByTenantIdAndChannel(tenant, channel)

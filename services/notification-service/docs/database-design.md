@@ -1,11 +1,11 @@
 # Database Notification
 
-Database riêng: `vishop_notification`. Schema hiện hành sau V10 gồm **12 bảng**.
+Database riêng: `vishop_notification`. Schema hiện hành sau V13 gồm **12 bảng**.
 [Migration SQL](../src/main/resources/db/migration) là nguồn kiểm chứng DDL;
 [README service](../README.md) chứa hướng dẫn migrate.
 
-Code notification-setting hiện chỉ ánh xạ notification_settings. Các bảng feature,
-rule, recipient, preference vẫn có trong schema/migration, chờ adapter triển khai sau.
+Code setting ánh xạ notification_settings và notification_alert_rules. Các bảng feature,
+recipient selection và personal preference vẫn có schema/migration, chờ adapter triển khai sau.
 Đợt rút gọn module không xóa bảng hay dữ liệu hiện có.
 
 Danh mục feature/type nằm trong [shared constants](constants.md), không phải module/bảng DB.
@@ -38,6 +38,7 @@ erDiagram
         boolean in_app_enabled
         boolean email_enabled
         boolean telegram_enabled
+        boolean lark_enabled
         jsonb thresholds
         int cooldown_seconds
     }
@@ -208,3 +209,5 @@ V1–V6 được giữ nguyên checksum. V7 không sửa type/feature_code trong
 history; chỉ metadata hai bảng catalog bị bỏ. Không phát lại event hay gửi provider khi migrate.
 
 V10: `connection_config` JSONB groups `connectionRef`, `credentialsRef`, `telegramBotUsername`, `telegramChatId`, `telegramMessageThreadId`; existing data and validation constraints are preserved.
+
+V11 bổ sung kênh LARK; V12 thêm tên cấu hình kênh; V13 thêm `lark_enabled` cho alert rule.

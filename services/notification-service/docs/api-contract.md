@@ -1,7 +1,7 @@
 # API Notification — hợp đồng dự kiến
 
 Ngày lập: 04/11/2026. Phần lớn endpoint dưới đây là kế hoạch. Các endpoint setting đã có
-code chỉ gồm GET list/detail và PUT channel; payload thực tế trong [module notification-setting](setting.md); xem tài liệu đó
+code gồm GET list/detail, POST và PUT cho channel và alert rule; payload thực tế trong [module notification-setting](setting.md); xem tài liệu đó
 để phân biệt phần đã triển khai và backlog provider/IAM. Module/API catalog đã được bỏ;
 FE quản lý danh mục theo [shared constants](constants.md). Notification chưa có main
 runtime/Gateway wiring để phục vụ HTTP độc lập.
@@ -10,7 +10,7 @@ runtime/Gateway wiring để phục vụ HTTP độc lập.
 ## Quy ước
 
 - Base path HTTP: `/api/v1`; CMS: `/api/v1/cms`. Controller dùng `ApiPaths.V1`.
-- Tenant/user được lấy từ Gateway context đã ký; request tenant không tự truyền tenantId/userId
+- Tenant/user được lấy từ header gateway tin cậy và principal; request tenant không tự truyền tenantId/userId
   để truy cập hộ. CMS là namespace có quyền platform và audience tường minh.
 - List có limit mặc định 20, tối đa 100; cursor opaque với thứ tự ổn định
   `created_at DESC, id DESC`. Response theo envelope/error convention của common-web.

@@ -15,7 +15,7 @@ import com.vishop.notification.modules.setting.application.query.GetChannelQuery
 import com.vishop.notification.modules.setting.application.query.ListChannelsQueryHandler;
 import com.vishop.notification.modules.setting.application.service.NotificationSettingService;
 import com.vishop.notification.modules.setting.presentation.rest.*;
-import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingReq;
+import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingUpdateReq;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
@@ -441,7 +441,7 @@ class NotificationSettingHttpTest {
     var request =
         json.readValue(
             "{\"enabled\":false,\"version\":0,\"connectionConfig\":{\"appToken\":\"sensitive-ref\"}}",
-            NotificationSettingReq.class);
+            NotificationSettingUpdateReq.class);
     assertThat(request.getConnectionConfig().get("appToken").asText()).isEqualTo("sensitive-ref");
     assertThat(json.writeValueAsString(request))
         .doesNotContain("connectionConfig", "sensitive-ref");
@@ -454,7 +454,7 @@ class NotificationSettingHttpTest {
     var request =
         json.readValue(
             "{\"enabled\":false,\"botToken\":\"secret\",\"chatId\":\"-1\",\"version\":0}",
-            NotificationSettingReq.class);
+            NotificationSettingUpdateReq.class);
     assertThat(request.getBotToken()).isEqualTo("secret");
     assertThat(json.writeValueAsString(request)).doesNotContain("botToken", "secret");
     assertThat(request.toString()).doesNotContain("secret");
