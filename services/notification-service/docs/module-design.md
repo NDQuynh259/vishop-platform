@@ -43,7 +43,7 @@ infrastructure và presentation. NotificationAnnouncement có thêm Notification
 | Module | API nội bộ | Trách nhiệm / bảng |
 | --- | --- | --- |
 | notification-setting | NotificationSettingManagementApi, NotificationAlertRuleApi | Kết nối kênh và rule loại thông báo; notification_settings, notification_alert_rules |
-| notification-inbox | NotificationInboxApi | Immutable notification và recipient; notifications, notification_recipients |
+| notification-inbox | NotificationInboxApi | Nội dung bất biến; JPA notification/recipient, list/detail/unread/read-all/archive và kiểm tra quyền từng item |
 | notification-delivery | NotificationDeliveryApi | Cooldown, queue/retry; deliveries, delivery_attempts, deduplication |
 | notification-announcement | NotificationAnnouncementApi | Draft/publish snapshot có version; persistence announcement cần migration tiếp theo |
 
@@ -68,6 +68,8 @@ explicit recipients hoặc personal preferences. Các bảng còn lại giữ sc
 - Delivery gộp EMAIL destination sau trim/lowercase; claim/complete/fail theo lease/token,
   due time và attempt budget. Không tự reclaim kết quả provider chưa xác định.
 - Recipient read idempotent, giữ readAt đầu tiên; archive không sửa notification chung.
+- Inbox HTTP/JPA đã có; [API và phạm vi đọc](inbox.md) gồm recipient, permission và shop.
+  Adapter quyền shop thực tế chưa có; mặc định chặn mục có shopId.
 - NotificationSystemTypePolicy dùng constants thật, chỉ cho announcement type SYSTEM.
 - NotificationAnnouncement draft có audience tường minh; published snapshot bất biến. Repository save
   phải compare-and-swap expectedVersion; publish chưa fan-out hoặc gửi provider.

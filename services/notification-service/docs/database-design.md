@@ -7,6 +7,8 @@ Database riêng: `vishop_notification`. Schema hiện hành sau V13 gồm **12 b
 Code setting ánh xạ notification_settings và notification_alert_rules. Các bảng feature,
 recipient selection và personal preference vẫn có schema/migration, chờ adapter triển khai sau.
 Đợt rút gọn module không xóa bảng hay dữ liệu hiện có.
+Inbox đã ánh xạ notifications và notification_recipients; nội dung chung bất biến,
+read_at/deleted_at chỉ cập nhật trên recipient của user hiện tại. Xem [inbox](inbox.md).
 
 Danh mục feature/type nằm trong [shared constants](constants.md), không phải module/bảng DB.
 Các mã feature_code/type lưu trong cấu hình và lịch sử; app kiểm tra hỗ trợ qua enum fromCode.

@@ -5,6 +5,8 @@ code gồm GET list/detail, POST và PUT cho channel và alert rule; payload th�
 để phân biệt phần đã triển khai và backlog provider/IAM. Module/API catalog đã được bỏ;
 FE quản lý danh mục theo [shared constants](constants.md). Notification chưa có main
 runtime/Gateway wiring để phục vụ HTTP độc lập.
+Inbox list/detail/unread-count/read/read-all/archive đã có HTTP/JPA và CQRS;
+hợp đồng hiện hành, giới hạn scope và phần wiring còn thiếu ở [inbox](inbox.md).
 [Thứ tự triển khai](implementation-plan.md). Không tạo API CRUD cho mọi bảng.
 
 ## Quy ước
@@ -42,7 +44,7 @@ runtime/Gateway wiring để phục vụ HTTP độc lập.
 Tùy chọn cá nhân yêu cầu membership active và chỉ sửa bản thân.
 Quyền notifications.view không thay thế required_permission/shop scope của từng notification.
 
-## 1. In-app — P0
+## 1. In-app — HTTP/JPA đã triển khai
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
@@ -56,6 +58,9 @@ Quyền notifications.view không thay thế required_permission/shop scope củ
 Item: id, type, featureCode, category, severity, title, body, actionUrl, shopId,
 occurredAt, createdAt, readAt. actionUrl chỉ là đường dẫn/đích hợp lệ đã kiểm soát.
 Không có POST tạo thông báo tùy ý hoặc PATCH sửa title/body từ client.
+Filter category/featureCode trong thiết kế mở rộng chưa có ở API inbox hiện hành;
+hiện hỗ trợ type/severity/read/shopId/cursor/limit. Quyền notifications.view ở bảng đề xuất
+chưa được đưa vào IAM; inbox kiểm tra đăng nhập và required_permission/shop scope từng item.
 
 ## 2. Nhóm tính năng — kế hoạch, chưa triển khai
 

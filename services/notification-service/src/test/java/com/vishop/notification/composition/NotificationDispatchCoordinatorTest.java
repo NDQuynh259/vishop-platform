@@ -10,8 +10,8 @@ import com.vishop.notification.composition.dispatch.RecipientDirectory;
 import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
 import com.vishop.notification.modules.delivery.application.command.EnqueueDeliveriesCommandHandler;
 import com.vishop.notification.modules.delivery.application.command.ReserveRoutesCommandHandler;
-import com.vishop.notification.modules.inbox.application.api.NotificationInboxApi;
 import com.vishop.notification.modules.inbox.application.command.CreateNotificationCommandHandler;
+import com.vishop.notification.modules.inbox.application.service.NotificationInboxApplicationService;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
@@ -31,7 +31,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 
 class NotificationDispatchCoordinatorTest {
   final NotificationDispatchPolicy setting = mock(NotificationDispatchPolicy.class);
-  final NotificationInboxApi inbox = mock(NotificationInboxApi.class);
+  final NotificationInboxApplicationService inbox = mock(NotificationInboxApplicationService.class);
   final NotificationDeliveryApi delivery = mock(NotificationDeliveryApi.class);
   final RecipientDirectory directory = mock(RecipientDirectory.class);
   final TestJournal journal = new TestJournal();
@@ -41,7 +41,7 @@ class NotificationDispatchCoordinatorTest {
   @BeforeEach
   void setupCqrs() {
     context = new AnnotationConfigApplicationContext();
-    context.registerBean(NotificationInboxApi.class, () -> inbox);
+    context.registerBean(NotificationInboxApplicationService.class, () -> inbox);
     context.registerBean(NotificationDeliveryApi.class, () -> delivery);
     context.register(
         CqrsAutoConfiguration.class,

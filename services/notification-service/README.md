@@ -8,7 +8,9 @@ for implemented use cases and adapter contracts. [Shared constants](docs/constan
 feature/type codes and defaults; there is no catalog module, registry or catalog HTTP API.
 The setting module implements notification_settings and notification_alert_rules:
 channel and per-type rule HTTP APIs with transactional JPA adapters; see
-[setting API and limits](docs/setting.md). Other persistence/HTTP adapters, event consumers,
+[setting API and limits](docs/setting.md). The inbox module implements notification/recipient
+persistence and personal list/detail/unread/read/archive APIs; see [inbox API](docs/inbox.md).
+Other persistence/HTTP adapters, event consumers,
 runtime gateway authentication, realtime and provider workers are subsequent work.
 It does not yet start a standalone server or send notifications.
 
@@ -31,7 +33,7 @@ The buses execute synchronously in the same process; they are independent of Kaf
 | Module | Queries | Commands |
 | --- | --- | --- |
 | setting | `ListChannelsQuery`, `GetChannelQuery`, `ListRulesQuery`, `GetRuleQuery` | `CreateChannelCommand`, `UpdateChannelCommand`, `CreateRuleCommand`, `UpdateRuleCommand` |
-| inbox | — | `CreateNotificationCommand` |
+| inbox | `ListInboxQuery`, `GetNotificationQuery`, `UnreadCountQuery` | `CreateNotificationCommand`, `MarkNotificationReadCommand`, `MarkAllNotificationsReadCommand`, `ArchiveNotificationCommand` |
 | delivery | — | `ReserveRoutesCommand`, `EnqueueDeliveriesCommand` |
 | announcement | — | `CreateAnnouncementCommand`, `ReviseAnnouncementCommand`, `PublishAnnouncementCommand` |
 
@@ -39,7 +41,8 @@ The buses execute synchronously in the same process; they are independent of Kaf
 commands through the shared bus. Reserving cooldown routes is a write operation.
 The journal continues to own workflow idempotency and its eventual transaction boundary.
 Setting registers its handlers and the conditional common CQRS buses in
-`NotificationSettingModuleConfiguration`. Other handlers are Spring components and need
+`NotificationSettingModuleConfiguration`; inbox uses `NotificationInboxModuleConfiguration`.
+Other handlers are Spring components and need
 their application API implementations when those modules are wired into a runtime.
 CQRS does not add the missing provider, persistence or HTTP runtime adapters listed above.
 
