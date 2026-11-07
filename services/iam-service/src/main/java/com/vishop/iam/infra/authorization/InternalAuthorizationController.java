@@ -2,11 +2,10 @@ package com.vishop.iam.infra.authorization;
 
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * Chỉ gateway technical context được vào đây; filter chặn user context và request không có chữ ký.
- */
+/** Internal loader for gateway-only ingress; technical identity cannot access user endpoints. */
 @RestController
 @io.swagger.v3.oas.annotations.Hidden
 public class InternalAuthorizationController {
@@ -17,6 +16,9 @@ public class InternalAuthorizationController {
   }
 
   @GetMapping("/internal/authorization")
+  @PreAuthorize(
+      "isAuthenticated() and principal.userId =="
+          + " T(io.github.coreplatform.common.security.gateway.GatewayIdentityHeaders).TECHNICAL_USER")
   public ResponseEntity<AuthorizationSnapshot> get(@RequestParam String key) {
     var state = projection.find(key);
     if (state == null) return ResponseEntity.notFound().build();

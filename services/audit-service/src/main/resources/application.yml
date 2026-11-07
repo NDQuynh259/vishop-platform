@@ -2,6 +2,14 @@ server:
   port: 8082
 
 spring:
+  data:
+    redis:
+      host: ${AUTH_REDIS_HOST:localhost}
+      port: ${AUTH_REDIS_PORT:6380}
+      password: ${AUTH_REDIS_PASSWORD:}
+      database: ${AUTH_REDIS_DATABASE:0}
+      timeout: 2s
+      connect-timeout: 2s
   output:
     ansi:
       enabled: ALWAYS
@@ -70,8 +78,10 @@ management:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 vishop:
+  cache:
+    key-prefix: ${CACHE_KEY_PREFIX:${AUTH_CACHE_PREFIX:vishop:}}
   security:
-    context:
-      secret: ${GATEWAY_AUDIT_CONTEXT_SECRET:dev_gateway_audit_context_secret_at_least_32_bytes}
+    authorization:
+      max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
     jwt:
-      enabled: false # Backend trusts gateway context; no user JWT key is needed.
+      enabled: false # Gateway identity headers; no user JWT key is needed.

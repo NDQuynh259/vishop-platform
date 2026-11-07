@@ -5,7 +5,14 @@ import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.UUID;
 
 public interface NotificationSettingManagementRepository {
+  Connection createConnection(UUID tenant, Connection connection);
+
   Connection connection(UUID tenant, NotificationChannel channel);
+
+  Connection connectionById(UUID tenant, UUID channelId);
+
+  Connection saveConnectionById(
+      UUID tenant, UUID channelId, Connection connection, long expectedVersion);
 
   Connection saveConnection(UUID tenant, Connection connection, long expectedVersion);
 }

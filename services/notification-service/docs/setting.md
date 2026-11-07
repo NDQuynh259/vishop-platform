@@ -10,17 +10,44 @@ Base path: `/api/v1`. Tenant lấy từ `GatewayPrincipal`, không lấy từ bo
 | Method | Endpoint | Quyền |
 | --- | --- | --- |
 | GET | `/notification-settings/channels` | `notifications.settings.view` |
-| GET | `/notification-settings/channels/{channel}` | `notifications.settings.view` |
-| PUT | `/notification-settings/channels/{channel}` | `notifications.settings.manage` |
+| POST | `/notification-settings/channels` | `notifications.settings.manage` |
+| GET | `/notification-settings/channels/{channelId}` | `notifications.settings.view` |
+| PUT | `/notification-settings/channels/{channelId}` | `notifications.settings.manage` |
 
-`channel` trên URL quyết định schema của `connectionConfig`. Không gửi `type` hay
+`channelId` là UUID của bản ghi trong `notification_settings`, không phải enum kênh.
+Response có field `id` để frontend gọi GET/PUT. Truy vấn luôn lọc theo cả ID và tenant
+từ principal; ID không tồn tại, đã xóa hoặc thuộc tenant khác trả 404. Schema của
+`connectionConfig` lấy theo enum `channel` trong bản ghi. PUT không nhận `type` hay
 `channel` bên trong JSON. Các field không thuộc kênh sẽ bị từ chối với HTTP 422.
+
+POST tạo mới nhận `channel`, `enabled`, tùy chọn `name` và `connectionConfig`; không cần version.
+`name` dài tối đa 150 ký tự, không được rỗng hoặc chỉ có khoảng trắng khi gửi lên.
+Nếu không gửi tên lúc tạo, API dùng tên enum kênh. PUT có thể đổi tên; nếu không gửi
+`name` thì giữ tên hiện tại. Tên được trim và trả về trong GET/POST/PUT.
+Tenant lấy từ principal. Khi bỏ `connectionConfig`, cấu hình ban đầu là object rỗng.
+API trả 201, JSON có `id`/`version`, và Location trỏ tới GET/PUT theo ID vừa tạo.
+Mỗi tenant chỉ có một bản ghi cho mỗi kênh: POST trùng trả 409, không ghi đè hoặc
+khôi phục bản ghi đã soft-delete. Điều kiện unique vẫn được giữ khi tạo đồng thời.
+
+```http
+POST /api/v1/notification-settings/channels
+Content-Type: application/json
+```
+
+```json
+{"channel":"LARK","name":"Lark alerts","enabled":false,"connectionConfig":{"appToken":"secrets/lark"}}
+```
 
 PUT yêu cầu `enabled` và `version`. Khi có `connectionConfig`, object này **thay thế
 toàn bộ cấu hình**: field bỏ qua sẽ bị xóa; `{}` xóa cấu hình nhưng giữ dòng và version.
 Khi không gửi `connectionConfig`, API chỉ đổi enabled và giữ cấu hình hiện tại.
 Không trộn `connectionConfig` với các field Telegram cũ (`botToken`, `chatId`,
 `messageThreadId`) ở cấp body.
+
+Mọi cập nhật qua PUT đều dùng `UpdateChannelCommand` và
+`NotificationSettingService.updateChannel(tenantId, channelId, change)`.
+`ChannelUpdate` gom cấu hình JSON, bật/tắt, tên và các field Telegram legacy;
+service kiểm tra version và lưu thay đổi trong cùng transaction.
 
 | Kênh | Field trong `connectionConfig` | Field trả về trong `connectionConfig` |
 | --- | --- | --- |
@@ -42,7 +69,7 @@ hoặc fragment; Telegram base URL không chứa query. Email address phải h�
 
 ### Ví dụ PUT
 
-`PUT /api/v1/notification-settings/channels/TELEGRAM`
+`PUT /api/v1/notification-settings/channels/{channelId}`
 
 ```json
 {
@@ -56,7 +83,7 @@ hoặc fragment; Telegram base URL không chứa query. Email address phải h�
 }
 ```
 
-`PUT /api/v1/notification-settings/channels/EMAIL`
+`PUT /api/v1/notification-settings/channels/{channelId}`
 
 ```json
 {
@@ -71,7 +98,7 @@ hoặc fragment; Telegram base URL không chứa query. Email address phải h�
 }
 ```
 
-`PUT /api/v1/notification-settings/channels/LARK`
+`PUT /api/v1/notification-settings/channels/{channelId}`
 
 ```json
 {
@@ -85,7 +112,7 @@ hoặc fragment; Telegram base URL không chứa query. Email address phải h�
 }
 ```
 
-`PUT /api/v1/notification-settings/channels/IN_APP`
+`PUT /api/v1/notification-settings/channels/{channelId}`
 
 ```json
 {"enabled": true, "version": 0, "connectionConfig": {}}
@@ -95,6 +122,8 @@ hoặc fragment; Telegram base URL không chứa query. Email address phải h�
 
 ```json
 {
+  "id": "019a578e-1234-7000-8000-000000000001",
+  "name": "Telegram alerts",
   "channel": "TELEGRAM",
   "configured": true,
   "enabled": false,
@@ -111,10 +140,10 @@ hoặc fragment; Telegram base URL không chứa query. Email address phải h�
 
 ## Version, validation và provider
 
-- Không có dòng: IN_APP mặc định bật; kênh khác tắt, configured=false, version=0.
-- PUT upsert lần đầu dùng version=0 và trả version=1. Mutation tiếp theo dùng version mới nhất.
-- Ghi đồng thời hoặc version cũ trả 409. No-op vẫn tăng version; restore dùng cùng khóa.
-- Chưa xác thực: 401; thiếu tenant/quyền: 403; enum không hợp lệ hoặc JSON sai: 400.
+- Không có dòng: danh sách vẫn trả trạng thái mặc định với id=null, configured=false, version=0.
+- GET/PUT theo UUID chỉ làm việc với bản ghi hiện có; không upsert hoặc restore bản ghi đã xóa.
+- Ghi đồng thời hoặc version cũ trả 409. No-op vẫn tăng version; mutation dùng version mới nhất.
+- Chưa xác thực: 401; thiếu tenant/quyền: 403; UUID không hợp lệ hoặc JSON sai: 400.
 - Thiếu enabled/version, field sai schema, giá trị không hợp lệ hoặc provider chưa sẵn sàng: 422.
 - Không cho enable external channel khi thiếu provider adapter hoặc cấu hình chưa được xác minh.
 
@@ -135,6 +164,7 @@ không suy đoán loại từ field JSON. Legacy Telegram aliases vẫn đọc �
 V9 backfill UUIDv7. V10 chuyển các cột connection cũ sang JSONB. V11 cho phép
 LARK trong constraint channel. API bật/tắt giữ toàn bộ cấu hình riêng của kênh;
 PUT có connectionConfig thực hiện thay thế toàn bộ, bao gồm appToken của LARK.
+V12 thêm `name varchar(150) NOT NULL`, điền tên enum kênh cho bản ghi cũ và chặn tên trống.
 
 Feature/type rule/recipient/preference chưa triển khai trong module này. Main
 HTTP runtime và Gateway verifier production vẫn chưa có trong service.

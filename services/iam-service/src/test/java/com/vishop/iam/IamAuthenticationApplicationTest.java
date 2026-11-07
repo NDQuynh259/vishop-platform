@@ -111,7 +111,6 @@ class IamAuthenticationApplicationTest {
   @Autowired ObjectMapper json;
   @Autowired JdbcTemplate db;
   @Autowired JwtTokenService jwt;
-  @Autowired GatewayContextCodec context;
   @Autowired IdentityApi identity;
   @Autowired com.vishop.iam.modules.identity.domain.port.AuthSessionRepositoryPort sessions;
   @Autowired org.springframework.data.redis.core.StringRedisTemplate redis;
@@ -192,9 +191,9 @@ class IamAuthenticationApplicationTest {
             sid(c));
     var request =
         request(org.springframework.http.HttpMethod.valueOf(method), URI.create(path))
-            .header(
-                GatewayContextCodec.HEADER,
-                context.sign(actor, role == null ? null : UUID.fromString(role), method, path));
+            .headers(
+                io.github.coreplatform.common.test.security.GatewayHeaderFixture.from(
+                    actor, role == null ? null : UUID.fromString(role)));
     if (AuthCookies.requiresRequestHeader(method))
       request.header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE);
     return request;
@@ -413,9 +412,9 @@ class IamAuthenticationApplicationTest {
     var forged = new GatewayPrincipal(a.userId(), null, "USER", null, Set.of(), sid(b));
     http.perform(
             get("/api/v1/tenants")
-                .header(
-                    GatewayContextCodec.HEADER,
-                    context.sign(forged, null, "GET", "/api/v1/tenants")))
+                .headers(
+                    io.github.coreplatform.common.test.security.GatewayHeaderFixture.from(
+                        forged, null)))
         .andExpect(status().isUnauthorized());
   }
 
@@ -621,9 +620,7 @@ class IamAuthenticationApplicationTest {
     String bound = target.getRawPath() + "?" + target.getRawQuery();
     http.perform(get(target)).andExpect(status().isUnauthorized());
     var technical = new GatewayPrincipal(new UUID(0, 0), null, "USER", null, Set.of());
-    http.perform(
-            get(target)
-                .header(GatewayContextCodec.HEADER, context.sign(technical, null, "GET", bound)))
+    http.perform(get(target).headers(GatewayIdentityHeaders.technical().toHeaders()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(c.userId().toString()));
   }
@@ -881,12 +878,14 @@ class IamAuthenticationApplicationTest {
           db.update("UPDATE users SET deleted_at=clock_timestamp() WHERE id=?", inviter.userId());
       case "deletedMembership" ->
           db.update(
-              "UPDATE tenant_members SET deleted_at=clock_timestamp() WHERE tenant_id=? AND user_id=?",
+              "UPDATE tenant_members SET deleted_at=clock_timestamp() WHERE tenant_id=? AND"
+                  + " user_id=?",
               tenant,
               inviter.userId());
       case "deletedRole" ->
           db.update(
-              "UPDATE roles SET deleted_at=clock_timestamp() WHERE tenant_id=? AND builtin_key='OWNER'",
+              "UPDATE roles SET deleted_at=clock_timestamp() WHERE tenant_id=? AND"
+                  + " builtin_key='OWNER'",
               tenant);
       default -> throw new IllegalArgumentException(revoked);
     }

@@ -7,26 +7,21 @@ scripts, so a clean local run is additional evidence rather than CI parity.
 ## Runtime authentication
 
 See the [gateway authorization contract](core-architecture/gateway-authorization.md).
-Gateway verifies user JWTs and resolves current tenant permissions from dedicated Auth Redis.
-Backends accept signed gateway context and authorize tenant resources locally. IAM maintains
-transactional versioned snapshots and retries cache delivery through authorization_outbox.
+Gateway verifies JWTs and current user/session/tenant/membership/role state in Auth Redis.
+It overwrites client identity headers and forwards user ID, session ID, tenant ID, role ID and
+verified system role. Backends resolve tenant role/permissions from the role cache. No permissions, access JWT or signed gateway context are forwarded.
 
-JWT verification at the gateway does not make plain identity headers trustworthy on
-direct backend requests. The current contract requires backends to verify signed
-`X-Gateway-Context`; standalone user, tenant and role headers are not authorization
-credentials. Removing context signatures requires an enforced gateway-only backend
-boundary through network policy/firewall or mTLS caller authorization, while retaining
-header sanitization and local tenant/resource permission checks. See the
-[header trust boundary](core-architecture/gateway-authorization.md#ranh-giới-tin-cậy-khi-truyền-context-qua-header)
-for the alternatives and their deployment requirements.
+Backends accept these headers only behind gateway-restricted private ingress. Audit and
+Subscription resolve role permissions from Auth Redis using common-security; IAM also
+revalidates security state in its database. Missing/stale/unavailable role data fails closed.
+See the [gateway-only trust boundary](core-architecture/gateway-authorization.md).
 
-Access and refresh tokens are HttpOnly cookies, never JSON credentials. Refresh has no body,
-checks current tokenVersion and grants, and preserves the absolute refresh deadline. Logout
-clears cookies; password/account/system-role changes revoke old credentials through versioning.
-V10 extends versioning to membership role/status changes and membership removal, including
-soft deletion. These changes revoke the user's old access and refresh tokens across all
-tenants; editing a role's permission list alone does not require login again.
-Rotation/reuse tracking and owner-issued temporary-password flows remain unimplemented.
+Access/refresh remain signed JWTs in HttpOnly cookies. Refresh may select a tenant, checks
+current tokenVersion/session/grant and preserves the absolute session deadline. Logout
+revokes one sid and waits for Redis acknowledgement before clearing cookies. Password,
+account and system-role changes revoke old credentials through tokenVersion. Membership
+changes are tenant-scoped from V13 and do not revoke sessions in other tenants. Refresh
+rotation/reuse detection remains unimplemented.
 
 The scanning tools below are source-project guidance; verify scripts exist in this checkout
 before using them. They are not evidence of Java CI coverage.

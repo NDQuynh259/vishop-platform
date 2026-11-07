@@ -1,5 +1,8 @@
 # Database và luồng auth đi qua từng hàm
 
+> Signed-context diagrams below describe the previous contract. Runtime changed on 07/11/2026: [identity headers and Redis permissions](gateway-authorization.md).
+
+
 Đối chiếu mã nguồn và IAM migration **V1–V13**, Subscription **V1–V2**, Audit **V1–V2**. Đây là sơ đồ theo source code và migration, không phải introspection database đang chạy. Các sơ đồ dùng Mermaid; cột được chọn lọc để dễ đọc, SQL migration giữ định nghĩa đầy đủ.
 
 Runtime hiện tại: **gateway verify access JWT → đọc trạng thái/quyền trong Auth Redis → ký context cho service**. IAM kiểm tra lại dữ liệu bảo mật trong DB; Audit/Subscription xác minh context và phân quyền tại chỗ. Tài liệu này mô tả code hiện tại.

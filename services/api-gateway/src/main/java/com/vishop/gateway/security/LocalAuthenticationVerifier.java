@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-/** Verifies the user credential once, then resolves current tenant permissions from Redis. */
+/** Verifies the credential/session and resolves the current role; services load its permissions. */
 @Component
 public class LocalAuthenticationVerifier {
   public record Identity(UUID userId, UUID tenantId, UUID roleId, GatewayPrincipal actor) {}
@@ -144,7 +144,7 @@ public class LocalAuthenticationVerifier {
                                 tenant,
                                 userState.systemRole(),
                                 grant.roleKey(),
-                                grant.permissions(),
+                                java.util.Set.of(),
                                 claims.sessionId()));
                       });
             });

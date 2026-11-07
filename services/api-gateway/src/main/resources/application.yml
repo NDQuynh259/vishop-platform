@@ -110,10 +110,6 @@ vishop:
   security:
     authorization:
       max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
-    context:
-      iam-secret: ${GATEWAY_IAM_CONTEXT_SECRET:dev_gateway_iam_context_secret_at_least_32_bytes}
-      audit-secret: ${GATEWAY_AUDIT_CONTEXT_SECRET:dev_gateway_audit_context_secret_at_least_32_bytes}
-      subscription-secret: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:dev_gateway_subscription_context_secret_at_least_32_bytes}
     jwt:
       secret: ${vishop.security.jwt.access-token-secret}
       access-token-secret: ${JWT_ACCESS_SECRET:${GATEWAY_JWT_ACCESS_TOKEN_SECRET:dev_vishop_access_secret_at_least_32_bytes}}

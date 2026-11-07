@@ -8,9 +8,14 @@ import com.vishop.notification.composition.dispatch.NotificationDispatchCoordina
 import com.vishop.notification.composition.dispatch.NotificationDispatchPolicy;
 import com.vishop.notification.composition.dispatch.RecipientDirectory;
 import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
+import com.vishop.notification.modules.delivery.application.command.EnqueueDeliveriesCommandHandler;
+import com.vishop.notification.modules.delivery.application.command.ReserveRoutesCommandHandler;
 import com.vishop.notification.modules.inbox.application.api.NotificationInboxApi;
+import com.vishop.notification.modules.inbox.application.command.CreateNotificationCommandHandler;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
+import io.github.coreplatform.common.domain.cqrs.CommandBus;
+import io.github.coreplatform.common.web.cqrs.CqrsAutoConfiguration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -19,7 +24,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class NotificationDispatchCoordinatorTest {
   final NotificationDispatchPolicy setting = mock(NotificationDispatchPolicy.class);
@@ -27,8 +35,30 @@ class NotificationDispatchCoordinatorTest {
   final NotificationDeliveryApi delivery = mock(NotificationDeliveryApi.class);
   final RecipientDirectory directory = mock(RecipientDirectory.class);
   final TestJournal journal = new TestJournal();
-  final NotificationDispatchCoordinator coordinator =
-      new NotificationDispatchCoordinator(setting, inbox, delivery, directory, journal);
+  NotificationDispatchCoordinator coordinator;
+  AnnotationConfigApplicationContext context;
+
+  @BeforeEach
+  void setupCqrs() {
+    context = new AnnotationConfigApplicationContext();
+    context.registerBean(NotificationInboxApi.class, () -> inbox);
+    context.registerBean(NotificationDeliveryApi.class, () -> delivery);
+    context.register(
+        CqrsAutoConfiguration.class,
+        CreateNotificationCommandHandler.class,
+        ReserveRoutesCommandHandler.class,
+        EnqueueDeliveriesCommandHandler.class);
+    context.refresh();
+    coordinator =
+        new NotificationDispatchCoordinator(
+            setting, context.getBean(CommandBus.class), directory, journal);
+  }
+
+  @AfterEach
+  void closeCqrs() {
+    context.close();
+  }
+
   final NotificationMessage message =
       new NotificationMessage(
           UUID.randomUUID(),

@@ -223,10 +223,10 @@ services:
     expose:
       - "8080"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
       SERVER_PORT: 8080
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a shared access JWT key of at least 32 bytes}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set a distinct refresh JWT key of at least 32 bytes}
-      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:?Set IAM gateway context secret}
       AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Set AUTH_REDIS_PASSWORD}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
@@ -282,8 +282,13 @@ services:
     expose:
       - "8082"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Set AUTH_REDIS_PASSWORD}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
       SERVER_PORT: 8082
-      GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_audit
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
@@ -301,6 +306,8 @@ services:
           cpus: "0.2"
           memory: 384M
     depends_on:
+      auth-redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       kafka:
@@ -326,8 +333,13 @@ services:
     expose:
       - "8083"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Set AUTH_REDIS_PASSWORD}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
       SERVER_PORT: 8083
-      GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
       SEPAY_ENABLED: ${SEPAY_ENABLED:-false}
       SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
       SEPAY_BANK: ${SEPAY_BANK:-}
@@ -353,6 +365,8 @@ services:
           cpus: "0.2"
           memory: 384M
     depends_on:
+      auth-redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       kafka:
@@ -381,10 +395,8 @@ services:
     ports:
       - "${GATEWAY_PORT:-8000}:8000"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
       SERVER_PORT: 8000
-      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
-      GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
-      GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:?Set a separate random context secret of at least 32 bytes}
       CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
       AUTH_REDIS_HOST: auth-redis
       AUTH_REDIS_PORT: 6379

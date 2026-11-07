@@ -18,7 +18,7 @@ public interface IdentityApi {
     java.util.Optional<TenantGrant> activeGrant(UUID userId, UUID tenantId);
   }
 
-  AuthenticatedUser resolveContext(AuthenticatedUser context, UUID roleId);
+  AuthenticatedUser resolveContext(UUID userId, UUID sessionId, UUID tenantId, UUID roleId);
 
   AuthenticatedUser verifyAccessToken(String token);
 

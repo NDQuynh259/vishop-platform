@@ -180,8 +180,6 @@ class GatewayApplicationTest {
 
   @Autowired private WebTestClient webTestClient;
 
-  @Autowired com.vishop.gateway.security.GatewayContextSigners contextSigners;
-
   @Autowired org.springframework.context.ApplicationContext application;
 
   @Autowired org.springframework.cloud.gateway.route.RouteLocator routes;
@@ -259,7 +257,8 @@ class GatewayApplicationTest {
         .jsonPath("$.object")
         .isEqualTo("list");
     assertThat(FORWARDED.get().getFirst("Authorization")).isNull();
-    assertThat(FORWARDED.get().getFirst("X-Gateway-Context")).isNotBlank();
+    assertThat(FORWARDED.get().getFirst("X-Gateway-Context")).isNull();
+    assertThat(FORWARDED.get().getFirst("X-Session-Id")).isNotBlank();
     assertThat(FORWARDED.get().getFirst("Cookie")).isNull();
   }
 
@@ -313,7 +312,8 @@ class GatewayApplicationTest {
         .expectBody(String.class)
         .isEqualTo("ok");
     assertThat(FORWARDED.get().getFirst("Authorization")).isNull();
-    assertThat(FORWARDED.get().getFirst("X-Gateway-Context")).isNotBlank();
+    assertThat(FORWARDED.get().getFirst("X-Gateway-Context")).isNull();
+    assertThat(FORWARDED.get().getFirst("X-Session-Id")).isNotBlank();
     assertThat(FORWARDED.get().getFirst("Cookie")).isNull();
     assertThat(IAM_LOOKUPS.get()).isEqualTo(previousLookups);
     assertThat(FORWARDED.get().getFirst("X-User-Id")).isEqualTo(user.toString());
@@ -377,12 +377,11 @@ class GatewayApplicationTest {
     assertThat(headers.getFirst("Cookie")).isEqualTo(AuthCookies.REFRESH_TOKEN + "=valid-refresh");
     assertThat(headers.getFirst("Authorization")).isNull();
     var context =
-        contextSigners
-            .forService("iam-service")
-            .verifyContext(headers.getFirst("X-Gateway-Context"), "POST", "/api/v1/auth/logout");
-    assertThat(context.userId()).isEqualTo(user);
-    assertThat(context.sessionId()).isEqualTo(user); // Test fixture binds sid to user UUID.
-    assertThat(context.systemRole()).isEqualTo(SystemRole.PLATFORM_ADMIN.name());
+        io.github.coreplatform.common.security.gateway.GatewayIdentityHeaders.read(headers::get);
+    assertThat(context.getUserId()).isEqualTo(user);
+    assertThat(context.getSessionId()).isEqualTo(user); // Test fixture binds sid to user UUID.
+    assertThat(headers.getFirst("X-System-Role")).isEqualTo(SystemRole.PLATFORM_ADMIN.name());
+    assertThat(headers).doesNotContainKeys("X-Tenant-Role", "X-Permissions");
   }
 
   @Test

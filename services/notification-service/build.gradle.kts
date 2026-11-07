@@ -1,4 +1,8 @@
 // Notification modules, setting HTTP/JPA adapters, and standalone migration CLI.
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-parameters")
+}
+
 dependencies {
     implementation(project(":libs:common-domain"))
     implementation(project(":libs:common-web"))

@@ -1,78 +1,104 @@
-# Gateway authentication và phân quyền Redis
+# Gateway identity headers và phân quyền Redis
 
-Xem [luồng auth chi tiết và sơ đồ](authentication-flow.md) cùng
-[chính sách thu hồi](authorization-policy.md).
+Cập nhật 07/11/2026. Contract này thay thế HMAC gateway context.
 
-Gateway verify access JWT HS256 bằng access key và hợp đồng claims IAM:
-issuer, audience, token_use, thời gian, userId, sid, tokenVersion và role theo tenant.
-Permissions lấy từ Redis, không nằm trong JWT.
+```mermaid
+flowchart LR
+    C[Client] --> G[Gateway: JWT và trạng thái auth]
+    G --> R[(Auth Redis)]
+    G --> H[5 identity headers, không permissions]
+    H --> S[Service: GatewayIdentityFilter]
+    S --> R
+    S --> P[Kiểm tra quyền và tenant scope]
+```
 
-Gateway chỉ cấu hình access key, không giữ refresh key. Chỉ POST /api/v1/auth/refresh
-và POST /api/v1/auth/logout trên route IAM nhận refresh cookie. Access JWT gốc và
-Authorization không được chuyển xuống service; user/tenant/role/permissions/sid đi
-trong header X-Gateway-Context đã được gateway ký. Refresh không phụ thuộc access
-còn hạn; logout có thể dùng refresh khi access thiếu/hết hạn. Chi tiết và bảng
-forwarding nằm trong [luồng auth](authentication-flow.md#gateway-chuyển-tiếp-credential-và-context).
+## HTTP contract
 
-## Thứ tự xác minh
-
-Code chia theo trách nhiệm:
-
-| Component | Trách nhiệm |
+| Header | Nội dung |
 | --- | --- |
-| AuthenticationGlobalFilter | Điều phối policy, xác thực và chuyển tiếp |
-| GatewayRequestPolicy | Origin/CSRF, route public, API chưa chọn tenant và quy tắc forward refresh |
-| GatewayRequestForwarder | Đọc access, bỏ header giả, lọc cookie và ký context gửi service |
-| AuthenticationErrorResponse | Ghi lỗi từ chối xác thực theo Problem Details |
+| X-User-Id | UUID user, bắt buộc |
+| X-Session-Id | UUID sid, bắt buộc với request user |
+| X-Tenant-Id | UUID tenant, chỉ có khi đã chọn tenant |
+| X-Role-Id | UUID role hiện tại, bắt buộc nếu có tenant |
+| X-System-Role | USER hoặc PLATFORM_ADMIN, do gateway xác thực |
 
-LocalAuthenticationVerifier tiếp tục verify JWT và đọc trạng thái/quyền từ Redis.
-Lỗi từ service phía sau đi tới GatewayExceptionHandler, không bị bắt thành lỗi token.
+Gateway kiểm tra JWT và user/session/tenant/membership/role hiện tại từ Auth Redis.
+RoleId lấy từ membership, không dùng role cũ trong JWT để cấp quyền. Gateway giữ
+actor permissions rỗng và xóa mọi header định danh, X-Permissions, X-User-Permissions,
+X-Gateway-Context do client gửi trước khi ghi header mới.
 
-1. AuthenticationGlobalFilter phân loại route, kiểm tra Origin/write header và lấy credential.
-2. LocalAuthenticationVerifier.verifyAccessToken verify JWT, đọc user snapshot,
-   so sánh tokenVersion. JWT mới hơn cache sẽ tải lại snapshot để xác nhận.
-3. resolveAuthorization kiểm tra user ACTIVE, rồi session ACTIVE, chưa hết hạn,
-   đúng user và tokenVersion.
-4. Nếu có tenant, đọc tenant và membership hiện tại; cả hai phải ACTIVE. Lấy roleId từ
-   membership rồi đọc role snapshot, kiểm tra ACTIVE và đúng role thuộc tenant. Role claims
-   trong JWT chỉ được giữ để tương thích, không quyết định quyền hiện tại.
-5. Tạo GatewayPrincipal với permissions hiện tại và sid; ký context gửi service đích.
-6. Service kiểm tra chữ ký context, permission, tenant scope và điều kiện nghiệp vụ.
-   IAM đối chiếu thêm user/session/membership/quyền trong DB của mình.
+Header phải đơn trị, UUID đúng dạng và đủ sid/role; sai hoặc thiếu một phần trả
+401. Thiếu toàn bộ header thì không tạo principal; Spring Security chỉ cho các
+endpoint public đi tiếp. Identity không tenant có permissions rỗng và dùng systemRole đã được gateway xác thực; không đọc role cache.
 
-## Cache
+## Service resolve quyền
 
-| Key logic | Dữ liệu |
-| --- | --- |
-| auth:user:{userId} | status, systemRole, tokenVersion |
-| auth:member:{tenantId}:{userId} | status, userId, roleId của membership |
-| auth:session:{sid} | status, userId, tokenVersion, expiresAt |
-| auth:tenant:{tenantId} | status |
-| auth:role:{tenantId}:{roleId} | status, roleKey, permissions |
+Audit và Subscription dùng GatewayIdentityFilter trong common-security. Filter
+đọc danh tính, gọi GatewayRolePermissions.resolve(tenantId, roleId), tạo
+GatewayPrincipal và Spring authorities. Endpoint/use case kiểm tra permission và
+tenant/resource scope. SecurityContext và TenantContext được dọn sau request.
 
-Key logic do AuthorizationCacheKeys trong common-cache (package io.github.coreplatform.common.cache) tạo,
-dùng chung cho IAM và gateway. IAM/gateway dùng CacheKeyBuilder từ common-cache
-để thêm prefix chung, cấu hình qua vishop.cache.key-prefix hoặc CACHE_KEY_PREFIX.
-AUTH_CACHE_PREFIX cũ vẫn là giá trị dự phòng. AuthorizationSnapshot chỉ chứa dữ liệu.
-Session có TTL tuyệt đối theo hạn
-refresh. User/tenant/role giữ revision và dùng freshness riêng; không xóa revision
-sớm để tránh relay cũ ghi đè trạng thái mới.
+RedisGatewayRolePermissions là implementation tự cấu hình khi có StringRedisTemplate,
+ObjectMapper và CacheKeyBuilder. Nó đọc key `auth:role:{tenantId}:{roleId}` bằng
+Lua freshness READ, kiểm tra payload đúng key/roleId và trạng thái ACTIVE; tên role lấy từ chính payload Redis.
+Không lấy permissions từ header/JWT, không có cache cục bộ.
 
-Mỗi key là Redis Hash riêng, có `payload`, `version`, `checkedAt` độc lập.
-Membership không được gộp vào Hash user.
-Xem [thiết kế cache membership V13](membership-cache.md) cho layout và cách triển khai.
+Role inactive trả 403. Redis lỗi, projection thiếu/stale/hỏng hoặc sai scope trả
+503. Lỗi nghiệp vụ phía sau filter được giữ nguyên. IAM nhận identity headers
+nhưng kiểm tra user/session/grant hiện tại từ DB của mình.
 
-Cache miss/quá freshness gọi GET /internal/authorization của IAM với context kỹ
-thuật được ký. Projection trong authorization_outbox là nguồn tải lại sau khi cache
-mất. Lua ghi theo revision; lỗi cache/loader chặn truy cập. Gateway không đọc IAM DB.
+Gateway vẫn đọc role snapshot để xác nhận ACTIVE/roleKey và refresh projection
+trước khi forward. Backend đọc role từ Redis, không gọi IAM mỗi request. System role lấy từ X-System-Role do gateway ghi. Không nhận X-Tenant-Role hoặc permissions từ header. Role cache
+đổi quyền áp dụng trên request kế tiếp khi projection đã tới Redis; revision và
+freshness giới hạn dữ liệu cũ. Gateway/backend phải cùng AUTH_REDIS_HOST/PORT/
+PASSWORD/DATABASE, CACHE_KEY_PREFIX và AUTH_CACHE_MAX_AGE_SECONDS (mặc định 30 giây).
 
-## Logout
+## Annotation trước API
 
-IAM commit thu hồi sid và projection trước, rồi đẩy REVOKED sang Redis đồng bộ.
-Chỉ trả 204 sau Redis xác nhận. Lỗi sau commit trả 503; retry logout sẽ phát lại
-projection mà không nhân event. Thiết bị có sid khác vẫn hoạt động. Các thay đổi
-membership qua API cũng chờ Redis sau commit; retry deactivate không nhân event.
-Các thay đổi user/tenant/role khác dùng outbox và freshness; xem tài liệu chính sách.
+Các controller dùng Spring Security `@PreAuthorize`. Permissions đã được filter
+lấy từ Redis và đưa vào Spring authorities trước khi gọi controller; annotation
+chỉ kiểm tra authorities trong request, không đọc Redis thêm lần nữa.
 
-Downstream audit/subscription không gọi IAM cho mỗi request đã có context hợp lệ.
-Các service được bảo vệ ở network và vẫn kiểm tra quyền/tenant tại endpoint/use case.
+```java
+@GetMapping("/channels")
+@PreAuthorize("hasAuthority('notifications.settings.view')")
+public List<ChannelView> channels(...) { ... }
+
+@PutMapping("/channels/{channel}")
+@PreAuthorize("hasAuthority('notifications.settings.manage')")
+public ChannelView changeChannel(...) { ... }
+```
+
+Code dùng `CommonPermissions` để tránh lặp mã quyền. API CMS kiểm tra system role
+PLATFORM_ADMIN; API danh sách tenant/tạo tenant/nhận lời mời yêu cầu đăng nhập.
+Login/register/refresh/logout và webhook có `permitAll()` vì dùng password,
+refresh cookie hoặc chữ ký webhook riêng. Internal loader chỉ cho identity kỹ thuật.
+`@EnableMethodSecurity` kích hoạt kiểm tra ở controller proxy. Các kiểm tra tenant
+scope, ownership và quy tắc nghiệp vụ trong use case vẫn giữ nguyên.
+
+## Credential forwarding và internal loader
+
+JWT access/Authorization dừng ở gateway. Refresh cookie chỉ chuyển tới POST
+/api/v1/auth/refresh hoặc /logout trên route iam-service. Login/register không
+nhận cookie cũ. Method, path/query và body được proxy bình thường.
+
+Gateway loader gọi /internal/authorization bằng X-User-Id=UUID zero,
+X-System-Role=USER, không tenant/sid/role. Đây là nhãn kỹ thuật trên ingress tin cậy,
+không phải credential. IAM chỉ cho identity này vào /internal; business filter
+không cho nó thành user. Không có public gateway route tới /internal.
+
+## Ranh giới tin cậy khi truyền danh tính qua header
+
+HTTP backend chỉ nhận caller tin cậy qua ingress gateway, bằng firewall/NetworkPolicy
+hoặc policy mạng tương đương. Plain headers không chứng minh người gửi trên mạng
+công khai. Rollout gateway và backend cùng đợt; không chạy lẫn contract HMAC cũ.
+
+Compose production không publish port HTTP backend. Dev bind HTTP backend và
+debug ports vào loopback. Một Docker network chung vẫn cho container khác gọi
+backend; nếu container không cùng trust boundary cần ACL/NetworkPolicy tách riêng.
+Endpoint monitoring nội bộ cần được đưa vào ingress policy tương ứng.
+
+Không còn GatewayContextCodec, GatewayContextSigners và GATEWAY_*_CONTEXT_SECRET.
+Access/refresh JWT vẫn ký bình thường với hai key riêng; refresh key chỉ có ở IAM.
+Notification chưa có application runtime/gateway route trong codebase; khi thêm
+runtime cần dùng cùng filter/resolver và cấu hình Auth Redis trước khi mở route.

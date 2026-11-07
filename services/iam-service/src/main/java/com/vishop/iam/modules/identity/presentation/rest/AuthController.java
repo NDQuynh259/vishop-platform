@@ -10,6 +10,7 @@ import io.github.coreplatform.common.security.constants.AuthCookies;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ public class AuthController {
 
   /** Tạo user + phiên trong transaction; response chỉ đưa credential vào HttpOnly cookie. */
   @PostMapping("/register")
+  @PreAuthorize("permitAll()")
   public ResponseEntity<AuthenticationView> register(
       @Valid @RequestBody RegisterUserRequest request) {
     return authenticated(
@@ -35,6 +37,7 @@ public class AuthController {
 
   /** Password/status hợp lệ mới tạo sid mới; mỗi thiết bị giữ một sid độc lập. */
   @PostMapping("/login")
+  @PreAuthorize("permitAll()")
   public ResponseEntity<AuthenticationView> login(@Valid @RequestBody LoginRequest request) {
     return authenticated(
         commands.dispatch(
@@ -44,6 +47,7 @@ public class AuthController {
 
   /** Access hết hạn vẫn refresh được. tenantId tùy chọn được kiểm tra membership trong DB. */
   @PostMapping("/refresh")
+  @PreAuthorize("permitAll()")
   public ResponseEntity<AuthenticationView> refresh(
       HttpServletRequest http, @RequestBody(required = false) RefreshRequest request) {
     return authenticated(
@@ -56,6 +60,7 @@ public class AuthController {
 
   /** Thu hồi sid và xác nhận Redis trước khi xóa cookie; request lặp không nhân audit. */
   @PostMapping("/logout")
+  @PreAuthorize("permitAll()")
   public ResponseEntity<Void> logout(
       @AuthenticationPrincipal AuthenticatedUser actor, HttpServletRequest request) {
     commands.dispatch(

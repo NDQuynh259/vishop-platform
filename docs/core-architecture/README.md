@@ -11,7 +11,8 @@ This directory is the central index for reusable Core Platform architecture and 
 
 | Document | Subject |
 | --- | --- |
-| [Authentication flow](./authentication-flow.md) | Four auth APIs, JWT HS256, per-device sessions, tenant-scoped membership grants, signed context and V13 rollout |
+| [Authentication flow](./authentication-flow.md) | Four auth APIs, JWT HS256, per-device sessions, tenant-scoped membership grants, identity headers and role permissions in Redis |
+| [Auth flow review and diagrams](./auth-flow-review.md) | Current login, gateway, refresh and logout flows, verified tests, tenant recovery and security gaps |
 | [Database and auth call flow](./database-and-auth-flow.md) | Current IAM/Billing/Audit ERDs and auth flows through controllers, handlers, session/token services, gateway filters and Redis projections |
 | [System architecture](./architecture.md) | Gradle modules, DDD, hexagonal architecture, CQRS, outbox, Kafka, and Database Persistence/Migration (Flyway/JPA) |
 | [Persistence standard](./persistence.md) | Required Spring Data JPA/EntityManager access, validate-only entities, and Flyway SQL migrations for all current services/libraries |

@@ -1,2 +1,4 @@
 io.github.coreplatform.common.security.config.CommonSecurityAutoConfiguration
 io.github.coreplatform.common.security.jwt.JwtAutoConfiguration
+io.github.coreplatform.common.security.config.GatewayHeaderSecurityAutoConfiguration
+io.github.coreplatform.common.security.config.PermissionSecurityAutoConfiguration

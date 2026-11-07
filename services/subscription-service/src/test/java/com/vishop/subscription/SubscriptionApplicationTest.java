@@ -37,6 +37,7 @@ import org.springframework.transaction.PlatformTransactionManager;
       "vishop.outbox.enabled=false",
       "vishop.subscription.worker.enabled=false",
       "management.tracing.enabled=false",
+      "management.health.redis.enabled=false",
       "vishop.subscription.sepay.enabled=true",
       "vishop.subscription.sepay.webhook-secret=test-sepay-signing-secret-at-least-32-bytes",
       "vishop.subscription.sepay.bank=Vietcombank",
@@ -97,7 +98,9 @@ class SubscriptionApplicationTest {
             new JwtTokenProvider("test-billing-jwt-secret-at-least-32-bytes"));
   }
 
-  @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;
+  @org.springframework.boot.test.mock.mockito.MockBean
+  io.github.coreplatform.common.security.gateway.GatewayRolePermissions roles;
+
   @Autowired EntityManager em;
   @Autowired PlatformTransactionManager transactions;
   @Autowired CommandBus commands;
@@ -111,7 +114,9 @@ class SubscriptionApplicationTest {
             outbox));
     db = new JpaDatabaseFixture(em, transactions);
     db.execute(
-        "TRUNCATE subscription_prices,subscriptions,subscription_orders,subscription_terms,sepay_webhook_inbox,payment_transactions,outbox_events CASCADE");
+        "TRUNCATE"
+            + " subscription_prices,subscriptions,subscription_orders,subscription_terms,sepay_webhook_inbox,payment_transactions,outbox_events"
+            + " CASCADE");
   }
 
   String token(UUID tenant, Set<String> permissions) {
@@ -132,15 +137,17 @@ class SubscriptionApplicationTest {
         r -> {
           try {
             var actor = tokens.access(token);
+
             String target =
                 r.getRequestURI() + (r.getQueryString() == null ? "" : "?" + r.getQueryString());
-            r.addHeader(
-                "X-Gateway-Context",
-                gateway.sign(
-                    actor,
-                    actor.tenantId() == null ? null : new UUID(0, 1),
-                    r.getMethod(),
-                    target));
+            UUID roleId = actor.tenantId() == null ? null : new UUID(0, 1);
+            if (roleId != null)
+              when(roles.resolve(actor.tenantId(), roleId))
+                  .thenReturn(
+                      new io.github.coreplatform.common.security.gateway.GatewayRolePermissions
+                          .Grant(actor.tenantRole(), actor.permissions()));
+            io.github.coreplatform.common.test.security.GatewayHeaderFixture.from(actor, roleId)
+                .forEach((name, values) -> values.forEach(value -> r.addHeader(name, value)));
           } catch (RuntimeException invalid) {
             r.addHeader("Authorization", "Bearer " + token);
           }
@@ -304,6 +311,8 @@ class SubscriptionApplicationTest {
     http.perform(
             auth(get("/api/v1/billing/orders/" + id), owner(UUID.randomUUID()))
                 .header("X-Tenant-Id", tenant))
+        .andExpect(status().isUnauthorized());
+    http.perform(auth(get("/api/v1/billing/orders/" + id), owner(UUID.randomUUID())))
         .andExpect(status().isNotFound());
     http.perform(auth(get("/api/v1/billing/subscription"), admin()))
         .andExpect(status().isForbidden());
@@ -388,7 +397,8 @@ class SubscriptionApplicationTest {
         .isEqualTo("OVERPAYMENT");
     var late = checkout(actor, price, "late");
     db.update(
-        "UPDATE subscription_orders SET created_at='2026-01-31 02:00:00Z',expires_at='2026-01-31 02:59:00Z' WHERE id=CAST(? AS uuid)",
+        "UPDATE subscription_orders SET created_at='2026-01-31 02:00:00Z',expires_at='2026-01-31"
+            + " 02:59:00Z' WHERE id=CAST(? AS uuid)",
         late.path("order").path("id").asText());
     pay(12, late, 100000);
     assertThat(

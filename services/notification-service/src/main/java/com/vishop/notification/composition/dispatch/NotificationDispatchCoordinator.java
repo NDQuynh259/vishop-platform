@@ -1,10 +1,12 @@
 package com.vishop.notification.composition.dispatch;
 
-import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
-import com.vishop.notification.modules.inbox.application.api.NotificationInboxApi;
+import com.vishop.notification.modules.delivery.application.command.EnqueueDeliveriesCommand;
+import com.vishop.notification.modules.delivery.application.command.ReserveRoutesCommand;
+import com.vishop.notification.modules.inbox.application.command.CreateNotificationCommand;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
+import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,20 +27,17 @@ public final class NotificationDispatchCoordinator {
   }
 
   private final NotificationDispatchPolicy setting;
-  private final NotificationInboxApi inbox;
-  private final NotificationDeliveryApi delivery;
+  private final CommandBus commands;
   private final RecipientDirectory recipients;
   private final DispatchJournal journal;
 
   public NotificationDispatchCoordinator(
       NotificationDispatchPolicy setting,
-      NotificationInboxApi inbox,
-      NotificationDeliveryApi delivery,
+      CommandBus commands,
       RecipientDirectory recipients,
       DispatchJournal journal) {
     this.setting = Objects.requireNonNull(setting);
-    this.inbox = Objects.requireNonNull(inbox);
-    this.delivery = Objects.requireNonNull(delivery);
+    this.commands = Objects.requireNonNull(commands);
     this.recipients = Objects.requireNonNull(recipients);
     this.journal = Objects.requireNonNull(journal);
   }
@@ -72,7 +71,7 @@ public final class NotificationDispatchCoordinator {
           setting.restrictForUser(message.tenantId(), user, message.type(), policy.channels());
       if (!channels.isEmpty()) routes.put(user, channels);
     }
-    var allowed = delivery.reserveAllowedRoutes(message, Map.copyOf(routes));
+    var allowed = commands.dispatch(new ReserveRoutesCommand(message, Map.copyOf(routes)));
     if (allowed.isEmpty()) return skipped();
     var inApp =
         allowed.entrySet().stream()
@@ -81,8 +80,8 @@ public final class NotificationDispatchCoordinator {
             .collect(Collectors.toUnmodifiableSet());
     var targets = recipients.providerTargets(message, allowed);
     if (inApp.isEmpty() && targets.isEmpty()) return skipped();
-    UUID id = inbox.create(message, inApp);
-    var jobs = delivery.enqueue(message.tenantId(), id, targets);
+    UUID id = commands.dispatch(new CreateNotificationCommand(message, inApp));
+    var jobs = commands.dispatch(new EnqueueDeliveriesCommand(message.tenantId(), id, targets));
     if (!inApp.isEmpty()) journal.notificationCreated(message.tenantId(), id, inApp);
     return new Result(Optional.of(id), inApp.size(), jobs);
   }

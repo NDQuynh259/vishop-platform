@@ -8,7 +8,7 @@ import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.context.TenantContext;
-import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
+import io.github.coreplatform.common.security.gateway.GatewayIdentityHeaders;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.IOException;
@@ -21,14 +21,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Verify context gateway ở ranh giới HTTP, không tin X-User-Id/X-Tenant-Id client tự gửi. */
 public class IamAuthenticationFilter extends OncePerRequestFilter {
-  private final GatewayContextCodec codec;
   private final IdentityApi identity;
   private final ObjectMapper json;
   private final Set<String> origins;
 
-  public IamAuthenticationFilter(
-      GatewayContextCodec codec, IdentityApi identity, ObjectMapper json, Set<String> origins) {
-    this.codec = codec;
+  public IamAuthenticationFilter(IdentityApi identity, ObjectMapper json, Set<String> origins) {
     this.identity = identity;
     this.json = json;
     this.origins = origins;
@@ -55,36 +52,33 @@ public class IamAuthenticationFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
         return;
       }
-      String signed = request.getHeader(GatewayContextCodec.HEADER);
-      if (signed == null || signed.isBlank()) {
+      GatewayIdentityHeaders context;
+      try {
+        context =
+            GatewayIdentityHeaders.read(
+                name -> java.util.Collections.list(request.getHeaders(name)));
+      } catch (UnauthorizedException | IllegalArgumentException invalid) {
         if (logout) chain.doFilter(request, response);
-        else error(response, 401, "gateway_context_required");
+        else error(response, 401, "invalid_authentication");
+        return;
+      }
+      if (context == null) {
+        if (logout) chain.doFilter(request, response);
+        else error(response, 401, "gateway_identity_required");
         return;
       }
       AuthenticatedUser actor;
       try {
-        if (java.util.Collections.list(request.getHeaders(GatewayContextCodec.HEADER)).size() != 1)
-          throw new IllegalArgumentException("Ambiguous gateway context");
-        String target =
-            path + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        var context = codec.verifyContext(signed, request.getMethod(), target);
-        boolean technical = context.userId().equals(new UUID(0, 0));
+        boolean technical = context.getUserId().equals(new UUID(0, 0));
         if (path.startsWith("/internal/")) {
           if (!technical) throw new UnauthorizedException("Internal gateway caller required");
-          actor = new AuthenticatedUser(context.userId(), null, "USER", null, Set.of());
+          actor = new AuthenticatedUser(context.getUserId(), null, "USER", null, Set.of());
         } else {
           if (technical) throw new UnauthorizedException("User context required");
           // IAM đọc DB để xác nhận user, session, version và membership vẫn hợp lệ.
           actor =
               identity.resolveContext(
-                  new AuthenticatedUser(
-                      context.userId(),
-                      context.tenantId(),
-                      context.systemRole(),
-                      context.tenantRole(),
-                      context.permissions(),
-                      context.sessionId()),
-                  context.roleId());
+                  context.getUserId(), context.getSessionId(), context.getTenantId(), context.getRoleId());
         }
       } catch (UnauthorizedException | IllegalArgumentException invalid) {
         if (logout) chain.doFilter(request, response);

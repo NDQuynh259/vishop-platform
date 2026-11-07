@@ -8,6 +8,7 @@ import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +24,7 @@ public class InvitationController {
   }
 
   @PostMapping("/accept")
+  @PreAuthorize("isAuthenticated()")
   public TenantResponseDto accept(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @Valid @RequestBody AcceptInvitationRequest request) {

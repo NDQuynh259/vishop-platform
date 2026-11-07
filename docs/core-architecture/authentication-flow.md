@@ -1,213 +1,206 @@
 # Luồng xác thực IAM và gateway
 
-Hệ thống dùng JWT HS256 với hai secret khác nhau cho access và refresh token. Mỗi
-lần đăng nhập tạo một `sid` mới. JWT đi cùng trạng thái phiên trong PostgreSQL/Redis
-để logout riêng phiên hiện tại; không dùng `HttpSession` hay sticky routing.
+Cập nhật 07/11/2026: gateway truyền header danh tính trên ingress private; backend
+lấy permissions từ Auth Redis. Không còn Base64/HMAC gateway context. JWT access
+và refresh vẫn được ký bằng hai key khác nhau.
 
-## Các thành phần
+## Thành phần và trách nhiệm
 
 | Thành phần | Trách nhiệm |
 | --- | --- |
-| `JwtTokenService` trong common-security | Sinh và verify JWT bằng đúng key access/refresh; đặt `iat`, `exp`, `jti` |
-| `JwtAuthTokens` trong IAM | Quy định claims IAM, issuer, audience, token_use và thời hạn |
-| `SessionAuthenticationService` | Đối chiếu user, phiên, tokenVersion và quyền hiện tại trong DB |
-| `LocalAuthenticationVerifier` trong gateway | Verify access JWT, đối chiếu user/session/tenant/membership/role từ Auth Redis |
-| `AuthorizationProjection` | Đẩy projection đã commit trong authorization_outbox sang Redis |
-| `CacheKeyBuilder` trong common-cache | Thêm prefix ứng dụng/môi trường, dùng chung cho mọi namespace cache |
-| `AuthorizationCacheKeys` trong common-cache | Key riêng cho user/session/tenant/member/role |
-| `GatewayContextCodec` | Ký và kiểm tra context nội bộ, ràng buộc service đích, method, URI và thời gian |
+| JwtTokenService / JwtAuthTokens | Ký/verify JWT, issuer/audience/token_use, sid và lifetime |
+| SessionAuthenticationService | Kiểm tra user/session/grant hiện tại trong DB IAM |
+| LocalAuthenticationVerifier | Gateway xác nhận JWT, user/session/tenant/membership và role cache |
+| GatewayRequestForwarder | Loại header client giả, credential và ghi header danh tính đã xác thực |
+| GatewayIdentityHeaders | Validate/đọc/ghi 5 header định danh, không permissions |
+| GatewayIdentityFilter | Filter dùng chung của Audit/Subscription, tạo principal từ header và Redis |
+| RedisGatewayRolePermissions | Đọc role permissions theo tenantId/roleId và freshness |
+| AuthorizationProjection | Đồng bộ projection đã commit qua authorization_outbox sang Redis |
 
-Common JWT không quy định claims nghiệp vụ và không truy cập DB/Redis.
-
-## Phân biệt các ID và version
-
-| Giá trị | Ý nghĩa |
-| --- | --- |
-| `sid` | ID phiên đăng nhập; access và refresh của cùng phiên có cùng sid |
-| `jti` | ID của một JWT, khác với sid |
-| `users.token_version` | Thế hệ credential của user; tăng để thu hồi tất cả phiên cũ |
-| `auth_sessions.token_version` | Bản chụp thế hệ user khi tạo phiên, không đổi khi refresh |
-| `auth_sessions.version` | Optimistic-lock version của bản ghi phiên |
-| `AuthorizationSnapshot.version` | Revision projection để dữ liệu cũ không ghi đè dữ liệu mới trong Redis |
-
-`sid` nhận diện lần đăng nhập, không phải dấu vân tay phần cứng. Đăng nhập lại trên
-cùng trình duyệt vẫn tạo phiên mới. Logout thu hồi sid của credential hiện tại.
-
-## Bốn API xác thực
-
-Các API ghi từ trình duyệt phải gửi `X-Requested-With: XMLHttpRequest` và Origin nằm trong
-allowlist khi có Origin. Token trả qua cookie HttpOnly; JSON chỉ chứa user, tenant,
-role, permissions và thời điểm hết hạn, không chứa chuỗi credential.
+## Bốn API auth
 
 | API POST | Đầu vào | Kết quả |
 | --- | --- | --- |
-| `/api/v1/auth/register` | JSON email, password | Tạo USER/ACTIVE, hash BCrypt, tạo phiên, trả 201 và cookies |
-| `/api/v1/auth/login` | JSON email, password, tenantId tùy chọn | Xác thực mật khẩu, tạo phiên mới, trả 200 và cookies |
-| `/api/v1/auth/refresh` | Refresh cookie; JSON tenantId tùy chọn | Cấp access mới hoặc chọn tenant trong cùng phiên |
-| `/api/v1/auth/logout` | Context gateway hoặc refresh cookie | Thu hồi đúng sid, xóa cookies, trả 204 |
+| `/api/v1/auth/register` | email/password | Tạo user USER/ACTIVE, sid mới, 201 + cookies |
+| `/api/v1/auth/login` | email/password, tenantId tùy chọn | Xác thực BCrypt/status, sid mới, 200 + cookies |
+| `/api/v1/auth/refresh` | Refresh cookie, tenantId tùy chọn | Access mới trong cùng sid, có thể chọn tenant |
+| `/api/v1/auth/logout` | Header identity từ gateway hoặc refresh cookie | Thu hồi đúng sid, xóa cookies, 204 |
 
-Không có `/auth/me` hoặc `/auth/switch-tenant`. Chọn tenant bằng body của refresh.
+Browser writes gửi `X-Requested-With: XMLHttpRequest` và Origin thuộc allowlist.
+Access/refresh ở cookie HttpOnly, JSON không chứa credential. Access mặc định 15
+phút, session/refresh 7 ngày; access không được sống lâu hơn session. Không có
+`/auth/me` hoặc `/auth/switch-tenant`; chọn tenant qua refresh.
 
-## Gateway chuyển tiếp credential và context
+## Phân quyền API ở service
 
-| Request | Xác minh access tại gateway | Chuyển xuống service |
-| --- | --- | --- |
-| POST login/register | Không yêu cầu access | Không chuyển credential cũ |
-| POST refresh | Không yêu cầu access còn hạn | Chỉ refresh cookie về IAM |
-| POST logout | Nếu access hợp lệ thì tạo context; access thiếu/hết hạn vẫn cho logout | Context đã xác minh nếu có, cùng refresh cookie về IAM |
-| API nghiệp vụ | Bắt buộc access hợp lệ và trạng thái cache cho phép | Context qua header, không có access/refresh token gốc |
+```mermaid
+flowchart LR
+    C[Client: access token] --> G[Gateway: xác thực JWT và phiên]
+    G --> H[Header danh tính đã xác thực]
+    H --> F[GatewayIdentityFilter]
+    F --> R[Redis: role theo tenantId và roleId]
+    R --> S[SecurityContext: principal và authorities]
+    S --> P[RequirePermission: kiểm quyền API]
+    P --> A[Controller: lấy tenant, gọi application service]
+```
 
-Refresh cookie chỉ được forward khi route đích là iam-service, method POST và path
-khớp chính xác refresh/logout. GET, OPTIONS và route sang service khác không nhận
-refresh cookie. Cookie refresh trùng tên không được chọn tùy tiện để forward.
+Gateway xóa header danh tính do client tự gửi rồi ghi lại danh tính đã xác thực.
+Service không xác thực lại access JWT. `GatewayIdentityFilter` đọc header,
+gọi `RedisGatewayRolePermissions.resolve(tenantId, roleId)` và đưa permissions
+vào authorities. `@RequirePermission(Notification.SETTINGS_MANAGE)` kiểm tra
+authority tương ứng trước khi chạy controller. Controller không kiểm quyền lần nữa.
 
-`X-Gateway-Context` chứa userId, tenantId, roleId, systemRole, tenantRole, permissions
-và sessionId (sid), cùng metadata ràng buộc request. Gateway xóa context/header định
-danh do client tự gửi trước khi tạo header này. Access cookie và Authorization bị
-loại khỏi request downstream, kể cả logout. IAM dùng actor từ context hoặc verify
-refresh cookie để xác định phiên cần thu hồi; không đọc access cookie để logout.
+Gateway vẫn hỗ trợ phiên chưa chọn tenant cho API auth, tenant, lời mời và CMS.
+API nghiệp vụ như notification-settings bắt buộc có tenant ngay tại gateway;
+thiếu tenant trả 403 trước khi forward. Gateway lấy tenant từ danh tính đã xác thực,
+không lấy từ header tenant do client gửi, rồi truyền `X-Tenant-Id` và `X-Role-Id` xuống service.
+Với request hợp lệ không có tenant, filter tạo principal với permissions rỗng.
+Các API `/api/v1/cms/**` yêu cầu system role `PLATFORM_ADMIN` tại gateway;
+role OWNER/ADMIN của tenant không thay thế quyền admin hệ thống. CMS có thể không chọn
+tenant; nếu đã chọn tenant, gateway vẫn truyền tenant/role tương ứng. Backend CMS tiếp tục
+kiểm tra system role của principal.
+Controller lấy tenant trực tiếp bằng `actor.tenantId()` từ principal;
+gateway đã yêu cầu tenant cho API nghiệp vụ và annotation kiểm quyền tại service.
 
-Gateway chỉ giữ access key. Refresh key và việc verify refresh thuộc IAM; service
-nghiệp vụ kiểm tra context và quyền tại chỗ, không verify lại JWT người dùng.
+Audit và Subscription đã gắn filter vào security chain. Notification hiện có controller
+và kiểm thử HTTP riêng, nhưng chưa có application HTTP, security chain và route gateway
+để chạy toàn bộ luồng này. Không coi kiểm thử controller là kiểm thử tích hợp gateway.
+IAM dùng filter riêng và kiểm tra dữ liệu xác thực trong DB; không thuộc luồng filter
+chung của các service nghiệp vụ ở sơ đồ trên.
 
-## Đăng nhập và cấp token
+## Header gateway chuyển xuống service
+
+```http
+X-User-Id: <user UUID>
+X-Session-Id: <sid UUID>
+X-Tenant-Id: <tenant UUID>
+X-Role-Id: <role UUID>
+X-System-Role: USER hoặc PLATFORM_ADMIN
+```
+
+User chưa chọn tenant không có hai header tenant/role. RoleId lấy từ membership hiện tại,
+không dùng role cũ trong JWT làm nguồn cấp quyền. Không gửi X-Permissions hay JWT
+gốc xuống backend. Gateway bỏ tất cả header định danh do client gửi và tự tạo lại.
+Header phải đơn trị, UUID đúng dạng, đủ sid và role khi có tenant.
+
+Chi tiết contract và ranh giới mạng: [gateway authorization](gateway-authorization.md).
+Các HTTP backend chỉ được truy cập qua ingress tin cậy của gateway. Plain header
+không chứng minh người gửi nếu backend bị mở trực tiếp ra mạng không tin cậy.
+
+## Đăng nhập / đăng ký
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant G as Gateway
     participant I as IAM
-    participant D as IAM PostgreSQL
+    participant D as PostgreSQL
     participant R as Auth Redis
-    C->>G: POST /auth/login + email/password
-    G->>I: Public route, kiểm tra Origin và write header
-    I->>D: Khóa user, kiểm tra trạng thái và BCrypt
-    I->>D: Tạo auth_sessions và authorization_outbox trong transaction
-    I->>D: Ghi integration event vào outbox_events
-    I-->>C: Access + refresh qua Set-Cookie HttpOnly
-    I->>R: Relay projection đã commit (retry khi lỗi)
+    C->>G: POST login/register + write header
+    G->>G: Origin/CSRF header, xóa header định danh và credential cũ
+    G->>I: Public route, email/password
+    I->>D: Login khóa user và kiểm tra BCrypt/status; register tạo user
+    I->>D: Tạo auth_sessions, authorization_outbox và integration event
+    I->>D: Commit
+    I-->>G: Access/refresh HttpOnly cookies + JSON user/tenant/quyền
+    G-->>C: 200 hoặc 201
+    I->>R: Publish projection sau commit, retry khi lỗi
 ```
 
-Nếu login có tenantId thì IAM kiểm tra membership, tenant và role. Nếu không có,
-IAM ưu tiên tenant ghi nhớ còn hợp lệ, rồi tenant duy nhất nếu chỉ có một lựa chọn;
-còn lại cấp identity chưa chọn tenant. Register cấp identity chưa chọn tenant.
-Quyền của role yêu cầu MFA chưa được cấp qua luồng login chưa hỗ trợ MFA này.
+Mỗi login sinh sid riêng. Login có tenantId phải có grant hợp lệ; nếu không, ưu
+ tiên tenant ghi nhớ còn hợp lệ hoặc tenant duy nhất. Nhiều tenant chưa chọn thì
+cấp identity token để GET /tenants rồi chọn bằng refresh. Register không chọn tenant.
+Role yêu cầu MFA không được cấp quyền khi chưa có luồng MFA tương ứng.
 
-Access chứa `sub`, `sid`, `tenantId`, `systemRole`, `tenantRoleId`, `tenantRole`,
-`tokenVersion` và metadata JWT. Refresh chứa metadata, `sub`, `sid`, `tenantId`,
-`tokenVersion`. Permissions không nhồi vào JWT. Từ V13 gateway lấy role hiện tại từ
-membership cache; các claim tenantRoleId/tenantRole trong JWT chỉ còn để tương thích.
-
-## Một request nghiệp vụ qua gateway
+## Request nghiệp vụ
 
 ```mermaid
-flowchart TD
-    C[Client gửi access cookie hoặc Bearer] --> F[AuthenticationGlobalFilter]
-    F --> V[Verify HS256, expiry và hợp đồng claims IAM]
-    V --> U[Redis user: ACTIVE và tokenVersion khớp]
-    U --> S[Redis session: ACTIVE, chưa hết hạn, đúng user và version]
-    S --> T{Có tenantId?}
-    T -->|Có| M[Redis tenant và membership ACTIVE: lấy roleId hiện tại]
-    M --> P[Redis role ACTIVE: lấy permissions mới]
-    T -->|Không| N[Context identity chưa chọn tenant]
-    P --> X[Ký gateway context gồm user, tenant, role, permissions, sid]
-    N --> X
-    X --> B[Service đích verify context và kiểm tra phân quyền]
-    B --> I[IAM kiểm tra thêm DB user, phiên, membership và quyền hiện tại]
+sequenceDiagram
+    participant C as Client
+    participant G as Gateway
+    participant R as Auth Redis
+    participant S as Audit / Subscription
+    C->>G: Access cookie hoặc Bearer + request
+    G->>G: Verify HS256, expiry, issuer/audience/token_use, sid
+    G->>R: User ACTIVE + tokenVersion; session ACTIVE + expiry
+    G->>R: Tenant/membership ACTIVE; roleId/roleKey hiện tại
+    Note over G,R: Cache miss/stale: gateway nạp projection từ internal loader IAM
+    G->>S: Request + 5 identity headers, không JWT/permissions/HMAC
+    S->>R: Đọc roleKey/permissions theo tenantId + roleId
+    S->>S: Tạo GatewayPrincipal, kiểm tra permission và tenant scope
+    S-->>G: Response
+    G-->>C: Response
 ```
 
-Gateway bỏ các header context do client tự gửi trước khi tạo context của mình.
-Context được ký theo audience/service đích, HTTP method, URI và thời gian; downstream
-không tin các header user/tenant tự khai báo. Các service vẫn kiểm tra permission và
-tenant scope tại endpoint/use case của mình. IAM đối chiếu thêm DB vì sở hữu dữ liệu
-bảo mật; audit/subscription không phải gọi IAM cho từng request đã có context hợp lệ.
+Gateway vẫn đọc role snapshot để xác nhận ACTIVE/roleKey và bảo đảm dữ liệu cache
+được nạp mới trước khi forward; actor của gateway không chứa permissions. Service dùng X-System-Role đã được gateway xác thực; tenantRole và permissions lấy từ role cache. Service
+không giữ local permission cache và không gọi IAM mỗi request. IAM dùng header
+identity nhưng đối chiếu user/session/membership/permissions trong DB của mình.
+
+Role inactive trả 403. Role Redis thiếu, stale, lỗi hoặc sai tenant/role trả 503;
+không fallback sang permissions từ header/JWT. Header thiếu/sai/trùng trả 401.
+Lỗi nghiệp vụ phía sau filter không bị đổi thành lỗi authentication. Dọn
+SecurityContext/TenantContext khi request kết thúc.
 
 ## Auth Redis
 
-Các key dưới đây do `AuthorizationCacheKeys` tạo, chưa có prefix. `CacheKeyBuilder`
-trong common-cache thêm prefix môi trường, ví dụ `vishop:dev:`. `AuthorizationSnapshot`
-chỉ chứa dữ liệu. V13 bổ sung key membership riêng theo tenant và user.
+CacheKeyBuilder thêm CACHE_KEY_PREFIX; AUTH_CACHE_PREFIX là fallback. Tất cả runtime
+phải cùng host/port/password/database/prefix và AUTH_CACHE_MAX_AGE_SECONDS (mặc định 30).
 
-Prefix dùng chung mọi loại cache, cấu hình qua `vishop.cache.key-prefix` hoặc biến
-`CACHE_KEY_PREFIX`. IAM/gateway vẫn nhận `AUTH_CACHE_PREFIX` làm giá trị dự phòng.
-Namespace và TTL của cache nghiệp vụ khác do module sở hữu quyết định.
+| Key logic | Dữ liệu |
+| --- | --- |
+| `auth:user:{userId}` | status, systemRole, tokenVersion |
+| `auth:session:{sid}` | status, userId, tokenVersion, expiresAt |
+| `auth:tenant:{tenantId}` | status |
+| `auth:member:{tenantId}:{userId}` | status, userId, roleId |
+| `auth:role:{tenantId}:{roleId}` | status, roleId, roleKey, permissions |
 
-| Key logic | Nội dung | TTL |
-| --- | --- | --- |
-| `auth:user:{userId}` | status, systemRole, tokenVersion | Revision/freshness riêng của user |
-| `auth:member:{tenantId}:{userId}` | status, userId, roleId của membership | Revision/freshness riêng từng membership |
-| `auth:session:{sid}` | status, userId, tokenVersion, expiresAt | Hết hạn tuyệt đối theo refresh/session |
-| `auth:tenant:{tenantId}` | status | Giữ revision, kiểm tra freshness riêng |
-| `auth:role:{tenantId}:{roleId}` | status, roleKey, permissions | Giữ revision, kiểm tra freshness riêng |
-
-Cache miss hoặc quá freshness sẽ gọi internal loader IAM có context kỹ thuật được
-ký. Gateway không truy cập trực tiếp IAM DB. IAM đọc projection bền vững trong
-`authorization_outbox`; không dựng lại quyền từ JWT. Lua chỉ nhận revision không
-cũ hơn hiện tại, nên relay chậm không thể phục hồi phiên đã bị thu hồi.
-
-User tokenVersion mới hơn cache làm gateway refresh projection trước khi so sánh.
-Cache/loader lỗi thì request được chặn; không fallback sang quyền trong JWT. TTL
-session không kéo dài khi relay hoặc refresh.
+Session TTL theo deadline tuyệt đối. Các key còn lại giữ revision watermark và
+có freshness. Lua WRITE ngăn revision cũ ghi đè revision mới. Gateway cache loader
+đọc projection bền vững trong authorization_outbox của IAM bằng header user ID
+kỹ thuật trên ingress private; không dùng shared HMAC secret. Các service nghiệp
+vụ chỉ đọc role cache, không gọi loader.
 
 ## Refresh và chọn tenant
 
-IAM verify bằng refresh key, khóa user, đọc user và session từ DB, kiểm tra ACTIVE,
-chưa hết hạn, đúng chủ sở hữu và cả ba tokenVersion (JWT, session, user) khớp nhau.
-Sau đó mới đọc membership/quyền và cấp access mới.
+IAM verify refresh bằng refresh key, khóa user, đọc DB và yêu cầu user/session
+ACTIVE, session chưa hết hạn, đúng chủ sở hữu, tokenVersion JWT/session/user khớp.
+Sau đó mới kiểm tra grant tenant và cấp access mới.
 
-Refresh thông thường giữ nguyên refresh token. Chọn tenant khác cấp lại refresh
-với tenantId mới và giữ nguyên hạn phiên ban đầu. Đây chưa phải refresh rotation
-và chưa có cơ chế phát hiện reuse. Thời hạn phiên không trượt khi refresh; access
-không được sống lâu hơn phiên. Mặc định access 15 phút, phiên/refresh 7 ngày.
+Refresh bình thường giữ nguyên refresh token. Chọn tenant khác cấp refresh mới
+nhưng giữ nguyên deadline phiên. Chưa có rotation/reuse detection. Body tenantId
+bỏ qua hoặc null vẫn giữ tenant hiện tại; chưa có thao tác bỏ chọn tenant. Khi
+membership tenant hiện tại bị thu hồi, refresh thường trả 403; có thể chọn tenant
+khác nếu biết ID hoặc login lại để chọn lại.
 
 ## Logout riêng phiên
 
-1. Xác định user/sid từ context gateway hợp lệ hoặc refresh cookie hợp lệ.
-2. Trong transaction DB: cập nhật có điều kiện `revoked_at IS NULL`, ghi projection
-   và event UserLoggedOut. Logout lặp chỉ có một lần thay đổi và một event.
-3. Sau commit, đẩy projection REVOKED của đúng sid sang Redis và chờ xác nhận.
-4. Sau khi Redis xác nhận, trả 204 và xóa cả hai cookie đúng path ban đầu.
+1. Gateway xác thực access và gửi identity headers nếu có; vẫn chuyển refresh cookie
+   tới IAM khi access thiếu/hết hạn.
+2. IAM lấy user/sid từ header hợp lệ đã đối chiếu DB hoặc verify refresh cookie.
+3. Transaction thu hồi sid có điều kiện, ghi projection/event rồi commit.
+4. Chờ Redis xác nhận REVOKED trước khi trả 204 và xóa hai cookie đúng path.
 
-Nếu Redis lỗi sau DB commit, API trả 503. Phiên đã bị thu hồi trong DB; client retry
-logout để đồng bộ lại Redis. Retry không nhân event. Relay nền cũng tiếp tục thử.
-Thiết bị khác có sid khác vẫn dùng được access/refresh. Request đã chạy trước thời
-điểm thu hồi không bị hủy giữa chừng.
+Redis lỗi sau DB commit trả 503: DB đã thu hồi, outbox còn để retry; client giữ
+cookie để retry logout. Logout lặp không nhân event. Không có credential hợp lệ
+thì chỉ xóa cookie. Sid thiết bị khác không bị ảnh hưởng.
 
-| Thay đổi | Hành vi |
-| --- | --- |
-| Logout | Thu hồi sid hiện tại |
-| Đổi role, khóa/xóa membership | Cập nhật membership đúng tenant, giữ phiên; inactive trả 403 |
-| Khóa/xóa tài khoản | Tăng user tokenVersion, chặn truy cập; không login khi bị khóa |
-| Đổi mật khẩu hoặc systemRole | Tăng user tokenVersion, phải đăng nhập lại |
-| Sửa permissions của role | Cập nhật role projection, dùng quyền mới, không tăng tokenVersion |
+Đổi password/systemRole, khóa/xóa user tăng tokenVersion để chặn credential cũ.
+Đổi role/status hoặc xóa membership chỉ ảnh hưởng đúng tenant từ V13; sửa permissions
+role cập nhật projection, không cần phát hành JWT lại. Chưa có job dọn auth_sessions
+hết hạn trong PostgreSQL.
 
-Các thay đổi toàn user/tenant/role đồng bộ qua outbox; gateway có freshness check để
-giới hạn việc dùng projection cũ. Logout và API ghi membership có thêm bước chờ Redis sau commit.
-Các hàng `auth_sessions` hết hạn hiện chưa có job dọn tự động; TTL chỉ dọn Redis,
-không dọn PostgreSQL. Không xóa hàng phiên còn hiệu lực khi bổ sung retention.
+## Triển khai và kiểm thử
 
-## Cấu hình và triển khai
+- Gateway/IAM cùng JWT_ACCESS_SECRET; JWT_REFRESH_SECRET chỉ có ở IAM và khác access key.
+- Không còn GATEWAY_*_CONTEXT_SECRET. Audit/Subscription không cần JWT người dùng.
+- Gateway, IAM, Audit, Subscription dùng cùng Auth Redis và prefix/freshness.
+- Rollout gateway và backend đồng thời; không chạy lẫn signed-context và header-only.
+- Production chặn HTTP backend ngoài ingress gateway; không publish port backend.
+- Compose dev chỉ bind HTTP backend/debug vào loopback. Docker bridge dùng chung
+  không phải ACL chỉ cho gateway; môi trường cần firewall/NetworkPolicy phù hợp.
+- JPA validate-only; migrate IAM đến V13 trước runtime. Không tự migrate khi startup.
+- Test HTTP dùng PostgreSQL/Redis tạm, không migrate database vận hành.
 
-- IAM và gateway dùng chung `JWT_ACCESS_SECRET`; mỗi key tối thiểu 32 byte UTF-8.
-- `JWT_REFRESH_SECRET` khác access secret và chỉ cấu hình cho IAM để cấp/verify refresh;
-  gateway chỉ chuyển refresh cookie tới endpoint cần nó.
-- `GATEWAY_IAM_CONTEXT_SECRET` giống nhau ở gateway và IAM; là key riêng cho context.
-- `CACHE_KEY_PREFIX`, Redis host/port/password/database phải khớp giữa IAM/gateway.
-  Khi chưa đặt biến mới, `AUTH_CACHE_PREFIX` cũ vẫn được dùng làm giá trị dự phòng.
-- Production bắt buộc cấu hình secrets và `ALLOWED_ORIGINS`; cookies Secure,
-  frontend gửi credentials. SameSite=None yêu cầu Secure và HTTPS.
-- JPA chỉ validate. Áp dụng V13 trong đợt cutover IAM/gateway; không tự migrate khi startup.
-  Không cho gateway cũ nhận traffic với schema V13. Xem [layout và cutover](membership-cache.md).
-- JWT cũ thiếu sid không được chấp nhận; rollout issuer và gateway cùng đợt, người
-  dùng đăng nhập lại. Không có chuyển đổi ngầm credential cũ sang phiên mới.
-
-```powershell
-# Đặt IAM_DB_URL, IAM_DB_USER, IAM_DB_PASSWORD trỏ đúng database trước khi chạy.
-.\gradlew.bat :services:iam-service:migrateIamDb
-.\gradlew.bat :services:iam-service:dev
-```
-
-V12 thêm bảng auth_sessions và projection/trigger phiên, giữ schema/data cũ.
-Các test HTTP dùng PostgreSQL/Redis tạm: cookies, phân quyền, refresh, logout lặp và
-đồng thời, Redis lỗi rồi retry, thu hồi toàn user và tenant isolation. Kiểm tra toàn
-dự án bằng `.\gradlew.bat test packageAll`; test không migrate database vận hành.
+Bản [review ngày 06/11](auth-flow-review.md) là snapshot trước khi đổi contract;
+các sơ đồ HMAC trong bản review không còn là luồng runtime hiện tại.

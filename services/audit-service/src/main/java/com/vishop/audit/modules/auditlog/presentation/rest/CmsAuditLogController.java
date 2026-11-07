@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,10 +27,12 @@ public class CmsAuditLogController {
   private final AuditLogResponseMapper mapper;
 
   @GetMapping
+  @PreAuthorize("isAuthenticated() and principal.systemRole == 'PLATFORM_ADMIN'")
   @Operation(
       summary = "List audit logs for CMS",
       description =
-          "PLATFORM_ADMIN only. Optional tenant/event/aggregate filters. occurredAt range is [from, to). Offset pagination uses system defaults and normalization.")
+          "PLATFORM_ADMIN only. Optional tenant/event/aggregate filters. occurredAt range is [from,"
+              + " to). Offset pagination uses system defaults and normalization.")
   public ListEnvelope<AuditLogResponse> list(
       @AuthenticationPrincipal GatewayPrincipal actor,
       @RequestParam(required = false) UUID tenantId,

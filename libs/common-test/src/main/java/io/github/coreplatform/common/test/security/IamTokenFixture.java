@@ -82,7 +82,8 @@ public final class IamTokenFixture {
         tenant == null ? null : UUID.fromString(tenant),
         claims.get("systemRole", String.class),
         claims.get("tenantRole", String.class),
-        Set.copyOf(permissions.stream().map(String.class::cast).toList()));
+        Set.copyOf(permissions.stream().map(String.class::cast).toList()),
+        UUID.fromString(claims.get("sid", String.class)));
   }
 
   private Map<String, Object> base(

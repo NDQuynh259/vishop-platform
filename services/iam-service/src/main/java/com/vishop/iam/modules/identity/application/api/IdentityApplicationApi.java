@@ -25,8 +25,8 @@ class IdentityApplicationApi implements IdentityApi {
   @org.springframework.transaction.annotation.Transactional(
       readOnly = true,
       isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-  public AuthenticatedUser resolveContext(AuthenticatedUser context, UUID roleId) {
-    return authentication.resolveContext(context, roleId);
+  public AuthenticatedUser resolveContext(UUID userId, UUID sessionId, UUID tenantId, UUID roleId) {
+    return authentication.resolveContext(userId, sessionId, tenantId, roleId);
   }
 
   @org.springframework.transaction.annotation.Transactional(

@@ -1,6 +1,9 @@
 dependencies {
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
     api("com.fasterxml.jackson.core:jackson-databind")
     api(project(":libs:common-domain"))
+    api(project(":libs:common-cache"))
     compileOnlyApi("jakarta.servlet:jakarta.servlet-api")
     api("org.springframework.data:spring-data-commons")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
@@ -16,4 +19,6 @@ dependencies {
     testImplementation("jakarta.servlet:jakarta.servlet-api")
     testImplementation("org.springframework.data:spring-data-commons")
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("io.lettuce:lettuce-core")
+    testImplementation("com.github.codemonstur:embedded-redis:1.4.3")
 }

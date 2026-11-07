@@ -72,7 +72,9 @@ public class NotificationSettingPersistenceMapper {
         chatId,
         messageThreadId,
         entity.getVersion(),
-        configurationValues(entity));
+        configurationValues(entity),
+        entity.getId(),
+        entity.getName());
   }
 
   public void copyConnection(NotificationChannelSettingJpaEntity entity, Connection connection) {
@@ -80,6 +82,7 @@ public class NotificationSettingPersistenceMapper {
     if (entity.getChannel() != connection.channel()) {
       throw new IllegalArgumentException("Connection channel does not match the setting channel");
     }
+    entity.setName(connection.name());
     entity.setEnabled(connection.enabled());
     Object config;
     if (connection.connectionConfig() != null) {

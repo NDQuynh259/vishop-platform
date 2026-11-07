@@ -3,7 +3,7 @@ package io.github.coreplatform.common.security.gateway;
 import java.util.Set;
 import java.util.UUID;
 
-/** Principal propagated by the gateway context protocol, independent of user JWT claims. */
+/** Service identity built from trusted gateway headers and locally resolved role permissions. */
 public record GatewayPrincipal(
     UUID userId,
     UUID tenantId,

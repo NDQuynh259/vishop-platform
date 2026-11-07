@@ -45,7 +45,11 @@ import org.springframework.test.context.DynamicPropertySource;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"spring.kafka.listener.auto-startup=false", "management.tracing.enabled=false"})
+    properties = {
+      "spring.kafka.listener.auto-startup=false",
+      "management.tracing.enabled=false",
+      "management.health.redis.enabled=false"
+    })
 @DirtiesContext
 class AuditApplicationTest {
   private static final EmbeddedPostgres POSTGRES = startPostgres();
@@ -184,16 +188,23 @@ class AuditApplicationTest {
             new JwtTokenProvider("test-audit-jwt-secret-with-at-least-thirty-two-bytes"));
   }
 
-  @Autowired io.github.coreplatform.common.security.gateway.GatewayContextCodec gateway;
+  @org.springframework.boot.test.mock.mockito.MockBean
+  io.github.coreplatform.common.security.gateway.GatewayRolePermissions roles;
 
   private ResponseEntity<JsonNode> cmsGet(String path, String token) {
     var headers = new HttpHeaders();
     if (token != null) {
       try {
         var actor = tokens.access(token);
-        headers.set(
-            "X-Gateway-Context",
-            gateway.sign(actor, actor.tenantId() == null ? null : new UUID(0, 1), "GET", path));
+
+        UUID roleId = actor.tenantId() == null ? null : new UUID(0, 1);
+        if (roleId != null)
+          org.mockito.Mockito.when(roles.resolve(actor.tenantId(), roleId))
+              .thenReturn(
+                  new io.github.coreplatform.common.security.gateway.GatewayRolePermissions.Grant(
+                      actor.tenantRole(), actor.permissions()));
+        headers.putAll(
+            io.github.coreplatform.common.test.security.GatewayHeaderFixture.from(actor, roleId));
       } catch (RuntimeException invalid) {
         headers.setBearerAuth(token);
       }

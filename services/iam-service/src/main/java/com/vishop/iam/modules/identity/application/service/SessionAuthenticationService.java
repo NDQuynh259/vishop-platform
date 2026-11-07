@@ -97,25 +97,19 @@ public class SessionAuthenticationService {
   }
 
   /** Gateway đã kiểm tra JWT/cache; IAM vẫn đọc DB để chặn ngay trạng thái tài khoản/phiên cũ. */
-  public AuthenticatedUser resolveContext(AuthenticatedUser context, UUID roleId) {
-    if (context.sessionId() == null) throw new UnauthorizedException("Session id is required");
+  public AuthenticatedUser resolveContext(UUID userId, UUID sessionId, UUID tenantId, UUID roleId) {
+    if (sessionId == null) throw new UnauthorizedException("Session id is required");
     var session =
-        sessions
-            .find(context.sessionId())
-            .orElseThrow(() -> new UnauthorizedException("Unknown session"));
+        sessions.find(sessionId).orElseThrow(() -> new UnauthorizedException("Unknown session"));
     var current =
         requireCurrent(
-            new AuthTokens.Identity(
-                context.userId(), context.tenantId(), context.sessionId(), session.tokenVersion()));
-    var grant = grant(context.userId(), context.tenantId());
-    if (!current.user().systemRole().name().equals(context.systemRole())
-        || (grant == null
-            ? roleId != null || context.tenantRole() != null
-            : !grant.roleId().equals(roleId) || !grant.roleKey().equals(context.tenantRole())))
+            new AuthTokens.Identity(userId, tenantId, sessionId, session.tokenVersion()));
+    var grant = grant(userId, tenantId);
+    if (grant == null ? roleId != null : !grant.roleId().equals(roleId))
       throw new UnauthorizedException("Security context has changed");
     return new AuthenticatedUser(
         current.user().id(),
-        context.tenantId(),
+        tenantId,
         current.user().systemRole().name(),
         grant == null ? null : grant.roleKey(),
         grant == null ? java.util.Set.of() : grant.permissions(),
@@ -133,13 +127,9 @@ public class SessionAuthenticationService {
     requireCurrent(identity);
     var currentGrant = grant(identity.userId(), identity.tenantId());
     return resolveContext(
-        new AuthenticatedUser(
-            identity.userId(),
-            identity.tenantId(),
-            claims.systemRole().name(),
-            currentGrant == null ? null : currentGrant.roleKey(),
-            java.util.Set.of(),
-            identity.sessionId()),
+        identity.userId(),
+        identity.sessionId(),
+        identity.tenantId(),
         currentGrant == null ? null : currentGrant.roleId());
   }
 }

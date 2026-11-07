@@ -38,6 +38,7 @@ public class TenantController {
   }
 
   @GetMapping
+  @PreAuthorize("isAuthenticated()")
   public ListEnvelope<TenantResponseDto> mine(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @RequestParam(required = false) UUID id,
@@ -66,7 +67,8 @@ public class TenantController {
 
   @GetMapping("/{id}")
   @PreAuthorize(
-      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).VIEW)")
+      "@iamAuthorization.inTenant(authentication, #id) and"
+          + " hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).VIEW)")
   public TenantResponseDto get(
       @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
     return queries.dispatch(new GetTenantByIdQuery(actor, id));
@@ -74,7 +76,8 @@ public class TenantController {
 
   @PatchMapping("/{id}")
   @PreAuthorize(
-      "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MANAGE)")
+      "@iamAuthorization.inTenant(authentication, #id) and"
+          + " hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MANAGE)")
   public TenantResponseDto rename(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @PathVariable UUID id,
@@ -83,6 +86,7 @@ public class TenantController {
   }
 
   @PostMapping
+  @PreAuthorize("isAuthenticated()")
   public ResponseEntity<TenantResponseDto> create(
       @AuthenticationPrincipal AuthenticatedUser actor,
       @Valid @RequestBody CreateTenantRequest request) {

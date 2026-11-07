@@ -16,6 +16,32 @@ Feature/type/recipient/preference code and HTTP APIs have been removed from the 
 module. Their existing schema and migrations remain. Routing depends on a separate
 NotificationDispatchPolicy port without a production implementation.
 
+## CQRS
+
+The setting controller dispatches reads through `QueryBus` and writes through `CommandBus`.
+All setting handlers call `NotificationSettingService`, which owns list/get-by-ID,
+creation and update operations and calls the repository port. The service never calls
+a CQRS handler. `NotificationSettingManagementApi` remains its interface for callers
+outside the setting module. Shared connection validation and response mapping are in
+`NotificationChannelSupport`; this helper performs no persistence operations.
+Command handlers run in a write transaction; query handlers use read-only transactions.
+The buses execute synchronously in the same process; they are independent of Kafka.
+
+| Module | Queries | Commands |
+| --- | --- | --- |
+| setting | `ListChannelsQuery`, `GetChannelQuery` | `CreateChannelCommand`, `UpdateChannelCommand` |
+| inbox | — | `CreateNotificationCommand` |
+| delivery | — | `ReserveRoutesCommand`, `EnqueueDeliveriesCommand` |
+| announcement | — | `CreateAnnouncementCommand`, `ReviseAnnouncementCommand`, `PublishAnnouncementCommand` |
+
+`NotificationDispatchCoordinator` dispatches reservation, inbox creation and delivery enqueue
+commands through the shared bus. Reserving cooldown routes is a write operation.
+The journal continues to own workflow idempotency and its eventual transaction boundary.
+Setting registers its handlers and the conditional common CQRS buses in
+`NotificationSettingModuleConfiguration`. Other handlers are Spring components and need
+their application API implementations when those modules are wired into a runtime.
+CQRS does not add the missing provider, persistence or HTTP runtime adapters listed above.
+
 ## Migrate
 
 Use PostgreSQL 16 and a dedicated `vishop_notification` database. Fresh infrastructure
@@ -141,6 +167,7 @@ channel connection information, not a user's choice of notification types.
 | Field | Meaning |
 | --- | --- |
 | `tenant_id`, `channel` | Tenant and channel: `IN_APP`, `EMAIL`, `TELEGRAM` |
+| `name` | Display name, at most 150 characters; defaults to the channel name through the API |
 | `enabled` | Enable this channel for the tenant |
 | `connection_config` | JSONB: `connectionRef`, `credentialsRef`, `telegramBotUsername`, `telegramChatId`, `telegramMessageThreadId` |
 

@@ -18,6 +18,13 @@ public final class CommonPermissions {
     public static final String MANAGE = "billing.manage";
   }
 
+  public static final class Notification {
+    private Notification() {}
+
+    public static final String SETTINGS_VIEW = "notifications.settings.view";
+    public static final String SETTINGS_MANAGE = "notifications.settings.manage";
+  }
+
   public static final class Order {
     // #region Order
     private Order() {}

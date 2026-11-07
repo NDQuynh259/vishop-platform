@@ -30,6 +30,9 @@ public class NotificationChannelSettingJpaEntity {
   @Column(name = "channel", nullable = false, length = 20, updatable = false)
   private NotificationChannel channel;
 
+  @Column(name = "name", nullable = false, length = 150)
+  private String name;
+
   @Column(nullable = false)
   private boolean enabled;
 
@@ -53,6 +56,7 @@ public class NotificationChannelSettingJpaEntity {
   @PrePersist
   protected void initializeAudit() {
     var now = Instant.now();
+    if (name == null && channel != null) name = channel.name();
     if (createdAt == null) createdAt = now;
     if (updatedAt == null || updatedAt.isBefore(createdAt)) updatedAt = createdAt;
   }

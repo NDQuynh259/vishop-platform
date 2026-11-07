@@ -13,16 +13,28 @@ public interface SpringDataNotificationChannelSettingRepository
   Optional<NotificationChannelSettingJpaEntity> findByTenantIdAndChannel(
       UUID tenantId, NotificationChannel channel);
 
+  Optional<NotificationChannelSettingJpaEntity> findByIdAndTenantIdAndDeletedAtIsNull(
+      UUID id, UUID tenantId);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "select c from NotificationChannelSettingJpaEntity c where c.id=:id and c.tenantId=:tenant"
+          + " and c.deletedAt is null")
+  Optional<NotificationChannelSettingJpaEntity> lockById(
+      @Param("tenant") UUID tenant, @Param("id") UUID id);
+
   @Modifying(flushAutomatically = true)
   @Query(
       value =
-          "INSERT INTO notification_settings(id,tenant_id,channel) VALUES(:id,:tenant,:channel) ON CONFLICT DO NOTHING",
+          "INSERT INTO notification_settings(id,tenant_id,channel,name)"
+              + " VALUES(:id,:tenant,:channel,:channel) ON CONFLICT DO NOTHING",
       nativeQuery = true)
   int ensure(@Param("id") UUID id, @Param("tenant") UUID tenant, @Param("channel") String channel);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
-      "select c from NotificationChannelSettingJpaEntity c where c.tenantId=:tenant and c.channel=:channel")
+      "select c from NotificationChannelSettingJpaEntity c where c.tenantId=:tenant and"
+          + " c.channel=:channel")
   Optional<NotificationChannelSettingJpaEntity> lock(
       @Param("tenant") UUID tenant, @Param("channel") NotificationChannel channel);
 }

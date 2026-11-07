@@ -1,7 +1,8 @@
 package com.vishop.subscription.infra.security;
 
 import io.github.coreplatform.common.domain.constants.ApiPaths;
-import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
+import io.github.coreplatform.common.security.filter.GatewayIdentityFilter;
+import io.github.coreplatform.common.security.gateway.GatewayRolePermissions;
 import org.springframework.context.annotation.*;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,7 +16,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SubscriptionSecurityConfiguration {
   @Bean
-  SecurityFilterChain billingSecurity(HttpSecurity http, GatewayContextCodec tokens)
+  SecurityFilterChain billingSecurity(HttpSecurity http, GatewayRolePermissions roles)
       throws Exception {
     return http.csrf(AbstractHttpConfigurer::disable)
         .formLogin(AbstractHttpConfigurer::disable)
@@ -39,7 +40,7 @@ public class SubscriptionSecurityConfiguration {
                     .authenticated())
         .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
         .addFilterBefore(
-            new SubscriptionAccessTokenFilter(tokens), UsernamePasswordAuthenticationFilter.class)
+            new GatewayIdentityFilter(roles), UsernamePasswordAuthenticationFilter.class)
         .build();
   }
 }

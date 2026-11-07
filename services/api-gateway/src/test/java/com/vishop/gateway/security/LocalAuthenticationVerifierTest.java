@@ -110,7 +110,7 @@ class LocalAuthenticationVerifierTest {
               assertThat(identity.userId()).isEqualTo(user);
               assertThat(identity.tenantId()).isEqualTo(tenant);
               assertThat(identity.roleId()).isEqualTo(role);
-              assertThat(identity.actor().permissions()).containsExactly("tenant.view");
+              assertThat(identity.actor().permissions()).isEmpty();
             })
         .verifyComplete();
     verify(cache).get(AuthorizationCacheKeys.user(user));
@@ -159,8 +159,7 @@ class LocalAuthenticationVerifierTest {
     String jwt = issue(tokens);
     String key = AuthorizationCacheKeys.role(tenant, role);
     StepVerifier.create(verifier.authenticate(jwt, true))
-        .assertNext(
-            identity -> assertThat(identity.actor().permissions()).containsExactly("tenant.view"))
+        .assertNext(identity -> assertThat(identity.actor().permissions()).isEmpty())
         .verifyComplete();
     when(cache.get(key))
         .thenReturn(
@@ -175,9 +174,7 @@ class LocalAuthenticationVerifierTest {
                     Set.of("inventory.view"),
                     0)));
     StepVerifier.create(verifier.authenticate(jwt, true))
-        .assertNext(
-            identity ->
-                assertThat(identity.actor().permissions()).containsExactly("inventory.view"))
+        .assertNext(identity -> assertThat(identity.actor().permissions()).isEmpty())
         .verifyComplete();
   }
 

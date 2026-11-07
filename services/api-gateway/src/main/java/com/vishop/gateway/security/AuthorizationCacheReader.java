@@ -6,13 +6,10 @@ import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
-import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
-import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
+import io.github.coreplatform.common.security.gateway.GatewayIdentityHeaders;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
@@ -27,7 +24,6 @@ import reactor.core.publisher.Mono;
 public class AuthorizationCacheReader {
   private final ReactiveStringRedisTemplate redis;
   private final ObjectMapper json;
-  private final GatewayContextCodec iam;
   private final WebClient http;
   private final CacheKeyBuilder keys;
   private final long maxAge;
@@ -38,7 +34,6 @@ public class AuthorizationCacheReader {
   public AuthorizationCacheReader(
       ReactiveStringRedisTemplate redis,
       ObjectMapper json,
-      GatewayContextSigners signers,
       @Value("${IAM_SERVICE_URL:http://localhost:8080}") String url,
       CacheKeyBuilder keys,
       @Value("${vishop.security.authorization.max-age-seconds:30}") long maxAge) {
@@ -46,7 +41,6 @@ public class AuthorizationCacheReader {
       throw new IllegalArgumentException("Authorization max age must be 1..300 seconds");
     this.redis = redis;
     this.json = json;
-    this.iam = signers.forService("iam-service");
     this.http = WebClient.builder().baseUrl(url).build();
     this.keys = keys;
     this.maxAge = maxAge;
@@ -98,11 +92,9 @@ public class AuthorizationCacheReader {
             .build()
             .encode()
             .toUri();
-    String requestTarget = target.getRawPath() + "?" + target.getRawQuery();
-    var caller = new GatewayPrincipal(new UUID(0, 0), null, "USER", null, Set.of());
     return http.get()
         .uri(target.toString())
-        .header(GatewayContextCodec.HEADER, iam.sign(caller, null, "GET", requestTarget))
+        .headers(headers -> headers.putAll(GatewayIdentityHeaders.technical().toHeaders()))
         .retrieve()
         .onStatus(
             s -> s.value() == 404,

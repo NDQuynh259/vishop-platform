@@ -9,7 +9,7 @@ import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import io.github.coreplatform.common.security.gateway.AuthorizationStatus;
-import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
+import io.github.coreplatform.common.security.gateway.GatewayIdentityHeaders;
 import java.net.*;
 import java.time.Duration;
 import java.util.*;
@@ -50,15 +50,13 @@ class AuthorizationCacheReaderTest {
     connection.start();
     redis = new StringRedisTemplate(connection);
     iam = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    var codec = new GatewayContextCodec(json, secret, "iam-service");
     iam.createContext(
         "/internal/authorization",
         request -> {
           try {
-            codec.verify(
-                request.getRequestHeaders().getFirst(GatewayContextCodec.HEADER),
-                "GET",
-                request.getRequestURI().toASCIIString());
+            var identity = GatewayIdentityHeaders.read(request.getRequestHeaders()::get);
+            if (!GatewayIdentityHeaders.TECHNICAL_USER.equals(identity.getUserId()))
+              throw new IllegalArgumentException();
             calls.incrementAndGet();
             var state = current.get();
             if (state == null) {
@@ -82,7 +80,6 @@ class AuthorizationCacheReaderTest {
         new AuthorizationCacheReader(
             reactive,
             json,
-            new GatewayContextSigners(json, secret, secret, secret),
             "http://127.0.0.1:" + iam.getAddress().getPort(),
             new CacheKeyBuilder("test:"),
             30);

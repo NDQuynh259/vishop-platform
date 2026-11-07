@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.vishop.gateway.handler.AuthenticationErrorResponse;
-import com.vishop.gateway.security.GatewayContextSigners;
 import com.vishop.gateway.security.GatewayRequestForwarder;
 import com.vishop.gateway.security.GatewayRequestPolicy;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
@@ -15,7 +14,7 @@ import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.security.constants.AuthCookies;
 import io.github.coreplatform.common.security.constants.SecurityHeaders;
-import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
+import io.github.coreplatform.common.security.gateway.GatewayIdentityHeaders;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -38,24 +37,17 @@ class AuthenticationGlobalFilterTest {
   private GatewayFilterChain chain;
   private AuthenticationGlobalFilter filter;
   private Identity identity;
-  private GatewayContextSigners signers;
 
   @BeforeEach
   void setup() {
     authentication = mock(LocalAuthenticationVerifier.class);
     chain = mock(GatewayFilterChain.class);
-    signers =
-        new GatewayContextSigners(
-            new com.fasterxml.jackson.databind.ObjectMapper(),
-            "dev_gateway_iam_context_secret_at_least_32_bytes",
-            "dev_gateway_audit_context_secret_at_least_32_bytes",
-            "dev_gateway_subscription_context_secret_at_least_32_bytes");
     var policy = new GatewayRequestPolicy("http://localhost:3000");
     filter =
         new AuthenticationGlobalFilter(
             authentication,
             policy,
-            new GatewayRequestForwarder(signers, policy),
+            new GatewayRequestForwarder(policy),
             new AuthenticationErrorResponse());
     identity =
         new Identity(
@@ -194,7 +186,7 @@ class AuthenticationGlobalFilterTest {
   }
 
   @Test
-  void validBearerIsReplacedBySignedGatewayContext() {
+  void validBearerIsReplacedByIdentityHeadersWithoutPermissions() {
     run(
         MockServerHttpRequest.get("/api/v1/tenants")
             .header("Authorization", "Bearer valid-token")
@@ -202,25 +194,34 @@ class AuthenticationGlobalFilterTest {
             .header(SecurityHeaders.X_TENANT_ID, UUID.randomUUID().toString())
             .header(SecurityHeaders.X_USER_ROLES, SystemRole.PLATFORM_ADMIN.name())
             .header(SecurityHeaders.X_USER_PERMISSIONS, "system.admin")
-            .header(GatewayContextCodec.HEADER, "spoofed-context")
+            .header(SecurityHeaders.X_SESSION_ID, "spoofed-session")
+            .header(SecurityHeaders.X_SYSTEM_ROLE, "PLATFORM_ADMIN")
+            .header(SecurityHeaders.X_ROLE_ID, UUID.randomUUID().toString())
+            .header(SecurityHeaders.X_TENANT_ROLE, "forged-role")
+            .header(SecurityHeaders.X_PERMISSIONS, "system.admin")
+            .header(SecurityHeaders.X_GATEWAY_CONTEXT, "spoofed-context")
             .build());
     var headers = forwarded().getRequest().getHeaders();
     assertThat(headers.getFirst("Authorization")).isNull();
     assertThat(headers.getFirst(SecurityHeaders.X_USER_ID)).isEqualTo(user.toString());
     assertThat(headers.getFirst(SecurityHeaders.X_TENANT_ID)).isEqualTo(tenant.toString());
-    assertThat(headers.getFirst("X-Gateway-Context")).isNotBlank();
-    var context =
-        signers
-            .forService("iam-service")
-            .verifyContext(headers.getFirst(GatewayContextCodec.HEADER), "GET", "/api/v1/tenants");
-    assertThat(context.userId()).isEqualTo(user);
-    assertThat(context.tenantId()).isEqualTo(tenant);
-    assertThat(context.roleId()).isEqualTo(identity.roleId());
-    assertThat(context.systemRole()).isEqualTo("USER");
-    assertThat(context.tenantRole()).isEqualTo("OWNER");
-    assertThat(context.permissions()).containsExactly("tenant.view");
-    assertThat(context.sessionId()).isEqualTo(session);
-    // Roles/grants stay inside the signed context; arbitrary role names never become HTTP headers.
+    assertThat(headers.getFirst("X-Gateway-Context")).isNull();
+    var context = GatewayIdentityHeaders.read(headers::get);
+    assertThat(context.getUserId()).isEqualTo(user);
+    assertThat(context.getTenantId()).isEqualTo(tenant);
+    assertThat(context.getSystemRole()).isEqualTo("USER");
+    assertThat(context.getRoleId()).isEqualTo(identity.roleId());
+    assertThat(headers)
+        .doesNotContainKeys(SecurityHeaders.X_PERMISSIONS, SecurityHeaders.X_USER_PERMISSIONS);
+    assertThat(context.getSessionId()).isEqualTo(session);
+    assertThat(headers.keySet().stream().filter(SecurityHeaders::isInternalHeader))
+        .containsExactlyInAnyOrder(
+            SecurityHeaders.X_USER_ID,
+            SecurityHeaders.X_SESSION_ID,
+            SecurityHeaders.X_TENANT_ID,
+            SecurityHeaders.X_ROLE_ID,
+            SecurityHeaders.X_SYSTEM_ROLE);
+    // Permissions and obsolete identity headers never cross the gateway.
     assertThat(headers)
         .doesNotContainKeys(SecurityHeaders.X_USER_ROLES, SecurityHeaders.X_USER_PERMISSIONS);
   }
@@ -256,7 +257,7 @@ class AuthenticationGlobalFilterTest {
             null,
             null,
             new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
-                user, null, "USER", null, Set.of()));
+                user, null, "USER", null, Set.of(), session));
     when(authentication.authenticate("identity", true)).thenReturn(Mono.just(global));
     run(
         MockServerHttpRequest.get("/api/v1/auth/me")
@@ -268,6 +269,87 @@ class AuthenticationGlobalFilterTest {
         run(
             MockServerHttpRequest.get("/api/v1/orders")
                 .header("Authorization", "Bearer identity")
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    verify(chain, never()).filter(any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "/api/v1/cms",
+        "/api/v1/cms/audit-logs",
+        "/api/v1/%63ms/audit-logs",
+        "/api/v1/cms;ignored=x/audit-logs"
+      })
+  void cmsRejectsTenantOwnerEvenWithSpoofedSystemAdminHeader(String path) {
+    var exchange =
+        run(
+            MockServerHttpRequest.method(HttpMethod.GET, java.net.URI.create(path))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .header(SecurityHeaders.X_SYSTEM_ROLE, "PLATFORM_ADMIN")
+                .build());
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    verify(chain, never()).filter(any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void cmsAllowsSystemAdminAndForwardsSelectedTenantWhenPresent(boolean selectedTenant) {
+    UUID tenantId = selectedTenant ? tenant : null;
+    UUID roleId = selectedTenant ? UUID.randomUUID() : null;
+    var admin =
+        new Identity(
+            user,
+            tenantId,
+            roleId,
+            new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
+                user,
+                tenantId,
+                SystemRole.PLATFORM_ADMIN.name(),
+                selectedTenant ? "MEMBER" : null,
+                Set.of(),
+                session));
+    when(authentication.authenticate("admin-token", true)).thenReturn(Mono.just(admin));
+    run(
+        MockServerHttpRequest.get("/api/v1/cms/audit-logs")
+            .header(HttpHeaders.AUTHORIZATION, "Bearer admin-token")
+            .build());
+    var headers = forwarded().getRequest().getHeaders();
+    var forwardedIdentity = GatewayIdentityHeaders.read(headers::get);
+    assertThat(forwardedIdentity.getSystemRole()).isEqualTo(SystemRole.PLATFORM_ADMIN.name());
+    assertThat(forwardedIdentity.getTenantId()).isEqualTo(tenantId);
+    assertThat(forwardedIdentity.getRoleId()).isEqualTo(roleId);
+  }
+
+  @Test
+  void businessRequestForwardsAuthenticatedTenantInsteadOfClientTenant() {
+    run(
+        MockServerHttpRequest.get("/api/v1/notification-settings/channels")
+            .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+            .header(SecurityHeaders.X_TENANT_ID, UUID.randomUUID().toString())
+            .header(SecurityHeaders.X_ROLE_ID, UUID.randomUUID().toString())
+            .build());
+    var headers = forwarded().getRequest().getHeaders();
+    var forwardedIdentity = GatewayIdentityHeaders.read(headers::get);
+    assertThat(forwardedIdentity.getTenantId()).isEqualTo(tenant);
+    assertThat(forwardedIdentity.getRoleId()).isEqualTo(identity.roleId());
+  }
+
+  @Test
+  void notificationSettingsRequireTenantBeforeForwarding() {
+    var tenantless =
+        new Identity(
+            user,
+            null,
+            null,
+            new io.github.coreplatform.common.security.gateway.GatewayPrincipal(
+                user, null, "USER", null, Set.of(), session));
+    when(authentication.authenticate("tenantless", true)).thenReturn(Mono.just(tenantless));
+    var exchange =
+        run(
+            MockServerHttpRequest.get("/api/v1/notification-settings/channels")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer tenantless")
                 .build());
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     verify(chain, never()).filter(any());
@@ -326,13 +408,9 @@ class AuthenticationGlobalFilterTest {
         .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
     var headers = forwarded().getRequest().getHeaders();
     assertThat(headers).doesNotContainKey(HttpHeaders.AUTHORIZATION);
-    var context =
-        signers
-            .forService("iam-service")
-            .verifyContext(
-                headers.getFirst(GatewayContextCodec.HEADER), "POST", "/api/v1/auth/logout");
-    assertThat(context.userId()).isEqualTo(user);
-    assertThat(context.sessionId()).isEqualTo(session);
+    var context = GatewayIdentityHeaders.read(headers::get);
+    assertThat(context.getUserId()).isEqualTo(user);
+    assertThat(context.getSessionId()).isEqualTo(session);
     verify(authentication).authenticate("valid-token", true);
   }
 
@@ -349,7 +427,7 @@ class AuthenticationGlobalFilterTest {
     assertThat(forwarded().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE))
         .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
     assertThat(forwarded().getRequest().getHeaders())
-        .doesNotContainKeys(HttpHeaders.AUTHORIZATION, GatewayContextCodec.HEADER);
+        .doesNotContainKeys(HttpHeaders.AUTHORIZATION, SecurityHeaders.X_GATEWAY_CONTEXT);
   }
 
   @ParameterizedTest
@@ -358,7 +436,7 @@ class AuthenticationGlobalFilterTest {
     run(
         MockServerHttpRequest.post("/api/v1/auth/logout")
             .header(AuthCookies.REQUEST_HEADER, AuthCookies.REQUEST_HEADER_VALUE)
-            .header(GatewayContextCodec.HEADER, "spoofed")
+            .header(SecurityHeaders.X_GATEWAY_CONTEXT, "spoofed")
             .cookie(
                 new HttpCookie(AuthCookies.ACCESS_TOKEN, access),
                 new HttpCookie(AuthCookies.REFRESH_TOKEN, "private-refresh"))
@@ -366,7 +444,8 @@ class AuthenticationGlobalFilterTest {
     var headers = forwarded().getRequest().getHeaders();
     assertThat(headers.getFirst(HttpHeaders.COOKIE))
         .isEqualTo(AuthCookies.REFRESH_TOKEN + "=private-refresh");
-    assertThat(headers).doesNotContainKeys(HttpHeaders.AUTHORIZATION, GatewayContextCodec.HEADER);
+    assertThat(headers)
+        .doesNotContainKeys(HttpHeaders.AUTHORIZATION, SecurityHeaders.X_GATEWAY_CONTEXT);
   }
 
   @ParameterizedTest

@@ -198,13 +198,13 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "${IAM_PORT:-8080}:8080"
-      - "${IAM_DEBUG_PORT:-5001}:5001"
+      - "127.0.0.1:${IAM_PORT:-8080}:8080"
+      - "127.0.0.1:${IAM_DEBUG_PORT:-5001}:5001"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
       SERVER_PORT: 8080
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_vishop_access_secret_at_least_32_bytes}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_vishop_refresh_secret_at_least_32_bytes}
-      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:-dev_gateway_iam_context_secret_at_least_32_bytes}
       AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:dev:}}
@@ -249,11 +249,16 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "${AUDIT_PORT:-8082}:8082"
-      - "${AUDIT_DEBUG_PORT:-5003}:5003"
+      - "127.0.0.1:${AUDIT_PORT:-8082}:8082"
+      - "127.0.0.1:${AUDIT_DEBUG_PORT:-5003}:5003"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:dev:}}
       SERVER_PORT: 8082
-      GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:-dev_gateway_audit_context_secret_at_least_32_bytes}
       SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_audit
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-vishop}
@@ -262,6 +267,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       TRACING_SAMPLING_PROBABILITY: 1.0
     depends_on:
+      auth-redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       kafka:
@@ -285,11 +292,16 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "${SUBSCRIPTION_PORT:-8083}:8083"
-      - "${SUBSCRIPTION_DEBUG_PORT:-5004}:5004"
+      - "127.0.0.1:${SUBSCRIPTION_PORT:-8083}:8083"
+      - "127.0.0.1:${SUBSCRIPTION_DEBUG_PORT:-5004}:5004"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
+      AUTH_REDIS_HOST: auth-redis
+      AUTH_REDIS_PORT: 6379
+      AUTH_REDIS_DATABASE: 0
+      AUTH_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:-}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:dev:}}
       SERVER_PORT: 8083
-      GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:-dev_gateway_subscription_context_secret_at_least_32_bytes}
       SEPAY_ENABLED: ${SEPAY_ENABLED:-false}
       SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
       SEPAY_BANK: ${SEPAY_BANK:-}
@@ -306,6 +318,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       TRACING_SAMPLING_PROBABILITY: 1.0
     depends_on:
+      auth-redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       kafka:
@@ -333,12 +347,10 @@ services:
       start_period: 30s
     ports:
       - "${GATEWAY_PORT:-8000}:8000"
-      - "${GATEWAY_DEBUG_PORT:-5000}:5000"
+      - "127.0.0.1:${GATEWAY_DEBUG_PORT:-5000}:5000"
     environment:
+      AUTH_CACHE_MAX_AGE_SECONDS: ${AUTH_CACHE_MAX_AGE_SECONDS:-30}
       SERVER_PORT: 8000
-      GATEWAY_IAM_CONTEXT_SECRET: ${GATEWAY_IAM_CONTEXT_SECRET:-dev_gateway_iam_context_secret_at_least_32_bytes}
-      GATEWAY_AUDIT_CONTEXT_SECRET: ${GATEWAY_AUDIT_CONTEXT_SECRET:-dev_gateway_audit_context_secret_at_least_32_bytes}
-      GATEWAY_SUBSCRIPTION_CONTEXT_SECRET: ${GATEWAY_SUBSCRIPTION_CONTEXT_SECRET:-dev_gateway_subscription_context_secret_at_least_32_bytes}
       CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:dev:}}
       AUTH_REDIS_HOST: auth-redis
       AUTH_REDIS_PORT: 6379

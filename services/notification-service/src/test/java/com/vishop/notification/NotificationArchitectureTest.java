@@ -1,5 +1,7 @@
 package com.vishop.notification;
 
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideOutsideOfPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,12 +17,7 @@ class NotificationArchitectureTest {
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.vishop.notification");
-    var modules =
-        java.util.Set.of(
-            "setting",
-            "inbox",
-            "delivery",
-            "announcement");
+    var modules = java.util.Set.of("setting", "inbox", "delivery", "announcement");
     assertThat(
             classes.stream()
                 .anyMatch(
@@ -102,8 +99,9 @@ class NotificationArchitectureTest {
         .that()
         .resideInAPackage("..composition..")
         .should()
-        .dependOnClassesThat()
-        .resideInAnyPackage("..domain..", "..infrastructure..", "..presentation..")
+        .dependOnClassesThat(
+            resideInAnyPackage("..domain..", "..infrastructure..", "..presentation..")
+                .and(resideOutsideOfPackage("io.github.coreplatform.common.domain.cqrs..")))
         .check(classes);
   }
 }

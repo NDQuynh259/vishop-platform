@@ -149,7 +149,6 @@ chỉ tự tạo trên volume PostgreSQL mới; volume hiện có cần tạo th
 $env:SUBSCRIPTION_DB_URL = 'jdbc:postgresql://localhost:5432/vishop_subscription'
 $env:SUBSCRIPTION_DB_USER = 'vishop'
 $env:SUBSCRIPTION_DB_PASSWORD = '<database-password>'
-$env:GATEWAY_SUBSCRIPTION_CONTEXT_SECRET = '<same subscription context secret as gateway>'
 .\gradlew.bat migrateSubscription
 .\gradlew.bat runSubscription
 ```

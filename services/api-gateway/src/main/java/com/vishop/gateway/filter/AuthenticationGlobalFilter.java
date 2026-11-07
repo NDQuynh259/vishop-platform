@@ -5,6 +5,7 @@ import com.vishop.gateway.security.GatewayRequestForwarder;
 import com.vishop.gateway.security.GatewayRequestPolicy;
 import com.vishop.gateway.security.LocalAuthenticationVerifier;
 import com.vishop.gateway.security.LocalAuthenticationVerifier.Identity;
+import io.github.coreplatform.common.domain.constants.SystemRole;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import lombok.RequiredArgsConstructor;
@@ -69,6 +70,9 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
     if (result.isOnError()) return authenticationError(exchange, chain, result.getThrowable());
     Identity identity = result.get();
     if (identity == null) return errors.write(exchange, 503);
+    if (policy.isCms(exchange.getRequest())
+        && !SystemRole.PLATFORM_ADMIN.name().equals(identity.actor().systemRole()))
+      return errors.write(exchange, 403);
     if (identity.tenantId() == null && !policy.allowsWithoutTenant(exchange.getRequest()))
       return errors.write(exchange, 403);
 

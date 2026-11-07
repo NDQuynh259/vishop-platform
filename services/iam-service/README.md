@@ -29,13 +29,13 @@ cases. The temporary reset interceptor has been removed.
 Configure database/Kafka plus Auth Redis. IAM and gateway must agree on:
 
 - JWT_ACCESS_SECRET (at least 32 UTF-8 bytes).
-- GATEWAY_IAM_CONTEXT_SECRET for signed internal context.
 - CACHE_KEY_PREFIX and Redis host/port/password/database. AUTH_CACHE_PREFIX remains a fallback.
 - ALLOWED_ORIGINS for browser access.
 
 JWT_REFRESH_SECRET is configured only in IAM and must differ from the access secret.
 Gateway forwards the refresh cookie only to POST refresh/logout on the IAM route.
-It verifies access itself and forwards identity/grants/sid in X-Gateway-Context;
+It verifies access and forwards identity/sid/tenant/role ID in trusted headers;
+backends resolve permissions from Auth Redis and IAM revalidates its database;
 raw access tokens never reach downstream services, including IAM logout.
 
 Production requires secrets and origins; cookies are Secure by default. Development

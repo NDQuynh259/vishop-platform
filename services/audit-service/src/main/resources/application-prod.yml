@@ -1,6 +1,1 @@
-
----
-vishop:
-  security:
-    context:
-      secret: ${GATEWAY_AUDIT_CONTEXT_SECRET}
+# Gateway-only ingress; role authorization uses shared Auth Redis configuration.

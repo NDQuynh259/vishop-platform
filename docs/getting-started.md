@@ -17,7 +17,7 @@ riêng; không xóa volume để áp dụng lại init script.
 
 Thiết lập database credentials theo [hướng dẫn IAM](../services/iam-service/README.md).
 IAM cấp access/refresh JWT HS256 bằng hai key riêng và tạo sid cho mỗi lần login.
-IAM/gateway phải dùng cùng JWT_ACCESS_SECRET, GATEWAY_IAM_CONTEXT_SECRET,
+IAM/gateway phải dùng cùng JWT_ACCESS_SECRET,
 Auth Redis và CACHE_KEY_PREFIX (AUTH_CACHE_PREFIX cũ vẫn được dùng nếu chưa đặt biến mới).
 JWT_REFRESH_SECRET chỉ cấu hình cho IAM, khác
 access key; gateway chỉ chuyển refresh cookie về IAM. Production bắt buộc

@@ -9,6 +9,7 @@ import java.nio.*;
 import java.nio.charset.*;
 import java.util.Map;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -24,6 +25,7 @@ public class SePayWebhookController {
   @PostMapping(
       value = ApiPaths.V1 + "/billing/webhooks/sepay",
       consumes = MediaType.APPLICATION_JSON_VALUE)
+  @PreAuthorize("permitAll()")
   public Map<String, Boolean> receive(
       @RequestHeader(name = "X-SePay-Timestamp", required = false) String timestamp,
       @RequestHeader(name = "X-SePay-Signature", required = false) String signed,

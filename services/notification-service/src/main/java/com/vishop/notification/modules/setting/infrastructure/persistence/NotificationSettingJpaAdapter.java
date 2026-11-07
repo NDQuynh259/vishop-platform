@@ -7,6 +7,7 @@ import com.vishop.notification.modules.setting.infrastructure.persistence.reposi
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.UuidV7;
 import io.github.coreplatform.common.domain.exception.ConflictException;
+import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.OptimisticLockException;
@@ -31,9 +32,48 @@ public class NotificationSettingJpaAdapter implements NotificationSettingManagem
     this.em = em;
   }
 
+  @Transactional
+  public Connection createConnection(UUID tenant, Connection connection) {
+    UUID id = UuidV7.nextId();
+    if (channels.ensure(id, tenant, connection.channel().name()) == 0)
+      throw new ConflictException("Channel setting already exists");
+    var entity = channels.lockById(tenant, id).orElseThrow(NotificationSettingJpaAdapter::conflict);
+    mapper.copyConnection(entity, connection);
+    channels.flush();
+    return mapper.connection(entity.getChannel(), entity);
+  }
+
   public Connection connection(UUID tenant, NotificationChannel channel) {
     return mapper.connection(
         channel, channels.findByTenantIdAndChannel(tenant, channel).orElse(null));
+  }
+
+  public Connection connectionById(UUID tenant, UUID channelId) {
+    var entity =
+        channels
+            .findByIdAndTenantIdAndDeletedAtIsNull(channelId, tenant)
+            .orElseThrow(() -> new EntityNotFoundException("Notification setting", channelId));
+    return mapper.connection(entity.getChannel(), entity);
+  }
+
+  @Transactional
+  public Connection saveConnectionById(
+      UUID tenant, UUID channelId, Connection connection, long expected) {
+    try {
+      var entity =
+          channels
+              .lockById(tenant, channelId)
+              .orElseThrow(() -> new EntityNotFoundException("Notification setting", channelId));
+      em.refresh(entity, LockModeType.PESSIMISTIC_WRITE);
+      if (entity.getDeletedAt() != null)
+        throw new EntityNotFoundException("Notification setting", channelId);
+      if (entity.getVersion() != expected) throw conflict();
+      mapper.copyConnection(entity, connection);
+      channels.flush();
+      return mapper.connection(entity.getChannel(), entity);
+    } catch (OptimisticLockException | OptimisticLockingFailureException ex) {
+      throw conflict();
+    }
   }
 
   @Transactional

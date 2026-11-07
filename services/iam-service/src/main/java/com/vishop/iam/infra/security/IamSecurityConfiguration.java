@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.iam.modules.identity.application.api.IdentityApi;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.security.constants.AuthCookies;
-import io.github.coreplatform.common.security.gateway.GatewayContextCodec;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -33,19 +32,12 @@ public class IamSecurityConfiguration {
   }
 
   @Bean
-  GatewayContextCodec iamGatewayContext(
-      ObjectMapper json, @Value("${vishop.security.context.secret}") String secret) {
-    return new GatewayContextCodec(json, secret, "iam-service");
-  }
-
-  @Bean
   IamAuthenticationFilter iamAuthenticationFilter(
-      GatewayContextCodec codec,
       IdentityApi identity,
       ObjectMapper json,
       @Value("${vishop.security.allowed-origins:http://localhost:3000,http://localhost:8000}")
           String origins) {
-    return new IamAuthenticationFilter(codec, identity, json, origins(origins));
+    return new IamAuthenticationFilter(identity, json, origins(origins));
   }
 
   @Bean
