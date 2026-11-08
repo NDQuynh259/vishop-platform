@@ -20,7 +20,9 @@ public interface TenantApi {
   interface MemberReadPort {
     Optional<TenantMemberResponseDto> member(UUID tenantId, UUID userId);
 
-    List<MemberView> members(UUID tenantId);
+    List<MemberView> members(UUID tenantId, int limit, int offset, String afterEmail, UUID afterId);
+
+    long memberCount(UUID tenantId);
 
     int activeOwners(UUID tenantId);
   }

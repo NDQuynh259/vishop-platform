@@ -62,6 +62,7 @@ public class NotificationInboxApplicationService implements NotificationInboxApi
             .map(
                 user ->
                     new NotificationRecipient(
+                        ids.get(),
                         message.tenantId(),
                         notification.id(),
                         user,
@@ -73,8 +74,10 @@ public class NotificationInboxApplicationService implements NotificationInboxApi
   }
 
   public PagedResult<NotificationView> list(InboxActor actor, InboxFilter filter) {
-    if (filter.getLimit() < 1 || filter.getLimit() > 100)
-      throw invalid("Limit must be between 1 and 100");
+    if ((filter.getPagination() == null) == (filter.getCursorParams() == null))
+      throw invalid("Choose exactly one pagination mode");
+    long offset = filter.getPagination() == null ? 0 : filter.getPagination().offset();
+    if (offset > Integer.MAX_VALUE) throw new BadRequestException("Pagination offset is too large");
     Instant before = null;
     UUID beforeId = null;
     if (filter.getCursor() != null) {
@@ -99,8 +102,17 @@ public class NotificationInboxApplicationService implements NotificationInboxApi
             filter.getShopId(),
             before,
             beforeId,
-            filter.getLimit() + 1);
-    var rows = repository.findAll(scope(actor), query);
+            filter.getLimit() + (filter.getPagination() == null ? 1 : 0),
+            (int) offset);
+    var scope = scope(actor);
+    var rows = repository.findAll(scope, query);
+    if (filter.getPagination() != null) {
+      return PagedResult.ofOffset(
+          rows.stream().map(this::view).toList(),
+          filter.getPagination().page(),
+          filter.getLimit(),
+          repository.count(scope, query));
+    }
     boolean hasNext = rows.size() > filter.getLimit();
     var page = rows.stream().limit(filter.getLimit()).toList();
     String cursor = null;

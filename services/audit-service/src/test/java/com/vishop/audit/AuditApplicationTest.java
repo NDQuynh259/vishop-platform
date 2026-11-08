@@ -254,6 +254,23 @@ class AuditApplicationTest {
     var global = cmsGet(base + "&limit=1&page=3", token).getBody();
     assertThat(global.path("data").get(0).path("tenantId").isNull()).isTrue();
     assertThat(global.path("pageInfo").path("hasNextPage").asBoolean()).isFalse();
+    var cursorPage = cmsGet(base + "&pageMode=cursor&limit=1", token).getBody();
+    var seen = new java.util.HashSet<String>();
+    for (int index = 0; index < 3; index++) {
+      assertThat(seen.add(cursorPage.path("data").get(0).path("id").asText())).isTrue();
+      assertThat(cursorPage.path("pageInfo").has("total")).isFalse();
+      if (index < 2)
+        cursorPage =
+            cmsGet(
+                    base
+                        + "&pageMode=cursor&limit=1&cursor="
+                        + cursorPage.path("pageInfo").path("nextCursor").asText(),
+                    token)
+                .getBody();
+    }
+    assertThat(cursorPage.path("pageInfo").path("hasNextPage").asBoolean()).isFalse();
+    var ignoredCursor = cmsGet(base + "&pageMode=offset&cursor=ignored", token).getBody();
+    assertThat(ignoredCursor.path("pageInfo").path("total").asLong()).isEqualTo(3);
     var filtered =
         cmsGet(
                 base
@@ -324,7 +341,7 @@ class AuditApplicationTest {
         List.of(
             "page=invalid",
             "limit=invalid",
-            "cursor=unsupported",
+            "pageMode=cursor&cursor=invalid",
             "tenantId=invalid",
             "aggregateType=Tenant",
             "aggregateId=" + UUID.randomUUID(),
@@ -343,14 +360,10 @@ class AuditApplicationTest {
     var defaults = cmsGet("/api/v1/cms/audit-logs", token).getBody().path("pageInfo");
     assertThat(defaults.path("page").asInt()).isEqualTo(1);
     assertThat(defaults.path("limit").asInt()).isEqualTo(20);
-    var normalized =
-        cmsGet("/api/v1/cms/audit-logs?page=0&limit=101", token).getBody().path("pageInfo");
-    assertThat(normalized.path("page").asInt()).isEqualTo(1);
-    assertThat(normalized.path("limit").asInt()).isEqualTo(100);
-    var nonpositive =
-        cmsGet("/api/v1/cms/audit-logs?page=-2&limit=0", token).getBody().path("pageInfo");
-    assertThat(nonpositive.path("page").asInt()).isEqualTo(1);
-    assertThat(nonpositive.path("limit").asInt()).isEqualTo(20);
+    assertThat(cmsGet("/api/v1/cms/audit-logs?page=0&limit=101", token).getStatusCode().value())
+        .isEqualTo(422);
+    assertThat(cmsGet("/api/v1/cms/audit-logs?page=-2&limit=0", token).getStatusCode().value())
+        .isEqualTo(422);
   }
 
   @Test

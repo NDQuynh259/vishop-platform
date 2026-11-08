@@ -198,7 +198,8 @@ class SubscriptionApplicationTest {
     return result(
         http.perform(
                 body(
-                    auth(post("/api/v1/billing/orders"), bearer).header("Idempotency-Key", key),
+                    auth(post("/api/v1/subscriptions/orders"), bearer)
+                        .header("Idempotency-Key", key),
                     Map.of("priceId", price)))
             .andExpect(status().isOk())
             .andReturn());
@@ -262,6 +263,88 @@ class SubscriptionApplicationTest {
     return db.queryForObject("SELECT count(*) FROM " + table, Long.class);
   }
 
+  private String cursorList(String actor, String path, int expected) throws Exception {
+    String cursor = null, first = null;
+    var ids = new HashSet<String>();
+    int pages = 0;
+    do {
+      var request = get(path).param("pageMode", "cursor").param("limit", "1");
+      if (cursor != null) request.param("cursor", cursor);
+      var page = result(http.perform(auth(request, actor)).andExpect(status().isOk()).andReturn());
+      assertThat(page.path("pageInfo").has("total")).isFalse();
+      for (var item : page.path("data")) assertThat(ids.add(item.path("id").asText())).isTrue();
+      cursor =
+          page.path("pageInfo").path("nextCursor").isTextual()
+              ? page.path("pageInfo").path("nextCursor").asText()
+              : null;
+      if (pages++ == 0) first = cursor;
+      assertThat(pages).isLessThan(expected + 2);
+    } while (cursor != null);
+    assertThat(ids).hasSize(expected);
+    return first;
+  }
+
+  @Test
+  void orderAndReviewListsSupportCursorModeWithTiedTimestamps() throws Exception {
+    UUID tenant = UUID.randomUUID();
+    String actor = owner(tenant);
+    String price = price();
+    for (int i = 0; i < 3; i++) {
+      var order = checkout(actor, price, "cursor-order-" + i);
+      http.perform(
+              auth(
+                  post(
+                      "/api/v1/subscriptions/orders/"
+                          + order.path("order").path("id").asText()
+                          + "/cancel"),
+                  actor))
+          .andExpect(status().isOk());
+      webhook(raw(700 + i, "VSUNKNOWN", 10000, "0012345678", "REF" + (700 + i)));
+      commands.dispatch(new ProcessBankTransferCommand(700 + i));
+    }
+    String orderCursor = cursorList(actor, "/api/v1/subscriptions/orders", 3);
+    http.perform(
+            auth(
+                get("/api/v1/subscriptions/orders")
+                    .param("pageMode", "cursor")
+                    .param("cursor", orderCursor),
+                owner(UUID.randomUUID())))
+        .andExpect(status().isBadRequest());
+    String admin = admin();
+    cursorList(admin, "/api/v1/cms/billing/payments/review", 3);
+    db.update("UPDATE sepay_webhook_inbox SET status='REVIEW',review_reason='CURSOR_TEST'");
+    cursorList(admin, "/api/v1/cms/billing/webhooks/review", 3);
+    http.perform(
+            auth(
+                get("/api/v1/subscriptions/orders")
+                    .param("pageMode", "offset")
+                    .param("cursor", "ignored"),
+                actor))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.total").value(3));
+  }
+
+  @Test
+  void plansUseSharedEnvelopeAndDatabasePagination() throws Exception {
+    price("BASIC", 100000);
+    String pro = price("PRO", 200000);
+    String actor = owner(UUID.randomUUID());
+    http.perform(
+            auth(get("/api/v1/subscriptions/plans").param("page", "2").param("limit", "1"), actor))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.object").value("list"))
+        .andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.data[0].id").value(pro))
+        .andExpect(jsonPath("$.pageInfo.total").value(2))
+        .andExpect(jsonPath("$.pageInfo.page").value(2));
+    http.perform(
+            auth(get("/api/v1/subscriptions/plans").param("page", "3").param("limit", "1"), actor))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data").isEmpty())
+        .andExpect(jsonPath("$.pageInfo.total").value(2));
+    cursorList(actor, "/api/v1/subscriptions/plans", 2);
+  }
+
   @Test
   void subscriptionMutationBoundaryRequiresPaymentTransaction() {
     var api =
@@ -276,13 +359,13 @@ class SubscriptionApplicationTest {
   @Test
   void explicitMigrationsAndStatelessTenantPermissions() throws Exception {
     assertThat(count("subscription_prices")).isZero();
-    http.perform(get("/api/v1/billing/subscription")).andExpect(status().isUnauthorized());
+    http.perform(get("/api/v1/subscriptions/subscription")).andExpect(status().isUnauthorized());
     UUID tenant = UUID.randomUUID();
     String allowed = owner(tenant);
-    http.perform(auth(get("/api/v1/billing/subscription"), allowed))
+    http.perform(auth(get("/api/v1/subscriptions/subscription"), allowed))
         .andExpect(status().isOk())
         .andExpect(jsonPath("status").value("FREE"));
-    http.perform(auth(get("/api/v1/billing/plans"), token(tenant, Set.of())))
+    http.perform(auth(get("/api/v1/subscriptions/plans"), token(tenant, Set.of())))
         .andExpect(status().isForbidden());
     http.perform(
             body(
@@ -309,12 +392,12 @@ class SubscriptionApplicationTest {
         .startsWith("https://vietqr.app/img?")
         .contains("amount=100000");
     http.perform(
-            auth(get("/api/v1/billing/orders/" + id), owner(UUID.randomUUID()))
+            auth(get("/api/v1/subscriptions/orders/" + id), owner(UUID.randomUUID()))
                 .header("X-Tenant-Id", tenant))
         .andExpect(status().isUnauthorized());
-    http.perform(auth(get("/api/v1/billing/orders/" + id), owner(UUID.randomUUID())))
+    http.perform(auth(get("/api/v1/subscriptions/orders/" + id), owner(UUID.randomUUID())))
         .andExpect(status().isNotFound());
-    http.perform(auth(get("/api/v1/billing/subscription"), admin()))
+    http.perform(auth(get("/api/v1/subscriptions/subscription"), admin()))
         .andExpect(status().isForbidden());
   }
 
@@ -333,7 +416,7 @@ class SubscriptionApplicationTest {
     webhook(payload);
     commands.dispatch(new ProcessBankTransferCommand(1));
     webhook(json.writerWithDefaultPrettyPrinter().writeValueAsString(json.readTree(payload)));
-    http.perform(auth(get("/api/v1/billing/subscription"), actor))
+    http.perform(auth(get("/api/v1/subscriptions/subscription"), actor))
         .andExpect(status().isOk())
         .andExpect(jsonPath("status").value("ACTIVE"))
         .andExpect(jsonPath("endsAt").value("2026-02-28T03:00:00Z"));
@@ -354,7 +437,9 @@ class SubscriptionApplicationTest {
         .andExpect(jsonPath("data[0].reason").value("CONFLICTING_BANK_REFERENCE"));
     pay(5, first, 10000);
     http.perform(
-            auth(get("/api/v1/billing/orders/" + first.path("order").path("id").asText()), actor))
+            auth(
+                get("/api/v1/subscriptions/orders/" + first.path("order").path("id").asText()),
+                actor))
         .andExpect(status().isOk())
         .andExpect(jsonPath("order.orderStatus").value("COMPLETED"))
         .andExpect(jsonPath("order.paymentStatus").value("OVERPAID"))
@@ -366,7 +451,7 @@ class SubscriptionApplicationTest {
         .isZero();
     var second = checkout(actor, price, "renew");
     pay(3, second, 100000);
-    http.perform(auth(get("/api/v1/billing/subscription"), actor))
+    http.perform(auth(get("/api/v1/subscriptions/subscription"), actor))
         .andExpect(status().isOk())
         .andExpect(jsonPath("endsAt").value("2026-03-31T03:00:00Z"));
     assertThat(count("subscription_terms")).isEqualTo(2);
@@ -386,7 +471,9 @@ class SubscriptionApplicationTest {
     pay(10, order, 40000);
     assertThat(count("subscription_terms")).isZero();
     http.perform(
-            auth(get("/api/v1/billing/orders/" + order.path("order").path("id").asText()), actor))
+            auth(
+                get("/api/v1/subscriptions/orders/" + order.path("order").path("id").asText()),
+                actor))
         .andExpect(jsonPath("order.status").value("PARTIALLY_PAID"));
     pay(11, order, 70000);
     assertThat(count("subscription_terms")).isZero();
@@ -458,7 +545,7 @@ class SubscriptionApplicationTest {
     String otherPrice = price("PRO", 200000);
     http.perform(
             body(
-                auth(post("/api/v1/billing/orders"), actor).header("Idempotency-Key", "same"),
+                auth(post("/api/v1/subscriptions/orders"), actor).header("Idempotency-Key", "same"),
                 Map.of("priceId", otherPrice)))
         .andExpect(status().isConflict());
     webhook(
@@ -519,12 +606,13 @@ class SubscriptionApplicationTest {
     assertThat(count("subscription_terms")).isEqualTo(1);
     http.perform(
             body(
-                auth(post("/api/v1/billing/orders"), actor).header("Idempotency-Key", "retired"),
+                auth(post("/api/v1/subscriptions/orders"), actor)
+                    .header("Idempotency-Key", "retired"),
                 Map.of("priceId", price)))
         .andExpect(status().isBadRequest());
     var cancelled = checkout(actor, price("BASIC", 120000), "cancelled");
     String cancelledId = cancelled.path("order").path("id").asText();
-    http.perform(auth(post("/api/v1/billing/orders/" + cancelledId + "/cancel"), actor))
+    http.perform(auth(post("/api/v1/subscriptions/orders/" + cancelledId + "/cancel"), actor))
         .andExpect(status().isOk());
     pay(51, cancelled, 120000);
     assertThat(count("subscription_terms")).isEqualTo(1);

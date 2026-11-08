@@ -3,7 +3,8 @@ package com.vishop.iam.modules.identity.application.query;
 import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.cqrs.Query;
-import java.util.List;
+import io.github.coreplatform.common.domain.pagination.ListPagination;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
 
-public record ListCmsUsersQuery(AuthenticatedUser actor, int limit, int offset)
-    implements Query<List<UserView>> {}
+public record ListCmsUsersQuery(AuthenticatedUser actor, ListPagination pagination)
+    implements Query<PagedResult<UserView>> {}

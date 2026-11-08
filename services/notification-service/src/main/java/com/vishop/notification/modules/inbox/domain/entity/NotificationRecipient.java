@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 public record NotificationRecipient(
+    UUID id,
     UUID tenantId,
     UUID notificationId,
     UUID userId,
@@ -12,6 +13,7 @@ public record NotificationRecipient(
     Instant readAt,
     Instant deletedAt) {
   public NotificationRecipient {
+    Objects.requireNonNull(id);
     Objects.requireNonNull(tenantId);
     Objects.requireNonNull(notificationId);
     Objects.requireNonNull(userId);
@@ -25,14 +27,14 @@ public record NotificationRecipient(
     Objects.requireNonNull(at);
     if (deletedAt != null) throw new IllegalStateException("Recipient is archived");
     return readAt == null
-        ? new NotificationRecipient(tenantId, notificationId, userId, createdAt, at, null)
+        ? new NotificationRecipient(id, tenantId, notificationId, userId, createdAt, at, null)
         : this;
   }
 
   public NotificationRecipient archive(Instant at) {
     Objects.requireNonNull(at);
     return deletedAt == null
-        ? new NotificationRecipient(tenantId, notificationId, userId, createdAt, readAt, at)
+        ? new NotificationRecipient(id, tenantId, notificationId, userId, createdAt, readAt, at)
         : this;
   }
 }

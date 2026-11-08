@@ -16,6 +16,8 @@ public interface NotificationInboxRepository {
   List<NotificationInboxEntry> findAll(
       NotificationInboxScope scope, NotificationInboxFilter filter);
 
+  long count(NotificationInboxScope scope, NotificationInboxFilter filter);
+
   Optional<NotificationInboxEntry> findById(NotificationInboxScope scope, UUID notificationId);
 
   long unreadCount(NotificationInboxScope scope);

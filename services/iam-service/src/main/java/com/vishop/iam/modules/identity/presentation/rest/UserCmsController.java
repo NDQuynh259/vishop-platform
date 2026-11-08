@@ -10,10 +10,12 @@ import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
-import java.util.List;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,11 +36,12 @@ public class UserCmsController {
 
   @GetMapping("/users")
   @PreAuthorize("@iamAuthorization.canAccessCms(authentication)")
-  public List<UserView> users(
+  public ListEnvelope<UserView> users(
       @AuthenticationPrincipal AuthenticatedUser actor,
-      @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
-      @RequestParam(defaultValue = "0") @Min(0) int offset) {
-    return queries.dispatch(new ListCmsUsersQuery(actor, limit, offset));
+      @ParameterObject PaginationRequest pagination) {
+    return ListEnvelope.from(
+        ApiPaths.V1 + "/cms/users",
+        queries.dispatch(new ListCmsUsersQuery(actor, pagination.toPagination())));
   }
 
   @PatchMapping("/users/{id}/system-role")

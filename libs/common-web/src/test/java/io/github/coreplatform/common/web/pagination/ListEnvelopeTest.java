@@ -13,6 +13,30 @@ class ListEnvelopeTest {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
+  @Test
+  void boundedCatalogUsesOffsetMetadataAndHandlesPagesPastTheEnd() {
+    var items = List.of("a", "b", "c");
+    var page = ListEnvelope.from("/catalog", items, new PaginationRequest(2, 2));
+    assertEquals(List.of("c"), page.data());
+    assertEquals(3L, page.pageInfo().total());
+    assertEquals(2, page.pageInfo().totalPages());
+    assertFalse(page.pageInfo().hasNextPage());
+    var empty = ListEnvelope.from("/catalog", items, new PaginationRequest(Integer.MAX_VALUE, 100));
+    assertTrue(empty.data().isEmpty());
+    assertEquals(3L, empty.pageInfo().total());
+    var cursor =
+        ListEnvelope.from("/catalog", items, new PaginationRequest(null, null, 2, PageMode.CURSOR));
+    assertEquals(List.of("a", "b"), cursor.data());
+    var next =
+        ListEnvelope.from(
+            "/catalog",
+            items,
+            new PaginationRequest(cursor.pageInfo().nextCursor(), null, 2, PageMode.CURSOR));
+    assertEquals(List.of("c"), next.data());
+    assertFalse(next.pageInfo().hasNextPage());
+    assertNull(next.pageInfo().total());
+  }
+
   // #region cursorPaginationEnvelope
   @Test
   void cursorPaginationEnvelope() throws Exception {

@@ -6,5 +6,5 @@ import io.github.coreplatform.common.domain.cqrs.Query;
 
 public record ListOrdersQuery(
     AuthenticatedActor actor,
-    io.github.coreplatform.common.domain.pagination.OffsetPagination pagination)
+    io.github.coreplatform.common.domain.pagination.ListPagination pagination)
     implements Query<io.github.coreplatform.common.domain.pagination.PagedResult<OrderView>> {}

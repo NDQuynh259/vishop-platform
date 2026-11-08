@@ -212,3 +212,11 @@ kiểm tra người nhận/quyền vẫn do RecipientDirectory đảm nhiệm.
 V13 thêm `lark_enabled` vào bảng rule. Các cột `thresholds` và `cooldown_seconds` cũ được
 giữ nguyên dữ liệu, không đưa vào API cấu hình mới. Các API test connection, gửi thử và
 provider adapter vẫn là phần chưa triển khai.
+
+## List response
+
+GET `/notification-settings/channels` and `/notification-settings/rules` use the shared
+`PaginationRequest` and return `ListEnvelope`: `object`, `url`, `data`, `pageInfo`.
+Use `pageMode=offset&page=1&limit=20` (maximum limit 100), or `pageMode=cursor&limit=20`.
+Continue cursor pages with `pageMode=cursor&cursor=<nextCursor>`. Cursor keys use the
+channel/type code, including default rules without database IDs. Read items from `data`.

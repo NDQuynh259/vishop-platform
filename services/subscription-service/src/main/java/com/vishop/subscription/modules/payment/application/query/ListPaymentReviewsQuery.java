@@ -5,5 +5,5 @@ import com.vishop.subscription.shared.application.dto.AuthenticatedActor;
 import io.github.coreplatform.common.domain.cqrs.Query;
 import io.github.coreplatform.common.domain.pagination.*;
 
-public record ListPaymentReviewsQuery(AuthenticatedActor actor, OffsetPagination pagination)
+public record ListPaymentReviewsQuery(AuthenticatedActor actor, ListPagination pagination)
     implements Query<PagedResult<PaymentReviewView>> {}

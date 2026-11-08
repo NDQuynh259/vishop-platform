@@ -14,7 +14,6 @@ import com.vishop.subscription.modules.subscription.application.query.ListPrices
 import com.vishop.subscription.modules.subscription.presentation.rest.dto.CreateCheckoutRequest;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.*;
-import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.*;
 import jakarta.validation.Valid;
@@ -26,7 +25,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping(ApiPaths.V1 + "/billing")
+@RequestMapping(ApiPaths.V1 + "/subscriptions")
 public class SubscriptionController {
   private final CommandBus commands;
   private final QueryBus queries;
@@ -39,8 +38,14 @@ public class SubscriptionController {
   @GetMapping("/plans")
   @PreAuthorize(
       "@subscriptionAuthorization.hasTenant(authentication) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Billing).VIEW)")
-  public List<PriceView> plans(@AuthenticationPrincipal GatewayPrincipal actor) {
-    return queries.dispatch(new ListPricesQuery(SubscriptionAuthorization.actor(actor)));
+  public ListEnvelope<PriceView> plans(
+      @AuthenticationPrincipal GatewayPrincipal actor,
+      @ParameterObject PaginationRequest pagination) {
+    return ListEnvelope.from(
+        ApiPaths.V1 + "/subscriptions/plans",
+        queries.dispatch(
+            new ListPricesQuery(
+                SubscriptionAuthorization.actor(actor), pagination.toPagination())));
   }
 
   @GetMapping("/subscription")
@@ -81,14 +86,11 @@ public class SubscriptionController {
   public ListEnvelope<OrderView> orders(
       @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
-    if (pagination.hasCursor())
-      throw new BadRequestException(
-          "Billing order history currently supports page/limit pagination");
     return ListEnvelope.from(
-        ApiPaths.V1 + "/billing/orders",
+        ApiPaths.V1 + "/subscriptions/orders",
         queries.dispatch(
             new ListOrdersQuery(
-                SubscriptionAuthorization.actor(actor), pagination.toOffsetPagination())));
+                SubscriptionAuthorization.actor(actor), pagination.toPagination())));
   }
 
   @PostMapping("/orders/{id}/cancel")

@@ -19,13 +19,15 @@ import io.github.coreplatform.common.domain.exception.BusinessRuleViolationExcep
 import io.github.coreplatform.common.security.annotation.RequirePermission;
 import io.github.coreplatform.common.security.constants.CommonPermissions.Notification;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
+import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import java.net.URI;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -66,8 +68,14 @@ public class NotificationSettingController {
 
   @GetMapping("/channels")
   @RequirePermission(Notification.SETTINGS_VIEW)
-  public List<ChannelView> channels(@AuthenticationPrincipal GatewayPrincipal actor) {
-    return queries.dispatch(new ListChannelsQuery(actor.tenantId()));
+  public ListEnvelope<ChannelView> channels(
+      @AuthenticationPrincipal GatewayPrincipal actor,
+      @ParameterObject PaginationRequest pagination) {
+    return ListEnvelope.from(
+        ApiPaths.V1 + "/notification-settings/channels",
+        queries.dispatch(new ListChannelsQuery(actor.tenantId())),
+        pagination,
+        channel -> channel.channel().name());
   }
 
   @GetMapping("/channels/{channelId}")

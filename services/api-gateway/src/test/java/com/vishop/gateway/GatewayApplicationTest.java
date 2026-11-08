@@ -185,8 +185,9 @@ class GatewayApplicationTest {
   @Autowired org.springframework.cloud.gateway.route.RouteLocator routes;
 
   @Test
-  void renamedSubscriptionRuntimeKeepsBillingApiRoutesAndExposesNewDocs() {
-    for (String path : java.util.List.of("/api/v1/billing/orders", "/api/v1/cms/billing/prices")) {
+  void subscriptionRuntimeRoutesSubscriptionAndPaymentApisAndExposesDocs() {
+    for (String path :
+        java.util.List.of("/api/v1/subscriptions/orders", "/api/v1/cms/billing/prices")) {
       var exchange =
           org.springframework.mock.web.server.MockServerWebExchange.from(
               org.springframework.mock.http.server.reactive.MockServerHttpRequest.get(path));

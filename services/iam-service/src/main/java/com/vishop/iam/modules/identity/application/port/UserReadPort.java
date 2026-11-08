@@ -1,8 +1,9 @@
 package com.vishop.iam.modules.identity.application.port;
 
 import com.vishop.iam.modules.identity.application.dto.UserView;
-import java.util.List;
+import io.github.coreplatform.common.domain.pagination.ListPagination;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
 
 public interface UserReadPort {
-  List<UserView> users(int limit, int offset);
+  PagedResult<UserView> users(ListPagination pagination);
 }

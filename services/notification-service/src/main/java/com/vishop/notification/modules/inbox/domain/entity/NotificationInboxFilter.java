@@ -14,4 +14,5 @@ public class NotificationInboxFilter {
   Instant beforeCreatedAt;
   UUID beforeId;
   int limit;
+  int offset;
 }

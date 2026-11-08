@@ -1,7 +1,8 @@
 package com.vishop.iam.modules.tenant.domain.port;
 
 import com.vishop.iam.modules.tenant.domain.entity.Role;
-import java.util.List;
+import io.github.coreplatform.common.domain.pagination.ListPagination;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
 import java.util.Set;
 import java.util.UUID;
 
@@ -10,7 +11,7 @@ public interface RoleRepositoryPort {
 
   UUID ownerRole(UUID tenant);
 
-  List<Role> roles(UUID tenant);
+  PagedResult<Role> roles(UUID tenant, ListPagination pagination);
 
   UUID createRole(UUID tenant, String name, Set<String> permissions);
 

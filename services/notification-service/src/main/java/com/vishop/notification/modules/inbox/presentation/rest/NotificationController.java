@@ -18,9 +18,11 @@ import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -37,7 +39,9 @@ public class NotificationController {
   @GetMapping
   public ListEnvelope<NotificationView> list(
       @AuthenticationPrincipal GatewayPrincipal actor,
-      @Valid @ModelAttribute NotificationInboxListReq request) {
+      @Valid @ModelAttribute NotificationInboxListReq request,
+      @ParameterObject PaginationRequest pagination) {
+    boolean cursorMode = pagination.isCursor();
     return ListEnvelope.from(
         ApiPaths.V1 + "/notifications",
         queries.dispatch(
@@ -48,8 +52,8 @@ public class NotificationController {
                     request.getSeverity(),
                     request.getRead(),
                     request.getShopId(),
-                    request.getLimit(),
-                    request.getCursor()))));
+                    cursorMode ? null : pagination.toOffsetPagination(),
+                    cursorMode ? pagination.toCursorParams() : null))));
   }
 
   @GetMapping("/unread-count")

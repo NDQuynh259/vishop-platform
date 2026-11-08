@@ -47,7 +47,8 @@ ghi tiền, cấp kỳ, cập nhật inbox và outbox rollback cùng nhau. QR đ
 Service không phụ thuộc source, repository hay database của IAM.
 `tenantId` và `actorId` là external reference.
 
-API `/api/v1/billing/**`, quyền `billing.*`, DB `vishop_billing` và topic
+API subscription dùng `/api/v1/subscriptions/**`; webhook dùng `/api/v1/billing/webhooks/sepay`,
+CMS dùng `/api/v1/cms/billing/**`. Quyền `billing.*`, DB `vishop_billing` và topic
 `vishop.billing.events` tiếp tục là các hợp đồng nghiệp vụ đang dùng. Producer là
 `subscription-service`. Schema mới dùng Flyway V2; V1 giữ nguyên checksum.
 V2 rename/backfill các bảng cũ, không đổi tên database.
@@ -93,12 +94,12 @@ See [authorization contract](../../docs/core-architecture/gateway-authorization.
 
 | Method/path | Quyền |
 | --- | --- |
-| `GET /api/v1/billing/plans` | `billing.view` |
-| `GET /api/v1/billing/subscription` | `billing.view` |
-| `POST /api/v1/billing/orders` | `billing.manage`, header `Idempotency-Key` |
-| `GET /api/v1/billing/orders/{id}` | `billing.view` |
-| `GET /api/v1/billing/orders?page=1&limit=20` | `billing.view`, phân trang hệ thống |
-| `POST /api/v1/billing/orders/{id}/cancel` | `billing.manage` |
+| `GET /api/v1/subscriptions/plans` | `billing.view` |
+| `GET /api/v1/subscriptions/subscription` | `billing.view` |
+| `POST /api/v1/subscriptions/orders` | `billing.manage`, header `Idempotency-Key` |
+| `GET /api/v1/subscriptions/orders/{id}` | `billing.view` |
+| `GET /api/v1/subscriptions/orders?page=1&limit=20` | `billing.view`, phân trang hệ thống |
+| `POST /api/v1/subscriptions/orders/{id}/cancel` | `billing.manage` |
 | `POST /api/v1/cms/billing/prices` | `PLATFORM_ADMIN` |
 | `PUT /api/v1/cms/billing/prices/{id}/availability` | `PLATFORM_ADMIN` |
 | `GET /api/v1/cms/billing/payments/review?page=1&limit=20` | `PLATFORM_ADMIN` |

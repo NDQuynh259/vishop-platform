@@ -13,7 +13,6 @@ import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
-import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.web.pagination.ListEnvelope;
 import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.Valid;
@@ -48,12 +47,8 @@ public class TenantController {
       @RequestParam(required = false) Instant createdFrom,
       @RequestParam(required = false) Instant createdTo,
       @RequestParam(defaultValue = "createdAt:asc") String sort,
-      @RequestParam(defaultValue = "offset") String paginationMode,
       @ParameterObject PaginationRequest pagination) {
-    if (!"offset".equalsIgnoreCase(paginationMode) && !"cursor".equalsIgnoreCase(paginationMode)) {
-      throw new BadRequestException("paginationMode must be offset or cursor");
-    }
-    boolean cursorMode = pagination.hasCursor() || "cursor".equalsIgnoreCase(paginationMode);
+    boolean cursorMode = pagination.isCursor();
     return ListEnvelope.from(
         ApiPaths.V1 + "/tenants",
         queries.dispatch(

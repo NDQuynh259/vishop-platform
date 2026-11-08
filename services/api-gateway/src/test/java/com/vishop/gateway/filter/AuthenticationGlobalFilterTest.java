@@ -114,7 +114,7 @@ class AuthenticationGlobalFilterTest {
     var exchange = run(MockServerHttpRequest.get("/api/v1/billing/webhooks/sepay").build());
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     verify(chain, never()).filter(any());
-    var checkout = run(MockServerHttpRequest.post("/api/v1/billing/orders").build());
+    var checkout = run(MockServerHttpRequest.post("/api/v1/subscriptions/orders").build());
     assertThat(checkout.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     verify(chain, never()).filter(any());
   }

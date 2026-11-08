@@ -15,10 +15,12 @@ import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
+import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
-import java.util.List;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -61,9 +63,13 @@ public class TenantAccessController {
   @GetMapping("/{id}/roles")
   @PreAuthorize(
       "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW)")
-  public List<RoleResponseDto> roles(
-      @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
-    return queries.dispatch(new ListTenantRolesQuery(actor, id));
+  public ListEnvelope<RoleResponseDto> roles(
+      @AuthenticationPrincipal AuthenticatedUser actor,
+      @PathVariable UUID id,
+      @ParameterObject PaginationRequest pagination) {
+    return ListEnvelope.from(
+        ApiPaths.V1 + "/tenants/" + id + "/roles",
+        queries.dispatch(new ListTenantRolesQuery(actor, id, pagination.toPagination())));
   }
 
   @PostMapping("/{id}/roles")

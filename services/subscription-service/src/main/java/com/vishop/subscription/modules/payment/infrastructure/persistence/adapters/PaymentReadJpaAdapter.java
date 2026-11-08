@@ -1,66 +1,51 @@
 package com.vishop.subscription.modules.payment.infrastructure.persistence.adapters;
 
+import com.vishop.subscription.modules.payment.application.dto.*;
 import com.vishop.subscription.modules.payment.application.port.PaymentReadPort;
-import com.vishop.subscription.modules.payment.infrastructure.persistence.repositories.*;
-import io.github.coreplatform.common.domain.exception.BadRequestException;
+import com.vishop.subscription.modules.payment.infrastructure.persistence.entities.*;
 import io.github.coreplatform.common.domain.pagination.*;
-import org.springframework.data.domain.*;
+import io.github.coreplatform.common.persistence.pagination.JpaListPagination;
+import jakarta.persistence.EntityManager;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class PaymentReadJpaAdapter implements PaymentReadPort {
-  private final SpringDataPaymentTransactionRepository payments;
-  private final SpringDataInboxRepository inbox;
+  private final EntityManager entityManager;
 
-  public PaymentReadJpaAdapter(
-      SpringDataPaymentTransactionRepository payments, SpringDataInboxRepository inbox) {
-    this.payments = payments;
-    this.inbox = inbox;
+  public PaymentReadJpaAdapter(EntityManager entityManager) {
+    this.entityManager = entityManager;
   }
 
-  public PagedResult<com.vishop.subscription.modules.payment.application.dto.PaymentReviewView>
-      reviewPayments(OffsetPagination p) {
-    if (p.offset() > Integer.MAX_VALUE)
-      throw new BadRequestException("Pagination offset is too large");
-    var page =
-        payments.findByStatus(
-            "REVIEW", PageRequest.of(p.pageIndex(), p.limit(), Sort.by("createdAt").descending()));
-    return PagedResult.ofOffset(
-        page.stream()
-            .map(
-                e ->
-                    new com.vishop.subscription.modules.payment.application.dto.PaymentReviewView(
-                        e.getProviderTransactionId(),
-                        e.getId(),
-                        e.getAllocatedVnd(),
-                        e.getMatchedOrderId(),
-                        e.getBank(),
-                        e.getAmountVnd(),
-                        e.getStatus(),
-                        e.getReviewReason(),
-                        e.getOccurredAt()))
-            .toList(),
-        p.page(),
-        p.limit(),
-        page.getTotalElements());
+  public PagedResult<PaymentReviewView> reviewPayments(ListPagination pagination) {
+    return JpaListPagination.find(
+        entityManager,
+        PaymentTransactionJpaEntity.class,
+        (root, query, cb) -> cb.equal(root.get("status"), "REVIEW"),
+        Sort.by(Sort.Direction.DESC, "createdAt", "id"),
+        pagination,
+        "payment-review",
+        e ->
+            new PaymentReviewView(
+                e.getProviderTransactionId(),
+                e.getId(),
+                e.getAllocatedVnd(),
+                e.getMatchedOrderId(),
+                e.getBank(),
+                e.getAmountVnd(),
+                e.getStatus(),
+                e.getReviewReason(),
+                e.getOccurredAt()));
   }
 
-  public PagedResult<com.vishop.subscription.modules.payment.application.dto.InboxReviewView>
-      reviewWebhooks(OffsetPagination p) {
-    if (p.offset() > Integer.MAX_VALUE)
-      throw new BadRequestException("Pagination offset is too large");
-    var page =
-        inbox.findByStatus(
-            "REVIEW", PageRequest.of(p.pageIndex(), p.limit(), Sort.by("receivedAt").descending()));
-    return PagedResult.ofOffset(
-        page.stream()
-            .map(
-                e ->
-                    new com.vishop.subscription.modules.payment.application.dto.InboxReviewView(
-                        e.getId(), e.getStatus(), e.getReviewReason(), e.getReceivedAt()))
-            .toList(),
-        p.page(),
-        p.limit(),
-        page.getTotalElements());
+  public PagedResult<InboxReviewView> reviewWebhooks(ListPagination pagination) {
+    return JpaListPagination.find(
+        entityManager,
+        SePayInboxJpaEntity.class,
+        (root, query, cb) -> cb.equal(root.get("status"), "REVIEW"),
+        Sort.by(Sort.Direction.DESC, "receivedAt", "id"),
+        pagination,
+        "webhook-review",
+        e -> new InboxReviewView(e.getId(), e.getStatus(), e.getReviewReason(), e.getReceivedAt()));
   }
 }

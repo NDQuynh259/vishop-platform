@@ -5,5 +5,5 @@ import com.vishop.subscription.shared.application.dto.AuthenticatedActor;
 import io.github.coreplatform.common.domain.cqrs.Query;
 import io.github.coreplatform.common.domain.pagination.*;
 
-public record ListWebhookReviewsQuery(AuthenticatedActor actor, OffsetPagination pagination)
+public record ListWebhookReviewsQuery(AuthenticatedActor actor, ListPagination pagination)
     implements Query<PagedResult<InboxReviewView>> {}

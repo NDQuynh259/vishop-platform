@@ -8,19 +8,19 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "notification_recipients")
-@IdClass(NotificationRecipientId.class)
 @Getter
 @NoArgsConstructor
 public class NotificationRecipientJpaEntity {
   @Id
+  @Column(nullable = false, updatable = false)
+  private UUID id;
+
   @Column(name = "tenant_id", nullable = false, updatable = false)
   private UUID tenantId;
 
-  @Id
   @Column(name = "notification_id", nullable = false, updatable = false)
   private UUID notificationId;
 
-  @Id
   @Column(name = "user_id", nullable = false, updatable = false)
   private UUID userId;
 

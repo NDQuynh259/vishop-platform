@@ -19,6 +19,8 @@ import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.domain.exception.BusinessRuleViolationException;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
+import io.github.coreplatform.common.domain.pagination.CursorParams;
+import io.github.coreplatform.common.domain.pagination.OffsetPagination;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.exception.GlobalExceptionHandler;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
@@ -128,7 +130,7 @@ class NotificationInboxPersistenceTest {
   }
 
   InboxFilter filter(int limit, String cursor) {
-    return new InboxFilter(null, null, null, null, limit, cursor);
+    return new InboxFilter(null, null, null, null, null, CursorParams.of(cursor, limit));
   }
 
   NotificationMessage message(String event, String permission, UUID shopId) {
@@ -156,6 +158,12 @@ class NotificationInboxPersistenceTest {
   void createPersistsPayloadAndIndependentRecipientStates() {
     UUID id = create("shared", "inventory.view", null, user, other);
     assertThat(id.version()).isEqualTo(7);
+    var recipientIds =
+        jdbc.queryForList(
+            "SELECT id FROM notification_recipients WHERE notification_id=?", UUID.class, id);
+    assertThat(recipientIds).hasSize(2).doesNotHaveDuplicates();
+    assertThat(recipientIds)
+        .allSatisfy(recipientId -> assertThat(recipientId.version()).isEqualTo(7));
     assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE id=?", Long.class, id))
         .isEqualTo(1);
     assertThat(
@@ -225,7 +233,10 @@ class NotificationInboxPersistenceTest {
     when(shops.allowedShops(tenant, user)).thenReturn(Set.of(shop));
     assertThat(inbox.getById(a, scoped).getShopId()).isEqualTo(shop);
     assertThat(inbox.unreadCount(a).getCount()).isEqualTo(2);
-    assertThat(inbox.list(a, new InboxFilter(null, null, null, shop, 20, null)).items())
+    assertThat(
+            inbox
+                .list(a, new InboxFilter(null, null, null, shop, null, CursorParams.of(null, 20)))
+                .items())
         .extracting(NotificationView::getId)
         .containsExactly(scoped);
   }
@@ -292,11 +303,81 @@ class NotificationInboxPersistenceTest {
                         NotificationMessage.Severity.WARNING,
                         false,
                         null,
-                        20,
-                        null))
+                        null,
+                        CursorParams.of(null, 20)))
                 .items())
         .hasSize(2);
     assertThatThrownBy(() -> inbox.list(a, filter(20, "invalid-cursor")))
+        .isInstanceOf(io.github.coreplatform.common.domain.exception.BadRequestException.class);
+  }
+
+  @Test
+  void offsetPaginationCountsOnlyMatchingVisibleRecipientsAndSupportsEmptyPages() {
+    var a = actor(user, "inventory.view");
+    UUID first = create("offset-first", "inventory.view", null, user);
+    clock.at = NOW.plusSeconds(1);
+    UUID second = create("offset-second", "inventory.view", null, user);
+    clock.at = NOW.plusSeconds(2);
+    UUID latest = create("offset-latest", "inventory.view", null, user);
+    create("offset-other-user", "inventory.view", null, other);
+    create("offset-private", "finance.settlement.view", null, user);
+    create("offset-shop", "inventory.view", UUID.randomUUID(), user);
+    UUID hidden = create("offset-hidden", "inventory.view", null, user);
+    inbox.archive(a, hidden);
+    var foreign =
+        new NotificationMessage(
+            UUID.randomUUID(),
+            "offset-foreign",
+            "STOCK_LOW",
+            "SKU",
+            "foreign",
+            "inventory.view",
+            null,
+            NotificationMessage.Severity.WARNING,
+            "Other tenant",
+            "Check",
+            null,
+            NOW);
+    inbox.create(foreign, Set.of(user));
+    var page1 =
+        inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(1, 2), null));
+    assertThat(page1.items()).extracting(NotificationView::getId).containsExactly(latest, second);
+    assertThat(page1.total()).isEqualTo(3);
+    assertThat(page1.totalPages()).isEqualTo(2);
+    assertThat(page1.hasNextPage()).isTrue();
+    assertThat(page1.nextCursor()).isNull();
+    var page2 =
+        inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(2, 2), null));
+    assertThat(page2.items()).extracting(NotificationView::getId).containsExactly(first);
+    assertThat(page2.hasNextPage()).isFalse();
+    var empty =
+        inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(3, 2), null));
+    assertThat(empty.items()).isEmpty();
+    assertThat(empty.total()).isEqualTo(3);
+    inbox.markRead(a, latest);
+    var unread =
+        inbox.list(
+            a,
+            new InboxFilter(
+                NotificationTypeCode.STOCK_LOW,
+                NotificationMessage.Severity.WARNING,
+                false,
+                null,
+                OffsetPagination.of(1, 20),
+                null));
+    assertThat(unread.total()).isEqualTo(2);
+    assertThat(unread.items()).extracting(NotificationView::getId).containsExactly(second, first);
+    var denied =
+        inbox.list(
+            actor(user), new InboxFilter(null, null, null, null, OffsetPagination.of(1, 20), null));
+    assertThat(denied.total()).isZero();
+    assertThat(denied.items()).isEmpty();
+    assertThatThrownBy(
+            () ->
+                inbox.list(
+                    a,
+                    new InboxFilter(
+                        null, null, null, null, OffsetPagination.of(Integer.MAX_VALUE, 100), null)))
         .isInstanceOf(io.github.coreplatform.common.domain.exception.BadRequestException.class);
   }
 
@@ -379,8 +460,24 @@ class NotificationInboxPersistenceTest {
             id, message("rollback", "inventory.view", null), NOW);
     var recipient =
         new com.vishop.notification.modules.inbox.domain.entity.NotificationRecipient(
-            tenant, id, user, NOW, null, null);
-    assertThatThrownBy(() -> repository.append(notification, List.of(recipient, recipient)))
+            io.github.coreplatform.common.domain.UuidV7.nextId(),
+            tenant,
+            id,
+            user,
+            NOW,
+            null,
+            null);
+    var duplicateRecipient =
+        new com.vishop.notification.modules.inbox.domain.entity.NotificationRecipient(
+            io.github.coreplatform.common.domain.UuidV7.nextId(),
+            tenant,
+            id,
+            user,
+            NOW,
+            null,
+            null);
+    assertThatThrownBy(
+            () -> repository.append(notification, List.of(recipient, duplicateRecipient)))
         .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE id=?", Long.class, id))
         .isZero();
@@ -445,7 +542,10 @@ class NotificationInboxPersistenceTest {
         .setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, List.of()));
     var mvc =
         MockMvcBuilders.standaloneSetup(new NotificationController(commands, queries))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
     String path = "/api/v1/notifications";

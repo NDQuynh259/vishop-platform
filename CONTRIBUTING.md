@@ -1,5 +1,28 @@
 # Contributing to Core Platform
 
+## List API contract
+
+All list endpoints use `PaginationRequest` and `ListEnvelope` from
+`libs/common-web/src/main/java/io/github/coreplatform/common/web/pagination`.
+Bind the request as an unannotated controller argument (optionally `@ParameterObject`),
+so the shared resolver handles `page`, `limit`, `cursor`, `pageMode` and validation.
+Return `object`, `url`, `data` and `pageInfo`; do not return a bare collection.
+Offset pages start at 1, default to 20 items and permit limits from 1 to 100.
+All list APIs support both modes. `pageMode=offset` (the default) selects page/limit;
+`pageMode=cursor` selects keyset pagination, including the first page without a token.
+Use `PaginationRequest.isCursor()` or `toPagination()` to select the mode. A cursor
+token alone never switches modes; clients send pageMode=cursor on every cursor request.
+
+Database-backed lists paginate at the read adapter, with matching access filters and
+deterministic ordering. Offset mode also counts matching rows; cursor mode fetches
+limit+1 rows and returns nextCursor without a count. `JpaListPagination` implements
+both modes with scoped sort-key cursors. Only bounded code catalogs may use
+`ListEnvelope.from(url, catalog, pagination, stableKey)` to page an existing list.
+
+The CMS user/tenant lists now use `page`/`limit` instead of raw `offset`/`limit`.
+Clients of formerly bare-array endpoints must read items from `data` and pagination
+metadata from `pageInfo`.
+
 ## Branch naming
 
 Use `<type>/<ticket-optional>-<short-description>` with lowercase kebab-case descriptions.

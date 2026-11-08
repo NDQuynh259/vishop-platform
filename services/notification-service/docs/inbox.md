@@ -2,7 +2,8 @@
 
 Module inbox ánh xạ hai bảng có sẵn: `notifications` chứa nội dung chung bất biến;
 `notification_recipients` chứa người nhận và trạng thái đọc/ẩn độc lập của mỗi user.
-Không sửa migration cũ hoặc thêm bảng cho phần này.
+V15 thêm cột `id` UUIDv7 làm khóa chính riêng cho recipient, giữ unique
+`(tenant_id, notification_id, user_id)` và trạng thái đọc/ẩn hiện có.
 
 ## API cá nhân
 
@@ -11,16 +12,29 @@ permissions lấy từ principal do gateway/filter tạo, không lấy từ body
 
 | Method | Endpoint | Kết quả |
 | --- | --- | --- |
-| GET | `/notifications` | List envelope, cursor, mặc định 20 mục, tối đa 100 |
+| GET | `/notifications` | List envelope, offset hoặc cursor, mặc định 20 mục, tối đa 100 |
 | GET | `/notifications/unread-count` | `{"count": 3}` |
 | GET | `/notifications/{notificationId}` | Nội dung và readAt của chính người nhận |
 | PATCH | `/notifications/{notificationId}/read` | Đọc idempotent, trả item và giữ readAt đầu tiên |
 | POST | `/notifications/read-all` | Đọc tới cutoff, trả `{"updatedCount": 3}` |
 | DELETE | `/notifications/{notificationId}` | 204, ẩn riêng recipient; gọi lại vẫn 204 |
 
-List hỗ trợ `type`, `severity`, `read`, `shopId`, `limit`, `cursor`. Quyền được áp dụng
+List hỗ trợ `type`, `severity`, `read`, `shopId`, `page`, `limit`, `cursor`, `pageMode`. Quyền được áp dụng
 trong DB trước khi phân trang. Thứ tự `created_at DESC, id DESC`; cursor giữ đủ microsecond
 để không bỏ sót thông báo được tạo trong cùng millisecond. GET không tự đánh dấu đã đọc.
+
+Dùng `PaginationRequest` chung của project: mặc định offset, page bắt đầu từ 1.
+`GET /notifications?page=2&limit=20` trả `pageInfo` gồm page/limit/total/totalPages/hasNextPage.
+Total chỉ đếm những mục đúng bộ lọc mà user hiện tại được phép xem.
+
+`GET /notifications?pageMode=cursor&limit=20` lấy trang cursor đầu tiên;
+trang tiếp theo dùng `GET /notifications?pageMode=cursor&cursor=<nextCursor>&limit=20`.
+Chỉ pageMode quyết định kiểu phân trang. pageMode=offset dùng page/limit và bỏ qua cursor.
+Cursor trả hasNextPage/nextCursor, không đếm total. Giữ nguyên bộ lọc khi chuyển trang.
+pageMode chỉ nhận offset/cursor. Không truyền limit dùng 20; không truyền page dùng 1
+khi dùng offset. Page phải từ 1 trở lên, limit phải trong 1–100; sai phạm vi trả 422
+cho cả offset và cursor. Tham số page/limit không phải số và cursor sai định dạng trả 400.
+Offset vượt giới hạn integer của JPA trả 400.
 
 Body đọc tất cả: `{"before":"2026-11-07T12:00:00.123456Z"}`. Cutoff không được ở tương lai;
 thông báo tạo sau cutoff không bị đánh dấu đọc.
@@ -55,5 +69,5 @@ không sửa notification chung hoặc recipient khác. Read-all chỉ tác đ�
 chưa đọc và nằm trước cutoff.
 
 `NotificationInboxModuleConfiguration` đăng ký entity, adapter, service và CQRS handler.
-Schema có sẵn từ V1/V5. Event consumer production, DispatchJournal/outbox toàn workflow,
+Schema có sẵn từ V1/V5 và khóa chính recipient riêng từ V15. Event consumer production, DispatchJournal/outbox toàn workflow,
 runtime HTTP/gateway, realtime và provider sender vẫn cần wiring/adapter tương ứng.

@@ -44,7 +44,7 @@ class NotificationSchemaTest {
     }
     String url = postgres.getJdbcUrl("postgres", name);
     flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(13);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(15);
     db = DriverManager.getConnection(url, "postgres", "postgres");
     execute(
         "INSERT INTO"
@@ -68,11 +68,13 @@ class NotificationSchemaTest {
   }
 
   @Test
-  void catalogTablesAreRemovedWhileLocalDataRelationshipsRemain() throws Exception {
+  void obsoleteSettingAndCatalogTablesAreRemovedWhileLocalRelationshipsRemain() throws Exception {
     assertThat(
             scalar(
                 "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND"
-                    + " table_name IN ('notification_features','notification_types')"))
+                    + " table_name IN ('notification_features','notification_types',"
+                    + "'notification_tenant_features','notification_user_preferences',"
+                    + "'notification_alert_rule_recipients')"))
         .isZero();
     UUID user = UUID.randomUUID();
     recipient(tenant, user);
@@ -128,33 +130,6 @@ class NotificationSchemaTest {
   }
 
   @Test
-  void personalSettingsAreUniqueAndIndependentByTenantUserAndType() throws Exception {
-    UUID user = UUID.randomUUID();
-    setting(tenant, user, "STOCK_LOW");
-    assertThat(
-            scalar(
-                "SELECT count(*) FROM notification_user_preferences WHERE enabled AND"
-                    + " in_app_enabled AND email_enabled AND version=0"))
-        .isEqualTo(1);
-    rejects("23505", () -> setting(tenant, user, "STOCK_LOW"));
-    setting(UUID.randomUUID(), user, "STOCK_LOW");
-    setting(tenant, UUID.randomUUID(), "STOCK_LOW");
-    setting(tenant, user, "SYNC_FAILED");
-    execute(
-        "UPDATE notification_user_preferences SET"
-            + " email_enabled=false,updated_at=clock_timestamp(),version=version+1 WHERE"
-            + " tenant_id=? AND user_id=? AND type='STOCK_LOW'",
-        tenant,
-        user);
-    assertThat(scalar("SELECT count(*) FROM notification_user_preferences WHERE email_enabled"))
-        .isEqualTo(3);
-    assertThat(scalar("SELECT count(*) FROM notification_user_preferences WHERE in_app_enabled"))
-        .isEqualTo(4);
-    rejects("23514", () -> setting(tenant, user, " "));
-    rejects("23514", () -> execute("UPDATE notification_user_preferences SET version=-1"));
-  }
-
-  @Test
   void nameMigrationBackfillsExistingRecordsAndEnforcesConstraints() throws Exception {
     String database = "setting_name_" + UUID.randomUUID().toString().replace("-", "");
     try (var connection = postgres.getPostgresDatabase().getConnection();
@@ -180,7 +155,7 @@ class NotificationSchemaTest {
                 .load()
                 .migrate()
                 .migrationsExecuted)
-        .isEqualTo(2);
+        .isEqualTo(4);
     try (var connection = DriverManager.getConnection(url, "postgres", "postgres");
         var statement = connection.createStatement();
         var result =
@@ -208,7 +183,7 @@ class NotificationSchemaTest {
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 8})
+  @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14})
   void upgradesPreviousVersionsWithoutChangingExistingNotificationData(int previousVersion)
       throws Exception {
     String name = "upgrade_" + UUID.randomUUID().toString().replace("-", "");
@@ -247,62 +222,91 @@ class NotificationSchemaTest {
           statement.executeUpdate(
               "INSERT INTO notification_types(code,feature_code,category,name) VALUES"
                   + " ('CUSTOM_LEGACY_TYPE','LEGACY','BUSINESS','Custom')");
-        if (previousVersion >= 8) {
-          try (var insert =
-              connection.prepareStatement(
-                  "INSERT INTO notification_tenant_features(id,tenant_id,feature_code,enabled)"
-                      + " VALUES (?,'00000000-0000-0000-0000-000000000002','INVENTORY',false)")) {
-            insert.setObject(1, UuidV7.nextId());
-            insert.executeUpdate();
-          }
-        } else
-          statement.executeUpdate(
-              "INSERT INTO notification_tenant_features(tenant_id,feature_code,enabled) VALUES"
-                  + " ('00000000-0000-0000-0000-000000000002','INVENTORY',false)");
+        if (previousVersion < 14) {
+          if (previousVersion >= 8) {
+            try (var insert =
+                connection.prepareStatement(
+                    "INSERT INTO notification_tenant_features(id,tenant_id,feature_code,enabled)"
+                        + " VALUES (?,'00000000-0000-0000-0000-000000000002','INVENTORY',false)")) {
+              insert.setObject(1, UuidV7.nextId());
+              insert.executeUpdate();
+            }
+          } else
+            statement.executeUpdate(
+                "INSERT INTO notification_tenant_features(tenant_id,feature_code,enabled) VALUES"
+                    + " ('00000000-0000-0000-0000-000000000002','INVENTORY',false)");
+        }
         String channelTable =
             previousVersion >= 4 ? "notification_settings" : "notification_tenant_channels";
-        statement.executeUpdate(
-            "INSERT INTO "
-                + channelTable
-                + "(tenant_id,channel,enabled,connection_ref) VALUES"
-                + " ('00000000-0000-0000-0000-000000000002','EMAIL',true,'existing-email-provider')");
+        if (previousVersion >= 9) {
+          String configColumn = previousVersion >= 10 ? "connection_config" : "connection_ref";
+          String configValue =
+              previousVersion >= 10
+                  ? "'{\"connectionRef\":\"existing-email-provider\"}'"
+                  : "'existing-email-provider'";
+          statement.executeUpdate(
+              "INSERT INTO notification_settings(id,tenant_id,channel,enabled,"
+                  + configColumn
+                  + ") VALUES ('00000000-0000-7000-8000-000000000006',"
+                  + "'00000000-0000-0000-0000-000000000002','EMAIL',true,"
+                  + configValue
+                  + ")");
+        } else {
+          statement.executeUpdate(
+              "INSERT INTO "
+                  + channelTable
+                  + "(tenant_id,channel,enabled,connection_ref) VALUES"
+                  + " ('00000000-0000-0000-0000-000000000002','EMAIL',true,'existing-email-provider')");
+        }
       }
       statement.executeUpdate(
           "INSERT INTO notification_alert_rules(id,tenant_id,type,email_enabled) VALUES"
               + " ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','CUSTOM_LEGACY_TYPE',true)");
-      if (previousVersion >= 2) {
-        String preferencesTable =
-            previousVersion >= 4 ? "notification_user_preferences" : "notification_settings";
+      if (previousVersion < 14) {
         statement.executeUpdate(
-            "INSERT INTO "
-                + preferencesTable
-                + "(id,tenant_id,user_id,type,email_enabled) VALUES"
-                + " ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000005','STOCK_LOW',false)");
-      }
-      var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(13 - previousVersion);
-      latest.validate();
-      if (previousVersion >= 3) {
-        try (var result =
-            statement.executeQuery(
-                "SELECT id,enabled,created_at,version FROM notification_tenant_features WHERE"
-                    + " tenant_id='00000000-0000-0000-0000-000000000002' AND"
-                    + " feature_code='INVENTORY'")) {
-          assertThat(result.next()).isTrue();
-          UUID id = result.getObject("id", UUID.class);
-          assertThat(id.version()).isEqualTo(7);
-          assertThat(id.variant()).isEqualTo(2);
-          if (previousVersion < 8)
-            assertThat(id.getMostSignificantBits() >>> 16)
-                .isEqualTo(result.getTimestamp("created_at").toInstant().toEpochMilli());
-          assertThat(result.getBoolean("enabled")).isFalse();
-          assertThat(result.getLong("version")).isZero();
+            "INSERT INTO notification_alert_rule_recipients(tenant_id,rule_id,user_id) VALUES"
+                + " ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000005')");
+        if (previousVersion >= 2) {
+          String preferencesTable =
+              previousVersion >= 4 ? "notification_user_preferences" : "notification_settings";
+          statement.executeUpdate(
+              "INSERT INTO "
+                  + preferencesTable
+                  + "(id,tenant_id,user_id,type,email_enabled) VALUES"
+                  + " ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000005','STOCK_LOW',false)");
         }
       }
+      statement.executeUpdate(
+          "INSERT INTO notification_recipients(tenant_id,notification_id,user_id,created_at,read_at)"
+              + " VALUES ('00000000-0000-0000-0000-000000000002',"
+              + "'00000000-0000-0000-0000-000000000001',"
+              + "'00000000-0000-0000-0000-000000000005',"
+              + "'2026-01-01 00:00:00Z','2026-01-02 00:00:00Z')");
+      var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(15 - previousVersion);
+      latest.validate();
+      try (var result =
+          statement.executeQuery(
+              "SELECT id,created_at,read_at FROM notification_recipients WHERE "
+                  + "tenant_id='00000000-0000-0000-0000-000000000002' AND "
+                  + "notification_id='00000000-0000-0000-0000-000000000001' AND "
+                  + "user_id='00000000-0000-0000-0000-000000000005'")) {
+        assertThat(result.next()).isTrue();
+        UUID recipientId = result.getObject("id", UUID.class);
+        assertThat(recipientId.version()).isEqualTo(7);
+        assertThat(recipientId.variant()).isEqualTo(2);
+        assertThat(recipientId.getMostSignificantBits() >>> 16)
+            .isEqualTo(result.getTimestamp("created_at").toInstant().toEpochMilli());
+        assertThat(result.getTimestamp("read_at").toInstant())
+            .isEqualTo(java.time.Instant.parse("2026-01-02T00:00:00Z"));
+      }
+
       try (var result =
           statement.executeQuery(
               "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND"
-                  + " table_name IN ('notification_features','notification_types')")) {
+                  + " table_name IN ('notification_features','notification_types',"
+                  + "'notification_tenant_features','notification_user_preferences',"
+                  + "'notification_alert_rule_recipients')")) {
         result.next();
         assertThat(result.getLong(1)).isZero();
       }
@@ -316,11 +320,6 @@ class NotificationSchemaTest {
       try (var result = statement.executeQuery("SELECT title FROM notifications")) {
         assertThat(result.next()).isTrue();
         assertThat(result.getString(1)).isEqualTo("Low stock");
-      }
-      try (var result =
-          statement.executeQuery("SELECT count(*) FROM notification_user_preferences")) {
-        result.next();
-        assertThat(result.getLong(1)).isEqualTo(previousVersion >= 2 ? 1 : 0);
       }
       try (var result =
           statement.executeQuery(
@@ -337,8 +336,10 @@ class NotificationSchemaTest {
         var id = result.getObject("id", UUID.class);
         assertThat(id.version()).isEqualTo(7);
         assertThat(id.variant()).isEqualTo(2);
-        assertThat(id.getMostSignificantBits() >>> 16)
-            .isEqualTo(result.getTimestamp("created_at").toInstant().toEpochMilli());
+        if (previousVersion < 9)
+          assertThat(id.getMostSignificantBits() >>> 16)
+              .isEqualTo(result.getTimestamp("created_at").toInstant().toEpochMilli());
+        else assertThat(id).isEqualTo(UUID.fromString("00000000-0000-7000-8000-000000000006"));
         if (previousVersion >= 3)
           assertThat(result.getString("connection_ref")).isEqualTo("existing-email-provider");
       }
@@ -411,24 +412,11 @@ class NotificationSchemaTest {
                 config));
   }
 
-  private void setting(UUID tenantId, UUID user, String type) throws SQLException {
-    execute(
-        "INSERT INTO notification_user_preferences(id,tenant_id,user_id,type) VALUES (?,?,?,?)",
-        UUID.randomUUID(),
-        tenantId,
-        user,
-        type);
-  }
-
   @Test
   void legacyCodesRemainReadableButBlankBusinessCodesAreRejected() throws Exception {
-    setting(tenant, UUID.randomUUID(), "CUSTOM_LEGACY_TYPE");
-    assertThat(
-            scalar(
-                "SELECT count(*) FROM notification_user_preferences WHERE"
-                    + " type='CUSTOM_LEGACY_TYPE'"))
+    execute("UPDATE notifications SET type='CUSTOM_LEGACY_TYPE'");
+    assertThat(scalar("SELECT count(*) FROM notifications WHERE type='CUSTOM_LEGACY_TYPE'"))
         .isEqualTo(1);
-    rejects("23514", () -> setting(tenant, UUID.randomUUID(), " "));
     rejects("23514", () -> execute("UPDATE notifications SET type=' '"));
   }
 
@@ -501,9 +489,6 @@ class NotificationSchemaTest {
             execute(
                 "UPDATE notification_settings SET connection_config='{\"telegramChatId\":\"123\"}'"
                     + " WHERE channel='EMAIL'"));
-    setting(tenant, UUID.randomUUID(), "STOCK_LOW");
-    assertThat(scalar("SELECT count(*) FROM notification_user_preferences WHERE telegram_enabled"))
-        .isEqualTo(1);
     execute(
         "INSERT INTO notification_alert_rules(id,tenant_id,type,telegram_enabled) VALUES"
             + " (?,?,'STOCK_LOW',true)",
@@ -518,15 +503,8 @@ class NotificationSchemaTest {
   }
 
   @Test
-  void tenantsChooseFeaturesAndChannelsIndependently() throws Exception {
+  void tenantsChooseChannelsIndependently() throws Exception {
     UUID otherTenant = UUID.randomUUID();
-    execute(
-        "INSERT INTO notification_tenant_features(id,tenant_id,feature_code,enabled) VALUES"
-            + " (?,?,'INVENTORY',false),(?,?,'INVENTORY',true)",
-        UuidV7.nextId(),
-        tenant,
-        UuidV7.nextId(),
-        otherTenant);
     execute(
         "INSERT INTO notification_settings(id,tenant_id,channel,enabled,connection_config) VALUES"
             + " (?,?,'EMAIL',true,'{\"connectionRef\":\"email-connection-1\"}'),(?,?,'EMAIL',false,'{}'),(?,?,'IN_APP',true,'{}')",
@@ -536,16 +514,6 @@ class NotificationSchemaTest {
         otherTenant,
         UuidV7.nextId(),
         tenant);
-    assertThat(
-            scalar(
-                "SELECT count(*) FROM notification_tenant_features WHERE tenant_id=? AND enabled",
-                tenant))
-        .isZero();
-    assertThat(
-            scalar(
-                "SELECT count(*) FROM notification_tenant_features WHERE tenant_id=? AND enabled",
-                otherTenant))
-        .isEqualTo(1);
     assertThat(
             scalar(
                 "SELECT count(*) FROM notification_settings WHERE tenant_id=? AND enabled", tenant))
@@ -560,14 +528,6 @@ class NotificationSchemaTest {
         () ->
             execute(
                 "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
-                UuidV7.nextId(),
-                tenant));
-    rejects(
-        "23514",
-        () ->
-            execute(
-                "INSERT INTO notification_tenant_features(id,tenant_id,feature_code) VALUES (?,?,'"
-                    + " ')",
                 UuidV7.nextId(),
                 tenant));
     rejects(
@@ -617,21 +577,18 @@ class NotificationSchemaTest {
                     + " type='STOCK_LOW' AND enabled",
                 tenant))
         .isEqualTo(1);
-    setting(tenant, UUID.randomUUID(), "SYSTEM_MAINTENANCE");
-    execute(
-        "UPDATE notification_user_preferences SET in_app_enabled=false WHERE tenant_id=? AND"
-            + " type='SYSTEM_MAINTENANCE'",
-        tenant);
-    assertThat(
-            scalar(
-                "SELECT count(*) FROM notification_user_preferences WHERE tenant_id=? AND"
-                    + " in_app_enabled",
-                tenant))
-        .isZero();
   }
 
   @Test
   void readStateIsIndependentPerUserAndTenant() throws Exception {
+    rejects(
+        "23502",
+        () ->
+            execute(
+                "INSERT INTO notification_recipients(tenant_id,notification_id,user_id) VALUES (?,?,?)",
+                tenant,
+                notification,
+                UUID.randomUUID()));
     UUID first = UUID.randomUUID();
     UUID second = UUID.randomUUID();
     recipient(tenant, first);
@@ -662,26 +619,12 @@ class NotificationSchemaTest {
   }
 
   @Test
-  void rulesRejectCrossTenantRecipientsAndInvalidThresholds() throws Exception {
+  void rulesRejectInvalidThresholds() throws Exception {
     UUID rule = UUID.randomUUID();
     execute(
         "INSERT INTO notification_alert_rules(id,tenant_id,type) VALUES (?,?,'STOCK_LOW')",
         rule,
         tenant);
-    execute(
-        "INSERT INTO notification_alert_rule_recipients(tenant_id,rule_id,user_id) VALUES (?,?,?)",
-        tenant,
-        rule,
-        UUID.randomUUID());
-    rejects(
-        "23503",
-        () ->
-            execute(
-                "INSERT INTO notification_alert_rule_recipients(tenant_id,rule_id,user_id) VALUES"
-                    + " (?,?,?)",
-                UUID.randomUUID(),
-                rule,
-                UUID.randomUUID()));
     rejects("23514", () -> execute("UPDATE notification_alert_rules SET thresholds='[]'"));
     rejects("23514", () -> execute("UPDATE notification_alert_rules SET cooldown_seconds=10"));
   }
@@ -782,7 +725,8 @@ class NotificationSchemaTest {
 
   private void recipient(UUID tenantId, UUID user) throws SQLException {
     execute(
-        "INSERT INTO notification_recipients(tenant_id,notification_id,user_id) VALUES (?,?,?)",
+        "INSERT INTO notification_recipients(id,tenant_id,notification_id,user_id) VALUES (?,?,?,?)",
+        UuidV7.nextId(),
         tenantId,
         notification,
         user);

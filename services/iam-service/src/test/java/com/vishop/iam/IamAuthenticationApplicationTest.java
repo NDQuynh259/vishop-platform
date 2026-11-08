@@ -218,6 +218,110 @@ class IamAuthenticationApplicationTest {
             .andReturn());
   }
 
+  private String cursorList(Credentials actor, String path, int expected) throws Exception {
+    String cursor = null, firstCursor = null;
+    var ids = new HashSet<String>();
+    int pages = 0;
+    do {
+      var request =
+          protectedRequest(actor, "GET", path).param("pageMode", "cursor").param("limit", "1");
+      if (cursor != null) request.param("cursor", cursor);
+      var response = http.perform(request).andExpect(status().isOk()).andReturn();
+      var body = json.readTree(response.getResponse().getContentAsString());
+      assertThat(body.path("pageInfo").has("total")).isFalse();
+      for (var item : body.path("data")) assertThat(ids.add(item.path("id").asText())).isTrue();
+      cursor =
+          body.path("pageInfo").path("nextCursor").isTextual()
+              ? body.path("pageInfo").path("nextCursor").asText()
+              : null;
+      if (pages++ == 0) firstCursor = cursor;
+      assertThat(pages).isLessThan(expected + 2);
+    } while (cursor != null);
+    assertThat(ids).hasSize(expected);
+    return firstCursor;
+  }
+
+  @Test
+  void cmsAndTenantListsUseSharedPaginationAndKeepTenantScope() throws Exception {
+    var original = register("admin-list@example.com");
+    var other = register("other-list@example.com");
+    UUID first = tenant(original, "first-list");
+    UUID second = tenant(original, "second-list");
+    db.update("UPDATE users SET system_role='PLATFORM_ADMIN' WHERE id=?", original.userId());
+    var admin = login("admin-list@example.com");
+    http.perform(
+            protectedRequest(admin, "GET", "/api/v1/cms/users")
+                .param("page", "2")
+                .param("limit", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.object").value("list"))
+        .andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.data[0].id").value(original.userId().toString()))
+        .andExpect(jsonPath("$.pageInfo.total").value(2))
+        .andExpect(jsonPath("$.pageInfo.totalPages").value(2));
+    http.perform(protectedRequest(admin, "GET", "/api/v1/cms/tenants").param("limit", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.pageInfo.total").value(2));
+    UUID role =
+        db.queryForObject(
+            "SELECT id FROM roles WHERE tenant_id=? AND builtin_key='WAREHOUSE'",
+            UUID.class,
+            first);
+    db.update(
+        "INSERT INTO tenant_members(id,tenant_id,user_id,role_id) VALUES (?,?,?,?)",
+        UUID.randomUUID(),
+        first,
+        other.userId(),
+        role);
+    var owner = select(admin, first);
+    http.perform(
+            protectedRequest(owner, "GET", "/api/v1/tenants/" + first + "/members")
+                .param("page", "2")
+                .param("limit", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].userId").value(other.userId().toString()))
+        .andExpect(jsonPath("$.pageInfo.total").value(2));
+    long totalRoles =
+        db.queryForObject("SELECT count(*) FROM roles WHERE tenant_id=?", Long.class, first);
+    http.perform(
+            protectedRequest(owner, "GET", "/api/v1/tenants/" + first + "/roles")
+                .param("limit", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.pageInfo.total").value(totalRoles));
+    http.perform(
+            protectedRequest(owner, "GET", "/api/v1/tenants/" + first + "/members")
+                .param("page", "99")
+                .param("limit", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data").isEmpty())
+        .andExpect(jsonPath("$.pageInfo.total").value(2));
+    var ownerOfSecond = select(owner, second);
+    http.perform(protectedRequest(ownerOfSecond, "GET", "/api/v1/tenants/" + second + "/members"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.total").value(1));
+    String userCursor = cursorList(admin, "/api/v1/cms/users", 2);
+    cursorList(admin, "/api/v1/cms/tenants", 2);
+    cursorList(ownerOfSecond, "/api/v1/tenants/" + second + "/members", 1);
+    var currentOwner = select(ownerOfSecond, first);
+    cursorList(currentOwner, "/api/v1/tenants/" + first + "/members", 2);
+    cursorList(currentOwner, "/api/v1/tenants/" + first + "/roles", (int) totalRoles);
+    http.perform(
+            protectedRequest(admin, "GET", "/api/v1/cms/tenants")
+                .param("pageMode", "cursor")
+                .param("cursor", userCursor))
+        .andExpect(status().isBadRequest());
+    http.perform(
+            protectedRequest(admin, "GET", "/api/v1/cms/users")
+                .param("pageMode", "offset")
+                .param("cursor", "ignored"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.total").value(2));
+    http.perform(protectedRequest(admin, "GET", "/api/v1/cms/users").param("limit", "101"))
+        .andExpect(status().isUnprocessableEntity());
+  }
+
   @Test
   void registrationIssuesTwoKeysCookiesAndSafeJson() throws Exception {
     var result =

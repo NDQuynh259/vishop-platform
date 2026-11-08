@@ -14,7 +14,7 @@ Other persistence/HTTP adapters, event consumers,
 runtime gateway authentication, realtime and provider workers are subsequent work.
 It does not yet start a standalone server or send notifications.
 
-Feature subscriptions, explicit recipient selection and personal preferences remain schema-only.
+V14 removes the unused tables for feature subscriptions, explicit rule recipients and personal preferences.
 NotificationSettingDispatchPolicy combines per-type rules with enabled, available and verified
 channel connections. Recipient authorization still belongs to RecipientDirectory.
 
@@ -76,9 +76,6 @@ or database creation occurs in the CLI. Application UUIDs require no extensions.
 | `notifications` | Shared title/body, type, severity, source event, subject, permission and optional shop scope |
 | `notification_recipients` | In-app inbox and independent read timestamp per tenant/user |
 | `notification_alert_rules` | Per-tenant/type channel settings, thresholds and cooldown (at least 24 hours) |
-| `notification_alert_rule_recipients` | Explicit users selected for a rule |
-| `notification_user_preferences` | Per-tenant/user/type opt-out preferences for in-app, email and Telegram |
-| `notification_tenant_features` | Tenant switches for feature groups they want notifications from |
 | `notification_settings` | Tenant channel switches and provider/bot connection configuration |
 | `notification_deduplication` | Rolling cooldown state per tenant/type/subject/user/channel |
 | `notification_deliveries` | Durable email jobs, attempt limits, retry date and worker lease |
@@ -96,6 +93,10 @@ on both tenant and notification ID. Read-all should use a cutoff timestamp so it
 mark concurrently arriving notifications as read. Setting entities maintain timestamps through
 lifecycle callbacks and versions through `@Version`; other modules still require persistence adapters.
 
+V15 gives `notification_recipients` its own UUIDv7 `id` primary key. Existing rows are
+backfilled without changing read/archive state; new recipient IDs come from the application.
+The unique `(tenant_id, notification_id, user_id)` constraint and tenant/notification FK remain.
+
 V5 adds common audit columns to business/configuration tables: `created_at`/`updated_at`
 default to `now()`, `deleted_at` defaults to NULL and `version` defaults to 0 with a
 nonnegative constraint. Queue rows have timestamps/version without soft deletion;
@@ -103,16 +104,12 @@ delivery attempt history only gains `created_at`. Operational outbox, consumed-m
 and cooldown rows retain their specialized columns. See the [database design](docs/database-design.md)
 for the per-table policy, backfill and soft-delete query requirements.
 
-`notification_alert_rules` configures tenant policies; `notification_user_preferences` configures
-personal preferences, unique by `(tenant_id, user_id, type)`. Settings have an `enabled`
-switch and independent `in_app_enabled`/`email_enabled`/`telegram_enabled` switches. All default to true,
-meaning allow the tenant policy; missing rows also inherit that policy. Effective delivery
-requires supported type codes, tenant feature/channel switches, the tenant type rule and
-channel, the personal setting and channel, recipient selection, and authorization to all
-permit it. Personal settings cannot turn on a disabled tenant
-channel or grant data access. Changes apply to future notifications; existing in-app
-history remains readable subject to authorization. Transactional email policy for external
-invitees is separate. Enforcement will be implemented with the consumers/workers.
+`notification_alert_rules` configures tenant type/channel policies and
+`notification_settings` configures tenant channel connections. V14 drops the unused
+`notification_tenant_features`, `notification_user_preferences`, and
+`notification_alert_rule_recipients` tables, including their stored data. Feature switches,
+personal preferences and per-rule user lists are not part of the current setting API.
+Inbox recipients, deliveries, attempts, cooldown and event-processing state are retained.
 
 ## Tenant choices and system notifications
 
@@ -120,15 +117,11 @@ V9 gives notification_settings a UUIDv7 primary key and keeps tenant/channel uni
 The application generates new IDs with UuidV7.nextId(); the migration backfills existing
 rows without changing connection data or audit state. There is no composite ID class.
 
-V8 adds a UUIDv7 primary key to `notification_tenant_features`, retaining uniqueness on
-`(tenant_id, feature_code)` and preserving existing settings and audit fields. New IDs
-come from `UuidV7.nextId()`; there is no runtime database default.
-
 V7 moves definitions from PostgreSQL to shared NotificationFeatureCode/NotificationTypeCode enums.
 The catalog module and its read APIs have been removed. FE manages its selection list using
 the same codes. Tenant settings/history remain in PostgreSQL with no catalog FK. New configuration
 writes must validate codes through the shared enums. Existing legacy codes stay stored
-but do not implicitly become supported types. Tenant admins edit settings, users edit preferences.
+but do not implicitly become supported types. Tenant admins edit channel connections and type rules.
 
 The current two-table routing policy evaluates:
 
@@ -154,7 +147,7 @@ or senders are implemented.
 into separate tenant-scoped `notifications` and recipient rows using the same source event
 ID, so content access and read states remain tenant/user scoped. V3 does not add an
 announcement CMS, audience expansion job or mandatory notification exceptions. System
-notifications follow the same feature/type/channel choices and permission checks as other
+notifications follow the same type/channel choices and permission checks as other
 notifications. All notifications still require an explicit permission; category alone never
 grants access. The future producer/consumer contract must map each type to the correct IAM
 permission and recipients.

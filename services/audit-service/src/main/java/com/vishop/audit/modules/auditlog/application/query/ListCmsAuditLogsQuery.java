@@ -4,7 +4,7 @@ import com.vishop.audit.modules.auditlog.application.dto.AuditLogView;
 import com.vishop.audit.modules.auditlog.application.dto.CmsAuditActor;
 import io.github.coreplatform.common.domain.cqrs.Query;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
-import io.github.coreplatform.common.domain.pagination.OffsetPagination;
+import io.github.coreplatform.common.domain.pagination.ListPagination;
 import io.github.coreplatform.common.domain.pagination.PagedResult;
 import java.time.Instant;
 import java.util.Objects;
@@ -18,8 +18,28 @@ public record ListCmsAuditLogsQuery(
     UUID aggregateId,
     Instant from,
     Instant to,
-    OffsetPagination pagination)
+    ListPagination pagination)
     implements Query<PagedResult<AuditLogView>> {
+  public ListCmsAuditLogsQuery(
+      CmsAuditActor actor,
+      UUID tenantId,
+      String eventType,
+      String aggregateType,
+      UUID aggregateId,
+      Instant from,
+      Instant to,
+      io.github.coreplatform.common.domain.pagination.OffsetPagination pagination) {
+    this(
+        actor,
+        tenantId,
+        eventType,
+        aggregateType,
+        aggregateId,
+        from,
+        to,
+        ListPagination.of(pagination));
+  }
+
   public ListCmsAuditLogsQuery {
     Objects.requireNonNull(pagination, "pagination");
     if ((aggregateType == null) != (aggregateId == null))

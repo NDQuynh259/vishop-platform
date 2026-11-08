@@ -7,8 +7,10 @@ import com.vishop.iam.modules.tenant.application.query.member.ListTenantMembersQ
 import com.vishop.iam.shared.application.dto.AuthenticatedUser;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
-import java.util.List;
+import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,9 +36,13 @@ public class TenantMemberController {
   @GetMapping("/{id}/members")
   @PreAuthorize(
       "@iamAuthorization.inTenant(authentication, #id) and hasAuthority(T(io.github.coreplatform.common.security.constants.CommonPermissions.Tenant).MEMBER_VIEW)")
-  public List<MemberView> members(
-      @AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID id) {
-    return queries.dispatch(new ListTenantMembersQuery(actor, id));
+  public ListEnvelope<MemberView> members(
+      @AuthenticationPrincipal AuthenticatedUser actor,
+      @PathVariable UUID id,
+      @ParameterObject PaginationRequest pagination) {
+    return ListEnvelope.from(
+        ApiPaths.V1 + "/tenants/" + id + "/members",
+        queries.dispatch(new ListTenantMembersQuery(actor, id, pagination.toPagination())));
   }
 
   @GetMapping("/{id}/members/{user}")

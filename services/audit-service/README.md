@@ -61,8 +61,10 @@ Gateway's specific CMS audit route precedes the general CMS route to IAM.
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `page` | `1` | One-based page number; nonpositive values normalize to 1 |
-| `limit` | `20` | Shared pagination: nonpositive values use 20; values above 100 clamp to 100 |
+| `pageMode` | `offset` | Select offset or cursor pagination |
+| `page` | `1` | One-based page number, must be positive |
+| `limit` | `20` | Page size, must be between 1 and 100 |
+| `cursor` | omitted | Next-page token, used only with pageMode=cursor |
 | `tenantId` | omitted | Exact tenant UUID; omitted includes global events and all tenants |
 | `eventType` | omitted | Exact event type, nonblank, up to 200 characters |
 | `aggregateType` | omitted | Exact aggregate type, nonblank, up to 100 characters; requires aggregateId |
@@ -70,11 +72,13 @@ Gateway's specific CMS audit route precedes the general CMS route to IAM.
 | `from` | omitted | Inclusive occurredAt lower bound, ISO-8601 instant |
 | `to` | omitted | Exclusive occurredAt upper bound; must be after from |
 
-Uses the shared `PaginationRequest`, `OffsetPagination`, `PagedResult`, and `ListEnvelope.from`.
-This endpoint supports offset pagination; a nonblank `cursor` is rejected with 400.
+Uses the shared `PaginationRequest`, `ListPagination`, `PagedResult`, and `ListEnvelope.from`.
+Both modes are supported. Send pageMode=cursor on the first and subsequent cursor pages.
+Cursor tokens bind the actor, filters and sort. A token alone never changes the mode.
 Results sort by `occurredAt DESC, id DESC`. Offset pages can shift as new events arrive.
 The response contains `object`, `url`, `data`, and `pageInfo` (`page`, `limit`, `total`,
-`totalPages`, `hasNextPage`). `payload` is JSON, not an escaped JSON string.
+`totalPages`, `hasNextPage`) for offset, or `hasNextPage`/`nextCursor` for cursor.
+`payload` is JSON, not an escaped JSON string. Invalid page/limit ranges return 422.
 
 ```http
 GET /api/v1/cms/audit-logs?page=1&limit=20&eventType=UserRegistered&from=2026-10-01T00:00:00Z&to=2026-11-01T00:00:00Z

@@ -63,7 +63,10 @@ class NotificationRuleHttpTest {
     context.refresh();
     mvc =
         MockMvcBuilders.standaloneSetup(context.getBean(NotificationRuleController.class))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new SecurityExceptionHandler(), new GlobalExceptionHandler())
             .build();
   }
@@ -96,10 +99,38 @@ class NotificationRuleHttpTest {
     when(service.ruleById(tenant, ruleId)).thenReturn(rule);
     mvc.perform(get(PATH).param("tenantId", UUID.randomUUID().toString()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].type").value("STOCK_LOW"));
+        .andExpect(jsonPath("$.data[0].type").value("STOCK_LOW"));
     mvc.perform(get(PATH + "/" + ruleId)).andExpect(status().isOk());
     verify(service).rules(tenant);
     verify(service).ruleById(tenant, ruleId);
+  }
+
+  @Test
+  void rulesSupportCursorModeUsingTypeCodesForDefaultRules() throws Exception {
+    actor("notifications.settings.view");
+    var one =
+        new RuleView(null, "STOCK_LOW", "Low stock", true, Set.of(NotificationChannel.IN_APP), 0);
+    var two =
+        new RuleView(
+            null, "SYNC_FAILED", "Sync failed", true, Set.of(NotificationChannel.IN_APP), 0);
+    when(service.rules(tenant)).thenReturn(List.of(one, two));
+    var first =
+        mvc.perform(get(PATH).param("pageMode", "cursor").param("limit", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].type").value("STOCK_LOW"))
+            .andExpect(jsonPath("$.pageInfo.total").doesNotExist())
+            .andReturn();
+    var body =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(first.getResponse().getContentAsString());
+    mvc.perform(
+            get(PATH)
+                .param("pageMode", "cursor")
+                .param("limit", "1")
+                .param("cursor", body.path("pageInfo").path("nextCursor").asText()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].type").value("SYNC_FAILED"))
+        .andExpect(jsonPath("$.pageInfo.hasNextPage").value(false));
   }
 
   @Test

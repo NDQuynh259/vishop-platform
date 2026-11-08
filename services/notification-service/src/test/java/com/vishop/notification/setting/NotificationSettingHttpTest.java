@@ -101,7 +101,10 @@ class NotificationSettingHttpTest {
             });
     mvc =
         MockMvcBuilders.standaloneSetup(context.getBean(NotificationSettingController.class))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new SecurityExceptionHandler(), new GlobalExceptionHandler())
             .build();
   }

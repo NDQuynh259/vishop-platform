@@ -1,6 +1,10 @@
 package io.github.coreplatform.common.web.pagination;
 
+import java.util.Locale;
 import org.springframework.core.MethodParameter;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -19,11 +23,41 @@ public final class PaginationRequestArgumentResolver implements HandlerMethodArg
       MethodParameter parameter,
       ModelAndViewContainer container,
       NativeWebRequest request,
-      WebDataBinderFactory binderFactory) {
-    return new PaginationRequest(
-        request.getParameter("cursor"),
-        integerParameter(request, "page", parameter),
-        integerParameter(request, "limit", parameter));
+      WebDataBinderFactory binderFactory)
+      throws Exception {
+    var pagination =
+        new PaginationRequest(
+            request.getParameter("cursor"),
+            integerParameter(request, "page", parameter),
+            integerParameter(request, "limit", parameter),
+            pageMode(request, parameter));
+    var binder = binderFactory.createBinder(request, pagination, "pagination");
+    binder.validate();
+    if (binder.getBindingResult().hasErrors())
+      throw new MethodArgumentNotValidException(parameter, binder.getBindingResult());
+    return pagination;
+  }
+
+  private PageMode pageMode(NativeWebRequest request, MethodParameter parameter)
+      throws MethodArgumentNotValidException {
+    String value = request.getParameter("pageMode");
+    if (value == null) value = request.getParameter("paginationMode");
+    if (value == null) return null;
+    try {
+      return PageMode.valueOf(value.toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException failure) {
+      var errors = new BeanPropertyBindingResult(null, "pagination");
+      errors.addError(
+          new FieldError(
+              "pagination",
+              "pageMode",
+              value,
+              false,
+              null,
+              null,
+              "pageMode must be offset or cursor"));
+      throw new MethodArgumentNotValidException(parameter, errors);
+    }
   }
 
   private Integer integerParameter(

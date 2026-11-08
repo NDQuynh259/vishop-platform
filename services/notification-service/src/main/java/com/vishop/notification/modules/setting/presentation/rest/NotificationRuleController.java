@@ -14,11 +14,13 @@ import io.github.coreplatform.common.domain.cqrs.QueryBus;
 import io.github.coreplatform.common.security.annotation.RequirePermission;
 import io.github.coreplatform.common.security.constants.CommonPermissions.Notification;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
+import io.github.coreplatform.common.web.pagination.ListEnvelope;
+import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
-import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -32,8 +34,14 @@ public class NotificationRuleController {
 
   @GetMapping
   @RequirePermission(Notification.SETTINGS_VIEW)
-  public List<RuleView> rules(@AuthenticationPrincipal GatewayPrincipal actor) {
-    return queries.dispatch(new ListRulesQuery(actor.tenantId()));
+  public ListEnvelope<RuleView> rules(
+      @AuthenticationPrincipal GatewayPrincipal actor,
+      @ParameterObject PaginationRequest pagination) {
+    return ListEnvelope.from(
+        ApiPaths.V1 + "/notification-settings/rules",
+        queries.dispatch(new ListRulesQuery(actor.tenantId())),
+        pagination,
+        RuleView::getType);
   }
 
   @GetMapping("/{ruleId}")

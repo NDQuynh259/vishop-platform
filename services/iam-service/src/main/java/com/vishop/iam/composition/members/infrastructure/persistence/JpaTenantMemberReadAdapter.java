@@ -61,19 +61,37 @@ public class JpaTenantMemberReadAdapter implements MemberReadPort {
   }
 
   @Override
-  public List<MemberView> members(UUID tenant) {
-    List<?> rows =
+  public long memberCount(UUID tenant) {
+    return ((Number)
+            entityManager
+                .createNativeQuery(
+                    "SELECT count(*) FROM tenant_members m JOIN users u ON u.id=m.user_id "
+                        + "JOIN roles r ON r.id=m.role_id AND r.tenant_id=m.tenant_id WHERE m.tenant_id=:tenant")
+                .setParameter("tenant", tenant)
+                .getSingleResult())
+        .longValue();
+  }
+
+  @Override
+  public List<MemberView> members(
+      UUID tenant, int limit, int offset, String afterEmail, UUID afterId) {
+    String after =
+        afterId == null ? "" : " AND (u.email>:email OR (u.email=:email AND m.id>:afterId))";
+    var query =
         entityManager
             .createNativeQuery(
-                """
-    SELECT m.id,m.user_id,u.email,u.full_name,m.role_id,coalesce(r.builtin_key,r.name) AS role,m.status
-    FROM tenant_members m JOIN users u ON u.id=m.user_id
-    JOIN roles r ON r.id=m.role_id AND r.tenant_id=m.tenant_id
-    WHERE m.tenant_id=:tenant ORDER BY u.email
-    """,
+                "SELECT m.id,m.user_id,u.email,u.full_name,m.role_id,coalesce(r.builtin_key,r.name) AS role,m.status "
+                    + "FROM tenant_members m JOIN users u ON u.id=m.user_id "
+                    + "JOIN roles r ON r.id=m.role_id AND r.tenant_id=m.tenant_id "
+                    + "WHERE m.tenant_id=:tenant"
+                    + after
+                    + " ORDER BY u.email,m.id",
                 Tuple.class)
             .setParameter("tenant", tenant)
-            .getResultList();
+            .setFirstResult(offset)
+            .setMaxResults(limit);
+    if (afterId != null) query.setParameter("email", afterEmail).setParameter("afterId", afterId);
+    List<?> rows = query.getResultList();
     return rows.stream()
         .map(
             value -> {

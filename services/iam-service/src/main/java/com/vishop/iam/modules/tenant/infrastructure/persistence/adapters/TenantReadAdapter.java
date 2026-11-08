@@ -12,8 +12,11 @@ import io.github.coreplatform.common.domain.constants.MembershipStatus;
 import io.github.coreplatform.common.domain.constants.TenantStatus;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.domain.pagination.CursorParams;
+import io.github.coreplatform.common.domain.pagination.ListPagination;
 import io.github.coreplatform.common.domain.pagination.OffsetPagination;
 import io.github.coreplatform.common.domain.pagination.PagedResult;
+import io.github.coreplatform.common.persistence.pagination.JpaListPagination;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,10 +31,25 @@ import org.springframework.stereotype.Repository;
 public class TenantReadAdapter implements TenantReadPort {
   private final SpringDataTenantRepository tenants;
   private final TenantCursorCodec cursors;
+  private final EntityManager entityManager;
 
-  public TenantReadAdapter(SpringDataTenantRepository tenants, TenantCursorCodec cursors) {
+  public TenantReadAdapter(
+      SpringDataTenantRepository tenants, TenantCursorCodec cursors, EntityManager entityManager) {
     this.tenants = tenants;
     this.cursors = cursors;
+    this.entityManager = entityManager;
+  }
+
+  @Override
+  public PagedResult<TenantResponseDto> findAll(ListPagination pagination) {
+    return JpaListPagination.find(
+        entityManager,
+        TenantJpaEntity.class,
+        (root, query, cb) -> cb.conjunction(),
+        Sort.by(Sort.Direction.DESC, "createdAt", "id"),
+        pagination,
+        "cms-tenants",
+        entity -> TenantResponseMapper.from(entity.toDomain()));
   }
 
   @Override

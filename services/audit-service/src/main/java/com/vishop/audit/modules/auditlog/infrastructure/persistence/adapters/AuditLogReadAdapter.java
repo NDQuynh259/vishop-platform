@@ -7,6 +7,8 @@ import com.vishop.audit.modules.auditlog.application.query.ListCmsAuditLogsQuery
 import com.vishop.audit.modules.auditlog.infrastructure.persistence.entities.AuditLogJpaEntity;
 import com.vishop.audit.modules.auditlog.infrastructure.persistence.repositories.SpringDataAuditLogRepository;
 import io.github.coreplatform.common.domain.pagination.PagedResult;
+import io.github.coreplatform.common.persistence.pagination.JpaListPagination;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,9 +20,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AuditLogReadAdapter implements AuditLogReadPort {
   private final SpringDataAuditLogRepository repository;
+  private final EntityManager entityManager;
 
-  public AuditLogReadAdapter(SpringDataAuditLogRepository repository) {
+  public AuditLogReadAdapter(SpringDataAuditLogRepository repository, EntityManager entityManager) {
     this.repository = repository;
+    this.entityManager = entityManager;
   }
 
   @Override
@@ -75,30 +79,39 @@ public class AuditLogReadAdapter implements AuditLogReadPort {
           if (query.to() != null) predicates.add(cb.lessThan(root.get("occurredAt"), query.to()));
           return cb.and(predicates.toArray(Predicate[]::new));
         };
-    var page =
-        repository.findAll(
-            filter,
-            PageRequest.of(
-                query.pagination().pageIndex(),
-                query.pagination().limit(),
-                Sort.by(Sort.Direction.DESC, "occurredAt", "id")));
-    var items =
-        page.stream()
-            .map(
-                row ->
-                    new AuditLogView(
-                        row.getId(),
-                        row.getEventId(),
-                        row.getEventType(),
-                        row.getTenantId(),
-                        row.getAggregateType(),
-                        row.getAggregateId(),
-                        row.getProducer(),
-                        row.getPayload(),
-                        row.getOccurredAt(),
-                        row.getCreatedAt()))
-            .toList();
-    return PagedResult.ofOffset(
-        items, query.pagination().page(), query.pagination().limit(), page.getTotalElements());
+    String scope =
+        "cms-audit:"
+            + query.actor()
+            + ":"
+            + query.tenantId()
+            + ":"
+            + query.eventType()
+            + ":"
+            + query.aggregateType()
+            + ":"
+            + query.aggregateId()
+            + ":"
+            + query.from()
+            + ":"
+            + query.to();
+    return JpaListPagination.find(
+        entityManager,
+        AuditLogJpaEntity.class,
+        filter,
+        Sort.by(Sort.Direction.DESC, "occurredAt", "id"),
+        query.pagination(),
+        scope,
+        row ->
+            new AuditLogView(
+                row.getId(),
+                row.getEventId(),
+                row.getEventType(),
+                row.getTenantId(),
+                row.getAggregateType(),
+                row.getAggregateId(),
+                row.getProducer(),
+                row.getPayload(),
+                row.getOccurredAt(),
+                row.getCreatedAt()));
   }
 }

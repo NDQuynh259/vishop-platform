@@ -18,10 +18,15 @@ class NotificationDomainTest {
   @Test
   void recipientReadIsIdempotentAndIndependentAndArchiveDoesNotChangeContent() {
     UUID tenant = UUID.randomUUID(), notification = UUID.randomUUID();
-    var first = new NotificationRecipient(tenant, notification, UUID.randomUUID(), NOW, null, null);
+    var first =
+        new NotificationRecipient(
+            UUID.randomUUID(), tenant, notification, UUID.randomUUID(), NOW, null, null);
     var second =
-        new NotificationRecipient(tenant, notification, UUID.randomUUID(), NOW, null, null);
+        new NotificationRecipient(
+            UUID.randomUUID(), tenant, notification, UUID.randomUUID(), NOW, null, null);
     var read = first.markRead(NOW.plusSeconds(1));
+    assertThat(read.id()).isEqualTo(first.id());
+    assertThat(read.archive(NOW.plusSeconds(3)).id()).isEqualTo(first.id());
     assertThat(read.markRead(NOW.plusSeconds(2))).isSameAs(read);
     assertThat(second.readAt()).isNull();
     assertThat(read.archive(NOW.plusSeconds(3)).readAt()).isEqualTo(NOW.plusSeconds(1));

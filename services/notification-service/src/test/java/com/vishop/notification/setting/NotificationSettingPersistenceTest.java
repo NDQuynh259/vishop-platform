@@ -96,7 +96,10 @@ class NotificationSettingPersistenceTest {
   void ruleHttpLifecycleIsTenantScopedVersionedAndStoresAllChannels() throws Exception {
     var mvc =
         MockMvcBuilders.standaloneSetup(new NotificationRuleController(commands, queries))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
     var actor =
@@ -519,7 +522,10 @@ class NotificationSettingPersistenceTest {
     var mvc =
         MockMvcBuilders.standaloneSetup(
                 new NotificationSettingController(commands, queries, json, validator))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
     var actor =
@@ -572,7 +578,33 @@ class NotificationSettingPersistenceTest {
           .andExpect(status().isUnprocessableEntity());
       mvc.perform(get("/api/v1/notification-settings/channels"))
           .andExpect(status().isOk())
-          .andExpect(jsonPath("$.length()").value(4));
+          .andExpect(jsonPath("$.data.length()").value(4))
+          .andExpect(jsonPath("$.pageInfo.total").value(4));
+      mvc.perform(
+              get("/api/v1/notification-settings/channels").param("page", "2").param("limit", "1"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(1))
+          .andExpect(jsonPath("$.pageInfo.page").value(2))
+          .andExpect(jsonPath("$.pageInfo.total").value(4));
+      String cursor = null;
+      var channelNames = new java.util.HashSet<String>();
+      for (int i = 0; i < 4; i++) {
+        var request =
+            get("/api/v1/notification-settings/channels")
+                .param("pageMode", "cursor")
+                .param("limit", "1");
+        if (cursor != null) request.param("cursor", cursor);
+        var response = mvc.perform(request).andExpect(status().isOk()).andReturn();
+        var cursorBody = json.readTree(response.getResponse().getContentAsString());
+        assertThat(channelNames.add(cursorBody.path("data").get(0).path("channel").asText()))
+            .isTrue();
+        assertThat(cursorBody.path("pageInfo").has("total")).isFalse();
+        cursor =
+            cursorBody.path("pageInfo").path("nextCursor").isTextual()
+                ? cursorBody.path("pageInfo").path("nextCursor").asText()
+                : null;
+      }
+      assertThat(cursor).isNull();
     } finally {
       SecurityContextHolder.clearContext();
     }
@@ -583,7 +615,10 @@ class NotificationSettingPersistenceTest {
     var mvc =
         MockMvcBuilders.standaloneSetup(
                 new NotificationSettingController(commands, queries, json, validator))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
     var actor =
@@ -674,7 +709,10 @@ class NotificationSettingPersistenceTest {
     var mvc =
         MockMvcBuilders.standaloneSetup(
                 new NotificationSettingController(commands, queries, json, validator))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
     var actor =

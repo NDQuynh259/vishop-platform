@@ -23,10 +23,6 @@ public class ListOrdersQueryHandler
       ListOrdersQuery c) {
     c.actor().require(CommonPermissions.Billing.VIEW);
     var page = reads.orders(c.actor().tenantId(), c.pagination());
-    return io.github.coreplatform.common.domain.pagination.PagedResult.ofOffset(
-        page.items().stream().map(SubscriptionResponseMapper::order).toList(),
-        page.page(),
-        page.limit(),
-        page.total());
+    return page.map(SubscriptionResponseMapper::order);
   }
 }

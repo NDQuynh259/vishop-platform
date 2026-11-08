@@ -31,6 +31,12 @@ public record PagedResult<T>(
 
   // #endregion
 
+  public <R> PagedResult<R> map(java.util.function.Function<? super T, ? extends R> mapper) {
+    var mapped = new java.util.ArrayList<R>();
+    for (T item : items) mapped.add(mapper.apply(item));
+    return new PagedResult<>(mapped, hasNextPage, nextCursor, page, limit, total, totalPages);
+  }
+
   // #region ofCursor
   public static <T> PagedResult<T> ofCursor(List<T> items, boolean hasNextPage, String nextCursor) {
     return new PagedResult<>(items, hasNextPage, nextCursor, null, null, null, null);

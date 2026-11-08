@@ -4,8 +4,11 @@ import com.vishop.iam.modules.identity.application.dto.UserView;
 import com.vishop.iam.modules.identity.application.mapper.UserViewMapper;
 import com.vishop.iam.modules.identity.application.port.UserReadPort;
 import com.vishop.iam.modules.identity.infrastructure.persistence.entities.UserJpaEntity;
+import io.github.coreplatform.common.domain.pagination.ListPagination;
+import io.github.coreplatform.common.domain.pagination.PagedResult;
+import io.github.coreplatform.common.persistence.pagination.JpaListPagination;
 import jakarta.persistence.EntityManager;
-import java.util.List;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -16,17 +19,14 @@ public class UserReadAdapter implements UserReadPort {
     this.entityManager = entityManager;
   }
 
-  public List<UserView> users(int limit, int offset) {
-    return entityManager
-        .createQuery(
-            "select u from UserJpaEntity u order by u.createdAt desc,u.id desc",
-            UserJpaEntity.class)
-        .setFirstResult(offset)
-        .setMaxResults(limit)
-        .getResultList()
-        .stream()
-        .map(UserJpaEntity::toDomain)
-        .map(UserViewMapper::from)
-        .toList();
+  public PagedResult<UserView> users(ListPagination pagination) {
+    return JpaListPagination.find(
+        entityManager,
+        UserJpaEntity.class,
+        (root, query, cb) -> cb.conjunction(),
+        Sort.by(Sort.Direction.DESC, "createdAt", "id"),
+        pagination,
+        "cms-users",
+        entity -> UserViewMapper.from(entity.toDomain()));
   }
 }

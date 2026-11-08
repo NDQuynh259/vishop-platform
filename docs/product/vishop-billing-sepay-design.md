@@ -383,14 +383,14 @@ Catalog công khai chỉ trả giá public; giá CUSTOM theo hợp đồng cần
 
 | API đề xuất | Quyền/mục đích |
 | --- | --- |
-| `GET /api/v1/billing/plans` | Catalog công khai hoặc authenticated theo chính sách UI |
-| `GET /api/v1/billing/subscription` | `billing.view`, tenant trong context |
-| `GET /api/v1/billing/usage` | `billing.view`, cycle hiện tại/lịch sử |
-| `POST /api/v1/billing/quotes` | `billing.manage`, backend báo giá NEW/RENEW/UPGRADE/DOWNGRADE/ADD_ON |
-| `POST /api/v1/billing/orders` | `billing.manage`, quoteId + Idempotency-Key |
-| `GET /api/v1/billing/orders` | `billing.view`, phân trang/filter/sort chung |
-| `GET /api/v1/billing/orders/{id}` | Cùng tenant, trả payment/fulfillment state và checkout instructions |
-| `POST /api/v1/billing/orders/{id}/cancel` | `billing.manage`; đơn có tiền cần review, không xóa tiền |
+| `GET /api/v1/subscriptions/plans` | Catalog công khai hoặc authenticated theo chính sách UI |
+| `GET /api/v1/subscriptions/subscription` | `billing.view`, tenant trong context |
+| `GET /api/v1/subscriptions/usage` | `billing.view`, cycle hiện tại/lịch sử |
+| `POST /api/v1/subscriptions/quotes` | `billing.manage`, backend báo giá NEW/RENEW/UPGRADE/DOWNGRADE/ADD_ON |
+| `POST /api/v1/subscriptions/orders` | `billing.manage`, quoteId + Idempotency-Key |
+| `GET /api/v1/subscriptions/orders` | `billing.view`, phân trang/filter/sort chung |
+| `GET /api/v1/subscriptions/orders/{id}` | Cùng tenant, trả payment/fulfillment state và checkout instructions |
+| `POST /api/v1/subscriptions/orders/{id}/cancel` | `billing.manage`; đơn có tiền cần review, không xóa tiền |
 | `POST /api/v1/webhooks/sepay/transactions` | HMAC SePay, không dùng user JWT |
 | `/api/v1/cms/billing/...` | PLATFORM_ADMIN: catalog, giao dịch chưa khớp, đối soát, refund cases |
 

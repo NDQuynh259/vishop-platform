@@ -6,5 +6,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
 
 public interface SpringDataPriceRepository extends JpaRepository<PlanPriceJpaEntity, UUID> {
-  List<PlanPriceJpaEntity> findByActiveTrueOrderByPlanCodeAscAmountVndAsc();
+  Page<PlanPriceJpaEntity> findByActiveTrueOrderByPlanCodeAscAmountVndAscIdAsc(Pageable pagination);
+
+  long countByActiveTrue();
 }

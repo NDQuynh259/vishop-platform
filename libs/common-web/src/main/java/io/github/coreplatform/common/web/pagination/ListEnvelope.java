@@ -46,6 +46,43 @@ public record ListEnvelope<T>(
 
   // #endregion
 
+  /** Pages a bounded catalog. Database lists paginate in their read adapter. */
+  public static <T> ListEnvelope<T> from(String url, List<T> catalog, PaginationRequest request) {
+    return from(url, catalog, request, Object::toString);
+  }
+
+  public static <T> ListEnvelope<T> from(
+      String url,
+      List<T> catalog,
+      PaginationRequest request,
+      java.util.function.Function<T, String> key) {
+    if (request.isOffset()) {
+      var pagination = request.toOffsetPagination();
+      int from = (int) Math.min(pagination.offset(), catalog.size());
+      int to = Math.min(from + pagination.limit(), catalog.size());
+      return ofOffset(
+          url, catalog.subList(from, to), pagination.page(), pagination.limit(), catalog.size());
+    }
+    var keys =
+        io.github.coreplatform.common.domain.pagination.ListCursor.decode(request.cursor(), url, 1);
+    int from = 0;
+    if (!keys.isEmpty()) {
+      while (from < catalog.size() && !keys.getFirst().equals(key.apply(catalog.get(from)))) from++;
+      if (from == catalog.size())
+        throw new io.github.coreplatform.common.domain.exception.BadRequestException(
+            "Invalid catalog cursor");
+      from++;
+    }
+    int to = Math.min(from + request.limit(), catalog.size());
+    boolean hasNext = to < catalog.size();
+    String next =
+        hasNext
+            ? io.github.coreplatform.common.domain.pagination.ListCursor.encode(
+                url, List.of(key.apply(catalog.get(to - 1))))
+            : null;
+    return ofCursor(url, catalog.subList(from, to), hasNext, next);
+  }
+
   // #region of
   /** Default factory method for cursor pagination (backward-compatible). */
   public static <T> ListEnvelope<T> of(

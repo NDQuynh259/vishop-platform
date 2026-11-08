@@ -1,36 +1,28 @@
 # Database Notification
 
-Database riêng: `vishop_notification`. Schema hiện hành sau V13 gồm **12 bảng**.
+Database riêng: `vishop_notification`. Schema hiện hành sau V15 gồm **9 bảng**.
 [Migration SQL](../src/main/resources/db/migration) là nguồn kiểm chứng DDL;
 [README service](../README.md) chứa hướng dẫn migrate.
 
-Code setting ánh xạ notification_settings và notification_alert_rules. Các bảng feature,
-recipient selection và personal preference vẫn có schema/migration, chờ adapter triển khai sau.
-Đợt rút gọn module không xóa bảng hay dữ liệu hiện có.
+Code setting ánh xạ notification_settings và notification_alert_rules. V14 xóa ba bảng
+không được runtime sử dụng: notification_tenant_features, notification_user_preferences,
+notification_alert_rule_recipients, cùng dữ liệu trong các bảng đó.
 Inbox đã ánh xạ notifications và notification_recipients; nội dung chung bất biến,
 read_at/deleted_at chỉ cập nhật trên recipient của user hiện tại. Xem [inbox](inbox.md).
 
 Danh mục feature/type nằm trong [shared constants](constants.md), không phải module/bảng DB.
 Các mã feature_code/type lưu trong cấu hình và lịch sử; app kiểm tra hỗ trợ qua enum fromCode.
 
-## Cấu hình tenant và cá nhân
+## Cấu hình tenant
 
 ```mermaid
 erDiagram
-    notification_alert_rules ||--o{ notification_alert_rule_recipients : tenant_and_rule
-
     notification_settings {
         uuid id PK "UUIDv7"
         uuid tenant_id "Unique cùng channel"
         varchar channel "IN_APP EMAIL TELEGRAM"
         boolean enabled
         jsonb connection_config
-    }
-    notification_tenant_features {
-        uuid id PK "UUIDv7"
-        uuid tenant_id "Unique cùng feature_code"
-        varchar feature_code "Mã trong code catalog"
-        boolean enabled
     }
     notification_alert_rules {
         uuid id PK
@@ -44,31 +36,15 @@ erDiagram
         jsonb thresholds
         int cooldown_seconds
     }
-    notification_alert_rule_recipients {
-        uuid tenant_id PK,FK
-        uuid rule_id PK,FK
-        uuid user_id PK
-    }
-    notification_user_preferences {
-        uuid id PK
-        uuid tenant_id
-        uuid user_id
-        varchar type "Mã trong code catalog"
-        boolean enabled
-        boolean in_app_enabled
-        boolean email_enabled
-        boolean telegram_enabled
-    }
 ```
 
 notification_settings unique theo tenant/channel; Telegram enable cần chat ID và
 connection_config.credentialsRef không rỗng. Token thật nằm ngoài schema, không lưu plaintext.
 connection_config.connectionRef trỏ cấu hình provider ngoài DB. Secrets adapter chưa triển khai.
 
-Rule unique tenant/type; personal preference unique tenant/user/type. Rule recipients có
-FK tenant/rule. Feature/type code không còn FK tới catalog DB; NOT NULL/nonblank và unique
-vẫn được giữ. API ghi cấu hình phải kiểm tra mã qua NotificationTypeCode/NotificationFeatureCode,
-không chấp nhận loại tùy ý.
+Rule unique tenant/type. Type code không còn FK tới catalog DB; NOT NULL/nonblank và unique
+vẫn được giữ. API ghi rule kiểm tra mã qua NotificationTypeCode, không chấp nhận loại tùy ý.
+Người nhận do RecipientDirectory xác định; setting chưa có danh sách người nhận.
 
 ## Thông báo và giao nhận
 
@@ -93,9 +69,10 @@ erDiagram
         jsonb metadata
     }
     notification_recipients {
-        uuid tenant_id PK,FK
-        uuid notification_id PK,FK
-        uuid user_id PK
+        uuid id PK "UUIDv7"
+        uuid tenant_id FK
+        uuid notification_id FK
+        uuid user_id
         timestamptz read_at
     }
     notification_deliveries {
@@ -175,8 +152,7 @@ hay JOIN xuyên DB.
 | `version` | `BIGINT NOT NULL DEFAULT 0 CHECK (version >= 0)` | Optimistic locking |
 
 id áp dụng cho bảng có khóa chính đơn UUID; bảng khóa ghép giữ thiết kế khóa hiện tại.
-Bốn cột audit áp dụng cho notification_settings, notification_tenant_features,
-notification_alert_rules, notification_alert_rule_recipients, notification_user_preferences,
+Bốn cột audit áp dụng cho notification_settings, notification_alert_rules,
 notifications và notification_recipients. Các cột này bị lược bớt trong ERD để dễ đọc.
 
 Delivery queue có timestamps/version, hủy bằng status thay vì xóa mềm job đang chờ.
@@ -189,7 +165,7 @@ timestamps/version và kiểm tra version cũ.
 
 Truy vấn inbox phải lọc deleted_at IS NULL trên cả notification/recipient; unread thêm
 read_at IS NULL. Index recipient feed/unread bỏ dòng đã xóa mềm. Policy lookup cũng lọc
-setting/rule/recipient link chưa xóa. Xóa mềm cấu hình quay về policy kế thừa của dòng vắng;
+setting/rule chưa xóa. Xóa mềm cấu hình quay về policy kế thừa của dòng vắng;
 dùng enabled=false để tắt rõ ràng. Unique/FK vẫn tính cả dòng xóa mềm; tạo lại cùng natural
 key phải restore/update dòng cũ. Không xóa marker chống trùng khi ẩn thông báo.
 
@@ -213,3 +189,11 @@ history; chỉ metadata hai bảng catalog bị bỏ. Không phát lại event h
 V10: `connection_config` JSONB groups `connectionRef`, `credentialsRef`, `telegramBotUsername`, `telegramChatId`, `telegramMessageThreadId`; existing data and validation constraints are preserved.
 
 V11 bổ sung kênh LARK; V12 thêm tên cấu hình kênh; V13 thêm `lark_enabled` cho alert rule.
+
+V14 xóa notification_tenant_features, notification_user_preferences và
+notification_alert_rule_recipients cùng dữ liệu cũ không được runtime sử dụng.
+Giữ nguyên hai bảng setting hiện hành, inbox, delivery/history và trạng thái xử lý event.
+
+V15 đổi khóa chính notification_recipients sang cột id UUIDv7 riêng, backfill dữ liệu cũ
+theo created_at và giữ nguyên trạng thái đọc/ẩn. Unique tenant_id/notification_id/user_id
+và FK tenant/notification được giữ. Ứng dụng cấp ID mới, không dùng khóa ghép JPA.

@@ -17,6 +17,7 @@ import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.cqrs.CqrsAutoConfiguration;
 import io.github.coreplatform.common.web.exception.GlobalExceptionHandler;
 import io.github.coreplatform.common.web.exception.SecurityExceptionHandler;
+import io.github.coreplatform.common.web.pagination.PaginationRequestArgumentResolver;
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.*;
@@ -59,7 +60,9 @@ class NotificationInboxHttpTest {
     context.refresh();
     mvc =
         MockMvcBuilders.standaloneSetup(context.getBean(NotificationController.class))
-            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new PaginationRequestArgumentResolver())
             .setControllerAdvice(new SecurityExceptionHandler(), new GlobalExceptionHandler())
             .build();
   }
@@ -137,6 +140,53 @@ class NotificationInboxHttpTest {
   }
 
   @Test
+  void sharedPaginationSelectsOffsetOrCursorAndDefaults() throws Exception {
+    actor();
+    when(service.list(any(), any())).thenReturn(PagedResult.ofOffset(List.of(view()), 2, 10, 25));
+    mvc.perform(get(PATH).param("page", "2").param("limit", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.page").value(2))
+        .andExpect(jsonPath("$.pageInfo.total").value(25))
+        .andExpect(jsonPath("$.pageInfo.totalPages").value(3));
+    verify(service)
+        .list(any(), argThat(f -> f.getPagination().page() == 2 && f.getCursorParams() == null));
+    when(service.list(any(), any()))
+        .thenReturn(PagedResult.ofCursor(List.of(view()), true, "next"));
+    mvc.perform(get(PATH).param("pageMode", "cursor").param("limit", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageInfo.nextCursor").value("next"))
+        .andExpect(jsonPath("$.pageInfo.page").doesNotExist());
+    verify(service)
+        .list(
+            any(), argThat(f -> f.getPagination() == null && f.getCursorParams().cursor() == null));
+    mvc.perform(
+            get(PATH)
+                .param("pageMode", "cursor")
+                .param("cursor", "token")
+                .param("page", "2")
+                .param("limit", "100"))
+        .andExpect(status().isOk());
+    verify(service)
+        .list(
+            any(),
+            argThat(
+                f ->
+                    f.getPagination() == null
+                        && "token".equals(f.getCursor())
+                        && f.getLimit() == 100));
+    mvc.perform(get(PATH).param("cursor", " ").param("page", "").param("limit", ""))
+        .andExpect(status().isOk());
+    verify(service)
+        .list(
+            any(),
+            argThat(
+                f ->
+                    f.getPagination() != null
+                        && f.getPagination().page() == 1
+                        && f.getLimit() == 20));
+  }
+
+  @Test
   void recipientCommandsGoThroughTheBusWithoutPublicPayloadCreationOrEditing() throws Exception {
     actor();
     when(service.markRead(any(), eq(id))).thenReturn(view());
@@ -165,8 +215,12 @@ class NotificationInboxHttpTest {
   @Test
   void invalidPaginationAndReadAllBodiesDoNotReachTheService() throws Exception {
     actor();
+    mvc.perform(get(PATH).param("page", "0")).andExpect(status().isUnprocessableEntity());
     mvc.perform(get(PATH).param("limit", "0")).andExpect(status().isUnprocessableEntity());
     mvc.perform(get(PATH).param("limit", "101")).andExpect(status().isUnprocessableEntity());
+    mvc.perform(get(PATH).param("limit", "abc")).andExpect(status().isBadRequest());
+    mvc.perform(get(PATH).param("page", "abc")).andExpect(status().isBadRequest());
+    mvc.perform(get(PATH).param("pageMode", "unknown")).andExpect(status().isUnprocessableEntity());
     mvc.perform(post(PATH + "/read-all").contentType(MediaType.APPLICATION_JSON).content("{}"))
         .andExpect(status().isUnprocessableEntity());
     mvc.perform(get(PATH + "/invalid-id")).andExpect(status().isBadRequest());

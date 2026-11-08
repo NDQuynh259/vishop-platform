@@ -7,15 +7,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.coreplatform.common.domain.pagination.CursorParams;
 import io.github.coreplatform.common.domain.pagination.OffsetPagination;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
 
 class PaginationRequestTest {
 
+  @Test
+  void explicitPageModeSelectsCursorWithoutAToken() {
+    var request = new PaginationRequest(null, null, null, PageMode.CURSOR);
+    assertTrue(request.isCursor());
+    assertFalse(request.hasCursor());
+    assertFalse(request.isOffset());
+    assertNull(request.page());
+    assertNull(request.toCursorParams().cursor());
+    assertEquals(20, request.limit());
+    assertEquals(PageMode.OFFSET, new PaginationRequest((Integer) null).pageMode());
+    assertFalse(new PaginationRequest("token", 2, 10, PageMode.OFFSET).isCursor());
+  }
+
   // #region paginationRequestPrioritizesCursor
   @Test
-  void paginationRequestPrioritizesCursorWhenProvided() {
-    // When cursor is provided, even if page is provided, cursor wins
-    PaginationRequest req = new PaginationRequest("cur123", 5, 30);
+  void paginationRequestUsesExplicitCursorMode() {
+    // Cursor mode is explicit even when both page and token are provided
+    PaginationRequest req = new PaginationRequest("cur123", 5, 30, PageMode.CURSOR);
     assertTrue(req.hasCursor());
     assertTrue(req.isCursor());
     assertFalse(req.isOffset());
@@ -28,10 +42,13 @@ class PaginationRequestTest {
   }
 
   @Test
-  void paginationRequestCursorClamping() {
-    PaginationRequest req = new PaginationRequest("token123", 999);
-    assertEquals(PaginationRequest.MAX_LIMIT, req.limit());
-    assertEquals("token123", req.cursor());
+  void paginationRequestRejectsInvalidLimitWithBeanValidation() {
+    try (var factory = Validation.buildDefaultValidatorFactory()) {
+      var validator = factory.getValidator();
+      var violations = validator.validate(new PaginationRequest("token123", 999));
+      assertEquals(1, violations.size());
+      assertEquals("limit", violations.iterator().next().getPropertyPath().toString());
+    }
   }
 
   // #endregion
@@ -77,10 +94,14 @@ class PaginationRequestTest {
   }
 
   @Test
-  void paginationRequestClampsNegativePageAndLimit() {
+  void paginationRequestDoesNotHideInvalidPageOrLimitBeforeValidation() {
     PaginationRequest req = new PaginationRequest(null, -5, 999);
-    assertEquals(1, req.page());
-    assertEquals(PaginationRequest.MAX_LIMIT, req.limit());
+    assertEquals(-5, req.page());
+    assertEquals(999, req.limit());
+    try (var factory = Validation.buildDefaultValidatorFactory()) {
+      assertEquals(2, factory.getValidator().validate(req).size());
+    }
   }
+
   // #endregion
 }

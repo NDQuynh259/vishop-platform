@@ -5,7 +5,6 @@ import com.vishop.subscription.modules.payment.application.dto.*;
 import com.vishop.subscription.modules.payment.application.query.*;
 import io.github.coreplatform.common.domain.constants.ApiPaths;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
-import io.github.coreplatform.common.domain.exception.BadRequestException;
 import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import io.github.coreplatform.common.web.pagination.*;
 import org.springdoc.core.annotations.ParameterObject;
@@ -27,12 +26,11 @@ public class PaymentCmsController {
   public ListEnvelope<PaymentReviewView> payments(
       @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
-    if (pagination.hasCursor()) throw new BadRequestException("Use page/limit");
     return ListEnvelope.from(
         ApiPaths.V1 + "/cms/billing/payments/review",
         queries.dispatch(
             new ListPaymentReviewsQuery(
-                SubscriptionAuthorization.actor(actor), pagination.toOffsetPagination())));
+                SubscriptionAuthorization.actor(actor), pagination.toPagination())));
   }
 
   @GetMapping("/webhooks/review")
@@ -40,11 +38,10 @@ public class PaymentCmsController {
   public ListEnvelope<InboxReviewView> webhooks(
       @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
-    if (pagination.hasCursor()) throw new BadRequestException("Use page/limit");
     return ListEnvelope.from(
         ApiPaths.V1 + "/cms/billing/webhooks/review",
         queries.dispatch(
             new ListWebhookReviewsQuery(
-                SubscriptionAuthorization.actor(actor), pagination.toOffsetPagination())));
+                SubscriptionAuthorization.actor(actor), pagination.toPagination())));
   }
 }

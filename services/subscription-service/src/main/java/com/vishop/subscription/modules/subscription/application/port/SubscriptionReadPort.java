@@ -6,7 +6,7 @@ import io.github.coreplatform.common.domain.pagination.*;
 import java.util.*;
 
 public interface SubscriptionReadPort {
-  List<PlanPrice> prices();
+  PagedResult<PlanPrice> prices(ListPagination pagination);
 
-  PagedResult<PurchaseOrder> orders(UUID tenantId, OffsetPagination pagination);
+  PagedResult<PurchaseOrder> orders(UUID tenantId, ListPagination pagination);
 }

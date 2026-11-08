@@ -77,8 +77,9 @@ public class NotificationInboxJpaAdapter implements NotificationInboxRepository 
     for (var r : recipients) {
       em.createNativeQuery(
               "INSERT INTO"
-                  + " notification_recipients(tenant_id,notification_id,user_id,created_at,updated_at)"
-                  + " VALUES(:tenant,:id,:user,:created,:created)")
+                  + " notification_recipients(id,tenant_id,notification_id,user_id,created_at,updated_at)"
+                  + " VALUES(:recipientId,:tenant,:id,:user,:created,:created)")
+          .setParameter("recipientId", r.id())
           .setParameter("tenant", r.tenantId())
           .setParameter("id", r.notificationId())
           .setParameter("user", r.userId())
@@ -91,6 +92,37 @@ public class NotificationInboxJpaAdapter implements NotificationInboxRepository 
   public List<NotificationInboxEntry> findAll(
       NotificationInboxScope scope, NotificationInboxFilter filter) {
     if (scope.getPermissions().isEmpty()) return List.of();
+    String conditions = listConditions(scope, filter);
+    var query =
+        em.createQuery(
+            "select n,r.readAt from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
+                + conditions
+                + " order by n.createdAt desc,n.id desc",
+            Object[].class);
+    bind(query, scope);
+    bindList(query, filter);
+    return query
+        .setFirstResult(filter.getOffset())
+        .setMaxResults(filter.getLimit())
+        .getResultList()
+        .stream()
+        .map(this::entry)
+        .toList();
+  }
+
+  public long count(NotificationInboxScope scope, NotificationInboxFilter filter) {
+    if (scope.getPermissions().isEmpty()) return 0;
+    var query =
+        em.createQuery(
+            "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
+                + listConditions(scope, filter),
+            Long.class);
+    bind(query, scope);
+    bindList(query, filter);
+    return query.getSingleResult();
+  }
+
+  private String listConditions(NotificationInboxScope scope, NotificationInboxFilter filter) {
     String conditions = visible(scope) + " and r.deletedAt is null";
     if (filter.getType() != null) conditions += " and n.type=:type";
     if (filter.getSeverity() != null) conditions += " and n.severity=:severity";
@@ -99,13 +131,10 @@ public class NotificationInboxJpaAdapter implements NotificationInboxRepository 
     if (filter.getShopId() != null) conditions += " and n.shopId=:shopId";
     if (filter.getBeforeCreatedAt() != null)
       conditions += " and (n.createdAt<:before or (n.createdAt=:before and n.id<:beforeId))";
-    var query =
-        em.createQuery(
-            "select n,r.readAt from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
-                + conditions
-                + " order by n.createdAt desc,n.id desc",
-            Object[].class);
-    bind(query, scope);
+    return conditions;
+  }
+
+  private void bindList(Query query, NotificationInboxFilter filter) {
     if (filter.getType() != null) query.setParameter("type", filter.getType());
     if (filter.getSeverity() != null) query.setParameter("severity", filter.getSeverity());
     if (filter.getShopId() != null) query.setParameter("shopId", filter.getShopId());
@@ -113,9 +142,6 @@ public class NotificationInboxJpaAdapter implements NotificationInboxRepository 
       query
           .setParameter("before", filter.getBeforeCreatedAt())
           .setParameter("beforeId", filter.getBeforeId());
-    return query.setMaxResults(filter.getLimit()).getResultList().stream()
-        .map(this::entry)
-        .toList();
   }
 
   public Optional<NotificationInboxEntry> findById(NotificationInboxScope scope, UUID id) {
@@ -195,20 +221,20 @@ public class NotificationInboxJpaAdapter implements NotificationInboxRepository 
 
   private String visible(NotificationInboxScope scope) {
     return "n.id=r.notificationId and n.tenantId=r.tenantId and r.tenantId=:tenant and"
-               + " r.userId=:user and "
+        + " r.userId=:user and "
         + payloadScope(scope);
   }
 
   private String recipientScope(NotificationInboxScope scope) {
     return "r.tenantId=:tenant and r.userId=:user and r.notificationId in (select n.id from"
-               + " NotificationJpaEntity n where "
+        + " NotificationJpaEntity n where "
         + payloadScope(scope)
         + ")";
   }
 
   private String payloadScope(NotificationInboxScope scope) {
     return "n.tenantId=:tenant and n.deletedAt is null and n.requiredPermission in :permissions and"
-               + " "
+        + " "
         + (scope.getShopIds().isEmpty()
             ? "n.shopId is null"
             : "(n.shopId is null or n.shopId in :shops)");

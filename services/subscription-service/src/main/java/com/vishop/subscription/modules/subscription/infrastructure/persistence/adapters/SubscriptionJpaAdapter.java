@@ -15,6 +15,8 @@ import com.vishop.subscription.modules.subscription.infrastructure.persistence.r
 import com.vishop.subscription.modules.subscription.infrastructure.persistence.repositories.SpringDataTermRepository;
 import io.github.coreplatform.common.domain.exception.*;
 import io.github.coreplatform.common.domain.pagination.*;
+import io.github.coreplatform.common.persistence.pagination.JpaListPagination;
+import jakarta.persistence.EntityManager;
 import java.util.*;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.*;
 public class SubscriptionJpaAdapter implements SubscriptionRepository, SubscriptionReadPort {
   private final SpringDataPriceRepository prices;
   private final SpringDataOrderRepository orders;
+  private final EntityManager entityManager;
   private final SpringDataSubscriptionAccountRepository accounts;
   private final SpringDataTermRepository terms;
 
@@ -31,11 +34,13 @@ public class SubscriptionJpaAdapter implements SubscriptionRepository, Subscript
       SpringDataPriceRepository prices,
       SpringDataOrderRepository orders,
       SpringDataSubscriptionAccountRepository accounts,
-      SpringDataTermRepository terms) {
+      SpringDataTermRepository terms,
+      EntityManager entityManager) {
     this.prices = prices;
     this.orders = orders;
     this.accounts = accounts;
     this.terms = terms;
+    this.entityManager = entityManager;
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
@@ -70,10 +75,15 @@ public class SubscriptionJpaAdapter implements SubscriptionRepository, Subscript
     prices.saveAndFlush(e);
   }
 
-  public List<PlanPrice> prices() {
-    return prices.findByActiveTrueOrderByPlanCodeAscAmountVndAsc().stream()
-        .map(SubscriptionPersistenceMapper::domain)
-        .toList();
+  public PagedResult<PlanPrice> prices(ListPagination pagination) {
+    return JpaListPagination.find(
+        entityManager,
+        PlanPriceJpaEntity.class,
+        (root, query, cb) -> cb.isTrue(root.get("active")),
+        Sort.by("planCode", "amountVnd", "id"),
+        pagination,
+        "billing-plans",
+        SubscriptionPersistenceMapper::domain);
   }
 
   public Optional<PurchaseOrder> order(UUID id) {
@@ -119,20 +129,14 @@ public class SubscriptionJpaAdapter implements SubscriptionRepository, Subscript
     terms.saveAndFlush(e);
   }
 
-  public PagedResult<PurchaseOrder> orders(UUID tenant, OffsetPagination pagination) {
-    if (pagination.offset() > Integer.MAX_VALUE)
-      throw new BadRequestException("Pagination offset is too large");
-    var page =
-        orders.findByTenantId(
-            tenant,
-            PageRequest.of(
-                pagination.pageIndex(),
-                pagination.limit(),
-                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))));
-    return PagedResult.ofOffset(
-        page.stream().map(SubscriptionPersistenceMapper::domain).toList(),
-        pagination.page(),
-        pagination.limit(),
-        page.getTotalElements());
+  public PagedResult<PurchaseOrder> orders(UUID tenant, ListPagination pagination) {
+    return JpaListPagination.find(
+        entityManager,
+        PurchaseOrderJpaEntity.class,
+        (root, query, cb) -> cb.equal(root.get("tenantId"), tenant),
+        Sort.by(Sort.Direction.DESC, "createdAt", "id"),
+        pagination,
+        "billing-orders:" + tenant,
+        SubscriptionPersistenceMapper::domain);
   }
 }
