@@ -1,4 +1,4 @@
-package com.vishop.notification.modules.setting.presentation.rest;
+package com.vishop.notification.modules.setting.presentation.rest.controller;
 
 import com.vishop.notification.modules.setting.application.api.NotificationAlertRuleApi.RuleChange;
 import com.vishop.notification.modules.setting.application.api.NotificationAlertRuleApi.RuleView;
@@ -79,3 +79,4 @@ public class NotificationRuleController {
             new RuleChange(body.getEnabled(), body.getChannels(), body.getVersion())));
   }
 }
+

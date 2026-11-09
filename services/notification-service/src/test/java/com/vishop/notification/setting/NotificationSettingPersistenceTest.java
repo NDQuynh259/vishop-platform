@@ -21,8 +21,8 @@ import com.vishop.notification.modules.setting.infrastructure.persistence.entiti
 import com.vishop.notification.modules.setting.infrastructure.persistence.model.*;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationAlertRuleRepository;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationChannelSettingRepository;
-import com.vishop.notification.modules.setting.presentation.rest.NotificationRuleController;
-import com.vishop.notification.modules.setting.presentation.rest.NotificationSettingController;
+import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationRuleController;
+import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationSettingController;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.UuidV7;

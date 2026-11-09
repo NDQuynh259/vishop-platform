@@ -14,7 +14,7 @@ import com.vishop.notification.modules.setting.application.command.UpdateChannel
 import com.vishop.notification.modules.setting.application.query.GetChannelQueryHandler;
 import com.vishop.notification.modules.setting.application.query.ListChannelsQueryHandler;
 import com.vishop.notification.modules.setting.application.service.NotificationSettingService;
-import com.vishop.notification.modules.setting.presentation.rest.*;
+import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationSettingController;
 import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingUpdateReq;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
