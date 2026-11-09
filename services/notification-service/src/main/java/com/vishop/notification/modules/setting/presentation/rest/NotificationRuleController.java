@@ -18,6 +18,7 @@ import io.github.coreplatform.common.web.pagination.ListEnvelope;
 import io.github.coreplatform.common.web.pagination.PaginationRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
@@ -60,7 +61,8 @@ public class NotificationRuleController {
             new CreateRuleCommand(
                 actor.tenantId(), body.getType(), body.getEnabled(), body.getChannels()));
     return ResponseEntity.created(
-            URI.create(ApiPaths.V1 + "/notifications/settings/rules/" + created.getId()))
+            Objects.requireNonNull(
+                URI.create(ApiPaths.V1 + "/notifications/settings/rules/" + created.getId())))
         .body(created);
   }
 
