@@ -11,13 +11,27 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 
 class NotificationArchitectureTest {
+  private static final String DELIVERY_ENTITY =
+      "com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationDeliveryJpaEntity";
+  private static final String NOTIFICATION_ENTITY =
+      "com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationJpaEntity";
+  private static final String SETTING_ENTITY =
+      "com.vishop.notification.modules.setting.infrastructure.persistence.entities.NotificationChannelSettingJpaEntity";
+  private static final String NOTIFICATION_CONFIG =
+      "com.vishop.notification.modules.notification.infrastructure.config.NotificationModuleConfiguration";
+  private static final String SETTING_CONFIG =
+      "com.vishop.notification.modules.setting.infrastructure.config.NotificationSettingModuleConfiguration";
+
   @Test
   void modulesOwnTheirInternalsAndOnlyExposeApplicationApis() {
     var classes =
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.vishop.notification");
-    var modules = java.util.Set.of("setting", "inbox", "delivery", "announcement");
+    var modules = java.util.Set.of("setting", "notification", "announcement");
+    assertThat(classes.stream().map(type -> type.getPackageName()))
+        .noneMatch(name -> name.startsWith("com.vishop.notification.modules.inbox."))
+        .noneMatch(name -> name.startsWith("com.vishop.notification.modules.delivery."));
     assertThat(
             classes.stream()
                 .anyMatch(
@@ -33,8 +47,19 @@ class NotificationArchitectureTest {
         if (!owner.getPackageName().startsWith(prefix)) continue;
         for (var dependency : owner.getDirectDependenciesFromSelf()) {
           String target = dependency.getTargetClass().getPackageName();
+          // Only reciprocal persistence mappings and entity-scan registrations may cross
+          // these module boundaries. Business calls still use application APIs.
+          boolean settingJpaReference =
+              java.util.Set.of(
+                      DELIVERY_ENTITY + "->" + SETTING_ENTITY,
+                      NOTIFICATION_CONFIG + "->" + SETTING_ENTITY,
+                      SETTING_ENTITY + "->" + DELIVERY_ENTITY,
+                      SETTING_CONFIG + "->" + NOTIFICATION_ENTITY)
+                  .contains(owner.getName() + "->" + dependency.getTargetClass().getName());
           if (target.startsWith("com.vishop.notification.modules.") && !target.startsWith(prefix))
-            assertThat(target).as(dependency.getDescription()).contains(".application.api");
+            assertThat(settingJpaReference || target.contains(".application.api"))
+                .as(dependency.getDescription())
+                .isTrue();
           assertThat(target)
               .as(dependency.getDescription())
               .doesNotStartWith("com.vishop.notification.composition.");
@@ -45,6 +70,10 @@ class NotificationArchitectureTest {
         .matching("com.vishop.notification.modules.(*)..")
         .should()
         .beFreeOfCycles()
+        .ignoreDependency(DELIVERY_ENTITY, SETTING_ENTITY)
+        .ignoreDependency(NOTIFICATION_CONFIG, SETTING_ENTITY)
+        .ignoreDependency(SETTING_ENTITY, DELIVERY_ENTITY)
+        .ignoreDependency(SETTING_CONFIG, NOTIFICATION_ENTITY)
         .check(classes);
     noClasses()
         .that()

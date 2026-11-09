@@ -16,7 +16,7 @@ import com.vishop.notification.modules.setting.application.command.CreateRuleCom
 import com.vishop.notification.modules.setting.domain.entity.NotificationSettingState.Connection;
 import com.vishop.notification.modules.setting.domain.port.NotificationSettingManagementRepository;
 import com.vishop.notification.modules.setting.infrastructure.config.NotificationSettingModuleConfiguration;
-import com.vishop.notification.modules.setting.infrastructure.persistence.NotificationSettingJpaAdapter;
+import com.vishop.notification.modules.setting.infrastructure.persistence.adapters.NotificationSettingJpaAdapter;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.*;
 import com.vishop.notification.modules.setting.infrastructure.persistence.model.*;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationAlertRuleRepository;
@@ -611,7 +611,7 @@ class NotificationSettingPersistenceTest {
   }
 
   @Test
-  void postCreatesRecordRejectsDuplicatesAndSupportsGetPutByReturnedId() throws Exception {
+  void postCreatesIndependentLarkRecordsAndSupportsGetPutByReturnedId() throws Exception {
     var mvc =
         MockMvcBuilders.standaloneSetup(
                 new NotificationSettingController(commands, queries, json, validator))
@@ -654,7 +654,7 @@ class NotificationSettingPersistenceTest {
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       "{\"channel\":\"LARK\",\"enabled\":false,\"connectionConfig\":{\"appToken\":\"replacement\"}}"))
-          .andExpect(status().isConflict());
+          .andExpect(status().isCreated());
       assertThat(rows.findById(id).orElseThrow().getConnectionConfig())
           .containsEntry("appToken", "secret-ref");
       String location = response.getHeader("Location");
@@ -916,6 +916,107 @@ class NotificationSettingPersistenceTest {
             () -> settings.createChannel(tenant, NotificationChannel.LARK, null, true, Map.of()))
         .isInstanceOf(BusinessRuleViolationException.class);
     assertThat(rows.findByTenantIdAndChannel(tenant, NotificationChannel.LARK)).isEmpty();
+  }
+
+  @Test
+  void multipleLarkGroupsAreListedAndUpdatedByIdWithoutAmbiguousChannelLookup() throws Exception {
+    var first =
+        settings.createChannel(
+            tenant,
+            NotificationChannel.LARK,
+            "Operations",
+            false,
+            Map.of("webhookUrl", "https://open.larksuite.com/hook/operations"));
+    var second =
+        settings.createChannel(
+            tenant,
+            NotificationChannel.LARK,
+            "Accounting",
+            false,
+            Map.of("webhookUrl", "https://open.larksuite.com/hook/accounting"));
+    assertThat(first.id()).isNotEqualTo(second.id());
+    assertThat(settings.channels(tenant)).hasSize(5);
+    assertThat(
+            settings.channels(tenant).stream().filter(c -> c.channel() == NotificationChannel.LARK))
+        .extracting(ChannelView::id)
+        .containsExactly(first.id(), second.id());
+    assertThatThrownBy(() -> settings.channel(tenant, NotificationChannel.LARK))
+        .isInstanceOf(ConflictException.class);
+    assertThatThrownBy(
+            () ->
+                repository.saveConnection(
+                    tenant,
+                    new Connection(
+                        NotificationChannel.LARK, true, false, null, null, null, null, null, 0),
+                    0))
+        .isInstanceOf(ConflictException.class);
+    settings.updateChannel(
+        tenant,
+        first.id(),
+        new ChannelUpdate(
+            false, Map.of("webhookUrl", "https://open.larksuite.com/hook/operations-updated"), 1));
+    assertThat(rows.findById(first.id()).orElseThrow().getConnectionConfig())
+        .containsEntry("webhookUrl", "https://open.larksuite.com/hook/operations-updated");
+    assertThat(rows.findById(second.id()).orElseThrow().getConnectionConfig())
+        .containsEntry("webhookUrl", "https://open.larksuite.com/hook/accounting");
+    assertThatThrownBy(() -> settings.channelById(UUID.randomUUID(), first.id()))
+        .isInstanceOf(EntityNotFoundException.class);
+
+    var mvc =
+        MockMvcBuilders.standaloneSetup(
+                new NotificationSettingController(commands, queries, json, validator))
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .build();
+    var actor =
+        new GatewayPrincipal(
+            UUID.randomUUID(), tenant, "USER", "OWNER", Set.of("notifications.settings.view"));
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, List.of()));
+    try {
+      mvc.perform(
+              get("/api/v1/notification-settings/channels").param("page", "2").param("limit", "3"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.pageInfo.total").value(5))
+          .andExpect(jsonPath("$.data.length()").value(2));
+      String cursor = null;
+      var keys = new HashSet<String>();
+      var groupIds = new HashSet<String>();
+      for (int page = 0; page < 5; page++) {
+        var request =
+            get("/api/v1/notification-settings/channels")
+                .param("pageMode", "cursor")
+                .param("limit", "1");
+        if (cursor != null) request.param("cursor", cursor);
+        var response =
+            mvc.perform(request)
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(response).doesNotContain("/hook/operations", "/hook/accounting");
+        var body = json.readTree(response);
+        var item = body.path("data").get(0);
+        assertThat(keys.add(item.path("channel").asText() + ":" + item.path("id").asText()))
+            .isTrue();
+        if (item.path("channel").asText().equals("LARK")) groupIds.add(item.path("id").asText());
+        cursor = body.path("pageInfo").path("nextCursor").asText(null);
+      }
+      assertThat(cursor).isNull();
+      assertThat(groupIds).containsExactlyInAnyOrder(first.id().toString(), second.id().toString());
+    } finally {
+      SecurityContextHolder.clearContext();
+    }
+    var deleted = rows.findById(first.id()).orElseThrow();
+    deleted.setDeletedAt(Instant.now());
+    rows.saveAndFlush(deleted);
+    assertThat(
+            settings.channels(tenant).stream().filter(c -> c.channel() == NotificationChannel.LARK))
+        .extracting(ChannelView::id)
+        .containsExactly(second.id());
   }
 
   @Test

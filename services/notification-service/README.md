@@ -2,14 +2,15 @@
 
 Service business rules, architecture and database ERDs: [docs/README.md](docs/README.md).
 
-This service contains four domain/application modules, shared notification constants, database
+This service contains three business modules (`notification`, `setting`, `announcement`), shared notification constants, database
 schema and standalone Flyway migration CLI. See [module design](docs/module-design.md)
 for implemented use cases and adapter contracts. [Shared constants](docs/constants.md) define
 feature/type codes and defaults; there is no catalog module, registry or catalog HTTP API.
 The setting module implements notification_settings and notification_alert_rules:
 channel and per-type rule HTTP APIs with transactional JPA adapters; see
-[setting API and limits](docs/setting.md). The inbox module implements notification/recipient
-persistence and personal list/detail/unread/read/archive APIs; see [inbox API](docs/inbox.md).
+[setting API and limits](docs/setting.md). The notification module owns shared content, in-app recipients
+and external deliveries. Its JPA adapters persist deliveries;
+HTTP adapters expose personal list/detail/unread/read/archive APIs; see [inbox API](docs/inbox.md).
 Other persistence/HTTP adapters, event consumers,
 runtime gateway authentication, realtime and provider workers are subsequent work.
 It does not yet start a standalone server or send notifications.
@@ -33,15 +34,14 @@ The buses execute synchronously in the same process; they are independent of Kaf
 | Module | Queries | Commands |
 | --- | --- | --- |
 | setting | `ListChannelsQuery`, `GetChannelQuery`, `ListRulesQuery`, `GetRuleQuery` | `CreateChannelCommand`, `UpdateChannelCommand`, `CreateRuleCommand`, `UpdateRuleCommand` |
-| inbox | `ListInboxQuery`, `GetNotificationQuery`, `UnreadCountQuery` | `CreateNotificationCommand`, `MarkNotificationReadCommand`, `MarkAllNotificationsReadCommand`, `ArchiveNotificationCommand` |
-| delivery | — | `ReserveRoutesCommand`, `EnqueueDeliveriesCommand` |
+| notification | `ListInboxQuery`, `GetNotificationQuery`, `UnreadCountQuery` | `CreateNotificationCommand`, `MarkNotificationReadCommand`, `MarkAllNotificationsReadCommand`, `ArchiveNotificationCommand`, `EnqueueDeliveriesCommand` |
 | announcement | — | `CreateAnnouncementCommand`, `ReviseAnnouncementCommand`, `PublishAnnouncementCommand` |
 
-`NotificationDispatchCoordinator` dispatches reservation, inbox creation and delivery enqueue
-commands through the shared bus. Reserving cooldown routes is a write operation.
+`NotificationDispatchCoordinator` dispatches inbox creation and delivery enqueue commands
+through the shared bus. Eligible routes are dispatched without a cooldown gate.
 The journal continues to own workflow idempotency and its eventual transaction boundary.
 Setting registers its handlers and the conditional common CQRS buses in
-`NotificationSettingModuleConfiguration`; inbox uses `NotificationInboxModuleConfiguration`.
+`NotificationSettingModuleConfiguration`; notification uses `NotificationModuleConfiguration`.
 Other handlers are Spring components and need
 their application API implementations when those modules are wired into a runtime.
 CQRS does not add the missing provider, persistence or HTTP runtime adapters listed above.
@@ -75,13 +75,19 @@ or database creation occurs in the CLI. Application UUIDs require no extensions.
 | --- | --- |
 | `notifications` | Shared title/body, type, severity, source event, subject, permission and optional shop scope |
 | `notification_recipients` | In-app inbox and independent read timestamp per tenant/user |
-| `notification_alert_rules` | Per-tenant/type channel settings, thresholds and cooldown (at least 24 hours) |
+| `notification_alert_rules` | Per-tenant/type channel settings; legacy thresholds/cooldown columns are inactive |
 | `notification_settings` | Tenant channel switches and provider/bot connection configuration |
-| `notification_deduplication` | UUIDv7 cooldown rows per tenant/type/subject/channel and user or external destination |
 | `notification_deliveries` | Durable EMAIL/TELEGRAM/LARK jobs, optional user/setting IDs, retries and worker leases |
-| `notification_delivery_attempts` | Provider attempt outcomes, including unknown outcomes |
 | `consumed_messages` | Event processing idempotency, compatible with common-persistence |
 | `outbox_events` | Transactional publication, including future realtime signals |
+
+V18 removes `notification_deduplication_archive` and `notification_delivery_attempts`.
+The current schema has seven business tables, plus Flyway's schema history. Delivery status,
+attempt counters and provider IDs stay in `notification_deliveries`; technical details belong in logging.
+
+V19 allows multiple Lark group settings per tenant. Each group is addressed by its setting ID;
+the tenant/id/channel key remains for delivery foreign keys. The other channels retain one
+setting per tenant. Listing returns every active Lark group; cursor identity includes the setting ID.
 
 Tenant/user/shop IDs are external references to their owning services; no cross-database
 foreign keys. Local foreign keys include tenant ID to reject mismatched tenant links.
@@ -135,7 +141,7 @@ The current two-table routing policy evaluates:
 
 1. Supported type code and per-type rule (missing row: code catalog defaults).
 2. Rule channel choices intersected with enabled, available, verified channel connections.
-3. Recipient authorization and cooldown through the existing dispatch ports.
+3. Recipient authorization through the existing dispatch ports.
 
 Feature groups, per-rule recipient lists and personal preferences are not consulted in this phase.
 
@@ -184,15 +190,23 @@ channel enablement until secret storage and provider verification adapters are i
 See [setting implementation](docs/setting.md).
 
 Tenant type rules and code catalog defaults select enabled channels. The V16 queue supports
-EMAIL/TELEGRAM/LARK; cooldown supports these channels and IN_APP. Provider workers,
-delivery/cooldown persistence adapters, audience resolvers and test-connection APIs remain
+EMAIL/TELEGRAM/LARK. Delivery JPA
+adapters are registered in `NotificationModuleConfiguration`. Provider workers,
+audience resolvers and test-connection APIs remain
 subsequent work. Creating a bot configuration does not itself send messages.
 
 Consumers must record consumed messages, notifications, recipients, delivery jobs and outbox
-events in one transaction. To enforce BR-14-02, upsert and lock the deduplication key,
-then suppress notifications within the cooldown unless severity increases
-(`INFO < WARNING < CRITICAL`). The table supplies concurrency keys; time and escalation
-decisions remain application logic. Threshold evaluation belongs to the source domain.
+events in one transaction. Distinct source events are dispatched independently, even for
+the same subject and severity. Event replay protection and per-notification destination
+uniqueness remain active. Threshold evaluation belongs to the source domain.
+
+V17 retires cooldown. It renames the old deduplication table to
+`notification_deduplication_archive` to preserve existing data. No runtime entity,
+repository or reservation command accesses the archive. Deploy this migration together
+with the updated dispatch code; older versions still expect the original table name.
+
+V18 then deletes the unused archive and per-attempt history table. Back up existing databases
+before applying this cleanup; the remaining operational tables and their rows are preserved.
 
 External jobs may target users, invitees or shared groups; `user_id` is optional.
 Destinations are snapshots, deduplicated per notification/channel. EMAIL ignores case;
@@ -214,7 +228,7 @@ fetch content through authorized APIs. Telegram sending, Zalo and digest are not
 
 Tests use an isolated embedded PostgreSQL 16 instance. They verify fresh/repeated
 migrations, per-user read state, tenant foreign keys, destination deduplication,
-delivery state constraints, event transaction rollback, cooldown key isolation,
+delivery state constraints, event transaction rollback, cooldown archive preservation,
 personal preference isolation, feature/channel/type choices per tenant, system type categories,
 Telegram configuration constraints, code-owned catalog metadata and upgrades from V1–V6 without loss of existing
 notifications, custom type configuration, personal preferences or provider connections.

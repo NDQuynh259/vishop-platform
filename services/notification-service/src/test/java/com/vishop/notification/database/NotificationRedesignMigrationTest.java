@@ -114,7 +114,7 @@ class NotificationRedesignMigrationTest {
   @Test
   void upgradePreservesEveryBusinessAndOperationalRowAndCanRunAgain() throws Exception {
     var before = snapshots();
-    var flyway = Flyway.configure().dataSource(url, "postgres", "postgres").load();
+    var flyway = Flyway.configure().dataSource(url, "postgres", "postgres").target("16").load();
     assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
     flyway.validate();
     assertThat(snapshots()).isEqualTo(before);
@@ -200,7 +200,37 @@ class NotificationRedesignMigrationTest {
   }
 
   private void migrate() {
-    Flyway.configure().dataSource(url, "postgres", "postgres").load().migrate();
+    Flyway.configure().dataSource(url, "postgres", "postgres").target("16").load().migrate();
+  }
+
+  @Test
+  void retiringCooldownArchivesEveryExistingRowWithoutChangingOtherData() throws Exception {
+    migrate();
+    cooldown("TELEGRAM", "-100123", null, TELEGRAM);
+    var before = snapshots();
+    String fullRows;
+    try (var statement = db.createStatement();
+        var rows =
+            statement.executeQuery(
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM notification_deduplication t")) {
+      rows.next();
+      fullRows = rows.getString(1);
+    }
+    var latest = Flyway.configure().dataSource(url, "postgres", "postgres").target("17").load();
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='notification_deduplication'"))
+        .isZero();
+    try (var statement = db.createStatement();
+        var rows =
+            statement.executeQuery(
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM notification_deduplication_archive t")) {
+      rows.next();
+      assertThat(rows.getString(1)).isEqualTo(fullRows);
+    }
+    assertThat(snapshots()).isEqualTo(before);
+    assertThat(latest.migrate().migrationsExecuted).isZero();
   }
 
   private Map<String, String> snapshots() throws Exception {
@@ -222,6 +252,11 @@ class NotificationRedesignMigrationTest {
             "notification_deduplication",
             "consumed_messages",
             "outbox_events")) {
+      String physicalTable = table;
+      if (table.equals("notification_deduplication")
+          && tableExists("notification_deduplication_archive"))
+        physicalTable = "notification_deduplication_archive";
+      if (!tableExists(physicalTable)) continue;
       String fields = excluded.getOrDefault(table, "");
       String keys =
           fields.isEmpty() ? "ARRAY[]::text[]" : "ARRAY['" + fields.replace(",", "','") + "']";
@@ -231,13 +266,63 @@ class NotificationRedesignMigrationTest {
                   "SELECT coalesce(jsonb_agg(value ORDER BY value::text),'[]'::jsonb)::text FROM (SELECT to_jsonb(t)-"
                       + keys
                       + " AS value FROM "
-                      + table
+                      + physicalTable
                       + " t) s")) {
         rows.next();
         result.put(table, rows.getString(1));
       }
     }
     return result;
+  }
+
+  @Test
+  void cleanupDropsOnlyUnusedHistoryAndPreservesAllOperationalData() throws Exception {
+    migrate();
+    Flyway.configure().dataSource(url, "postgres", "postgres").target("17").load().migrate();
+    var before = snapshots();
+    before.remove("notification_deduplication");
+    before.remove("notification_delivery_attempts");
+    var latest = Flyway.configure().dataSource(url, "postgres", "postgres").target("18").load();
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(tableExists("notification_deduplication_archive")).isFalse();
+    assertThat(tableExists("notification_delivery_attempts")).isFalse();
+    assertThat(snapshots()).isEqualTo(before).hasSize(7);
+    assertThat(latest.migrate().migrationsExecuted).isZero();
+  }
+
+  private boolean tableExists(String table) throws SQLException {
+    return scalar(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='"
+                + table
+                + "'")
+        == 1;
+  }
+
+  @Test
+  void multipleLarkMigrationKeepsRowsAndTenantChannelDeliveryForeignKey() throws Exception {
+    migrate();
+    Flyway.configure().dataSource(url, "postgres", "postgres").target("18").load().migrate();
+    var before = snapshots();
+    var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(snapshots()).isEqualTo(before);
+    UUID group = UuidV7.nextId();
+    execute(
+        "INSERT INTO notification_settings(id,tenant_id,channel,name) VALUES (?,?,'LARK','Second group')",
+        group,
+        TENANT);
+    assertThat(scalar("SELECT count(*) FROM notification_settings WHERE channel='LARK'"))
+        .isEqualTo(2);
+    rejects(
+        "23505",
+        () ->
+            execute(
+                "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
+                UuidV7.nextId(),
+                TENANT));
+    delivery("LARK", "https://example.test/second-group", null, group);
+    rejects("23503", () -> delivery("EMAIL", "wrong-channel@example.test", null, group));
+    assertThat(latest.migrate().migrationsExecuted).isZero();
   }
 
   private void delivery(String channel, String destination, UUID user, UUID setting)

@@ -1,9 +1,12 @@
 package com.vishop.notification.modules.setting.infrastructure.persistence.entities;
 
+import com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationDeliveryJpaEntity;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.*;
@@ -13,7 +16,10 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(
     name = "notification_settings",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"tenant_id", "channel"}))
+    uniqueConstraints =
+        @UniqueConstraint(
+            name = "uq_notification_settings_tenant_id_channel",
+            columnNames = {"tenant_id", "id", "channel"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -26,6 +32,10 @@ public class NotificationChannelSettingJpaEntity {
   @Column(name = "tenant_id", nullable = false, updatable = false)
   private UUID tenantId;
 
+  @OneToMany(mappedBy = "setting", fetch = FetchType.LAZY)
+  @Setter(AccessLevel.NONE)
+  private List<NotificationDeliveryJpaEntity> deliveries = new ArrayList<>();
+
   @Enumerated(EnumType.STRING)
   @Column(name = "channel", nullable = false, length = 20, updatable = false)
   private NotificationChannel channel;
@@ -33,7 +43,7 @@ public class NotificationChannelSettingJpaEntity {
   @Column(name = "name", nullable = false, length = 150)
   private String name;
 
-  @Column(nullable = false)
+  @Column(name = "enabled", nullable = false)
   private boolean enabled;
 
   @JdbcTypeCode(SqlTypes.JSON)

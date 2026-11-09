@@ -1,6 +1,8 @@
 # Thiết kế Notification
 
-Hiện có 4 module domain/application, composition contract và CLI Flyway.
+Hiện có 3 module `notification`, `setting`, `announcement`, composition contract và CLI Flyway.
+Module `notification` thống nhất nội dung, inbox và external delivery; các trách nhiệm này
+được phân biệt bằng service/API bên trong module.
 Module [notification-setting](setting.md) chỉ có HTTP, transaction service và JPA cho
 notification_settings. Policy feature/type/recipient/preference chờ triển khai sau.
 [Thiết kế module](module-design.md) ghi rõ code đã có và adapter còn thiếu.

@@ -44,7 +44,7 @@ class NotificationSchemaTest {
     }
     String url = postgres.getJdbcUrl("postgres", name);
     flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(16);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(19);
     db = DriverManager.getConnection(url, "postgres", "postgres");
     execute(
         "INSERT INTO"
@@ -155,7 +155,7 @@ class NotificationSchemaTest {
                 .load()
                 .migrate()
                 .migrationsExecuted)
-        .isEqualTo(5);
+        .isEqualTo(8);
     try (var connection = DriverManager.getConnection(url, "postgres", "postgres");
         var statement = connection.createStatement();
         var result =
@@ -283,7 +283,7 @@ class NotificationSchemaTest {
               + "'00000000-0000-0000-0000-000000000005',"
               + "'2026-01-01 00:00:00Z','2026-01-02 00:00:00Z')");
       var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(16 - previousVersion);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(19 - previousVersion);
       latest.validate();
       try (var result =
           statement.executeQuery(
@@ -658,23 +658,6 @@ class NotificationSchemaTest {
         "UPDATE notification_deliveries SET"
             + " status='SENT',sent_at=now(),locked_until=NULL,lock_token=NULL WHERE id=?",
         delivery);
-    execute(
-        "INSERT INTO"
-            + " notification_delivery_attempts(id,tenant_id,delivery_id,attempt_number,status,started_at,finished_at)"
-            + " VALUES (?,?,?,1,'SENT',now(),now())",
-        UUID.randomUUID(),
-        tenant,
-        delivery);
-    rejects(
-        "23503",
-        () ->
-            execute(
-                "INSERT INTO"
-                    + " notification_delivery_attempts(id,tenant_id,delivery_id,attempt_number,status,started_at,finished_at)"
-                    + " VALUES (?,?,?,2,'FAILED',now(),now())",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                delivery));
   }
 
   @Test
@@ -701,27 +684,6 @@ class NotificationSchemaTest {
             execute(
                 "INSERT INTO consumed_messages VALUES"
                     + " ('event-1','notifications','StockLow',now())"));
-  }
-
-  @Test
-  void deduplicationSeparatesUsersChannelsAndTenants() throws Exception {
-    UUID user = UUID.randomUUID();
-    dedup(tenant, user, "IN_APP");
-    rejects("23505", () -> dedup(tenant, user, "IN_APP"));
-    dedup(tenant, user, "EMAIL");
-    dedup(tenant, UUID.randomUUID(), "IN_APP");
-    dedup(UUID.randomUUID(), user, "IN_APP");
-    assertThat(scalar("SELECT count(*) FROM notification_deduplication")).isEqualTo(4);
-  }
-
-  private void dedup(UUID tenantId, UUID user, String channel) throws SQLException {
-    execute(
-        "INSERT INTO notification_deduplication(id,tenant_id,type,subject_type,subject_id,user_id,channel,last_notified_at,last_severity) VALUES"
-            + " (?,?,'STOCK_LOW','SKU','sku-1',?,?,now(),'WARNING')",
-        UuidV7.nextId(),
-        tenantId,
-        user,
-        channel);
   }
 
   private void recipient(UUID tenantId, UUID user) throws SQLException {

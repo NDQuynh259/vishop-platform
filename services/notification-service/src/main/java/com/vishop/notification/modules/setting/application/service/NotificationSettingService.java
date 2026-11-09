@@ -8,25 +8,21 @@ import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.exception.BusinessRuleViolationException;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import java.util.*;
+import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
 @Transactional(readOnly = true)
+@RequiredArgsConstructor
 public class NotificationSettingService implements NotificationSettingManagementApi {
   private final NotificationSettingManagementRepository repository;
   private final NotificationSettingConnectionPolicy connections;
   private final NotificationChannelSupport support;
 
-  public NotificationSettingService(
-      NotificationSettingManagementRepository repository,
-      NotificationSettingConnectionPolicy connections,
-      NotificationChannelSupport support) {
-    this.repository = repository;
-    this.connections = connections;
-    this.support = support;
-  }
-
   public List<ChannelView> channels(UUID tenant) {
-    return Arrays.stream(NotificationChannel.values()).map(c -> channel(tenant, c)).toList();
+    return Arrays.stream(NotificationChannel.values())
+        .flatMap(c -> repository.connections(tenant, c).stream())
+        .map(c -> support.view(tenant, c))
+        .toList();
   }
 
   public ChannelView channel(UUID tenant, NotificationChannel channel) {

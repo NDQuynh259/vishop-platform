@@ -7,10 +7,9 @@ import static org.mockito.Mockito.*;
 import com.vishop.notification.composition.publication.NotificationSystemTypePolicy;
 import com.vishop.notification.modules.announcement.application.api.NotificationAnnouncementApi;
 import com.vishop.notification.modules.announcement.application.command.*;
-import com.vishop.notification.modules.announcement.application.service.NotificationAnnouncementApplicationService;
+import com.vishop.notification.modules.announcement.application.service.NotificationAnnouncementService;
 import com.vishop.notification.modules.announcement.domain.entity.NotificationAnnouncement;
 import com.vishop.notification.modules.announcement.domain.port.NotificationAnnouncementRepository;
-import com.vishop.notification.modules.delivery.application.command.ReserveRoutesCommand;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi.ChannelUpdate;
 import com.vishop.notification.modules.setting.application.command.UpdateChannelCommand;
 import com.vishop.notification.shared.contract.NotificationChannel;
@@ -37,7 +36,7 @@ class NotificationCqrsTest {
         .when(repository)
         .save(any(), anyLong());
     var application =
-        new NotificationAnnouncementApplicationService(
+        new NotificationAnnouncementService(
             repository, new NotificationSystemTypePolicy(), Clock.systemUTC(), UUID::randomUUID);
     try (var context = new AnnotationConfigApplicationContext()) {
       context.registerBean(NotificationAnnouncementApi.class, () -> application);
@@ -73,17 +72,9 @@ class NotificationCqrsTest {
   }
 
   @Test
-  void commandsDoNotExposeConnectionSecretsAndSnapshotMutableRoutes() {
+  void commandsDoNotExposeConnectionSecrets() {
     var change = new ChannelUpdate(false, Map.of("appToken", "secret-reference"), 0);
     var configure = new UpdateChannelCommand(UUID.randomUUID(), UUID.randomUUID(), change);
     assertThat(configure.toString()).doesNotContain("secret-reference");
-    UUID user = UUID.randomUUID();
-    var channels = new HashSet<>(Set.of(NotificationChannel.EMAIL));
-    var routes = new HashMap<UUID, Set<NotificationChannel>>();
-    routes.put(user, channels);
-    var reserve = new ReserveRoutesCommand(NotificationApplicationTest.message(), routes);
-    channels.clear();
-    routes.clear();
-    assertThat(reserve.getRoutes()).containsEntry(user, Set.of(NotificationChannel.EMAIL));
   }
 }

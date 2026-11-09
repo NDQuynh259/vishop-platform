@@ -4,7 +4,7 @@ Ngày lập: 04/11/2026. Trạng thái: kế hoạch tổng thể; [module notif
 có HTTP/JPA cho notification_settings và notification_alert_rules; feature subscription,
 recipient selection và personal preference để triển khai sau. Các API/provider còn thiếu ghi rõ trong tài liệu module.
 Nền hiện có: schema V1–V13, migration CLI và kiểm thử PostgreSQL; catalog enum trong code.
-Đã bổ sung nền domain/application của 4 module và composition, xem
+Đã tổ chức nền domain/application thành 3 module `notification`, `setting`, `announcement` và composition, xem
 [trạng thái module](module-design.md). Các hạng mục chưa có trong setting bên dưới vẫn là backlog.
 Module/API catalog đã bỏ; dùng [shared constants](constants.md) và danh mục phía FE.
 Chưa có main HTTP runtime hoặc Gateway integration.
@@ -31,10 +31,10 @@ Bản đầu backend cung cấp API/contract cho FE; việc xây màn hình là 
 
 ## 2. Module đề xuất
 
-- `notification-inbox`: thông báo, recipient, đọc/ẩn và policy đọc.
+- `notification`: thông báo, recipient, đọc/ẩn, policy đọc và external delivery.
 - `shared/constants`: enum feature/type/defaults dùng chung, không phải module/API.
 - `notification-setting`: tenant feature/type/channel và personal preference.
-- `notification-delivery`: template, routing, jobs, attempts, email/Telegram adapter.
+- Phần delivery trong `notification`: template, routing, jobs, attempts, email/Telegram adapter.
 - `notification-announcement`: draft, audience, publish và fan-out thông báo hệ thống.
 - `composition`: phối hợp policy/recipient resolution với các module qua application API.
 - `infra`: Gateway context, IAM adapter, Kafka, secrets adapter, scheduler, realtime.
@@ -103,7 +103,7 @@ chat nhận một tin cho cùng event; provider lỗi không làm rollback dữ 
 
 - Consume event envelope theo contract; write consumed marker, notification, recipients,
   jobs/dedup/outbox nguyên tử trong transaction Notification DB.
-- Lock dedup key trước quyết định cooldown; giữ 24h trừ khi severity tăng.
+- Không áp dụng cooldown; giữ idempotency theo source event và unique đích nhận trong mỗi thông báo.
 - Event không hợp lệ đi DLT; retry kỹ thuật không tạo lại recipient/job/outbox.
 - Mapping có version từ event nguồn sang notification type, subject, permission và template.
 - WebSocket `/ws`: xác thực cookie, kiểm tra origin/session, quản lý reconnect và thu hồi.
@@ -153,7 +153,7 @@ CMS platform role không mặc định được đọc mọi email body/token; a
 
 | Hạng mục | Mục đích |
 | --- | --- |
-| Telegram queue/dedup và connection reference | Routing, unique theo chat, cooldown và provider adapter |
+| Telegram queue và connection reference | Routing, unique đích nhận trong mỗi thông báo và provider adapter |
 | NotificationAnnouncement draft/audience/publish run/checkpoint | CMS publish có thể resume, không sửa notification đã phát |
 | Idempotency record | Cùng key/payload trả kết quả cũ, khác payload trả conflict; scope theo tenant/user/operation |
 | Connection test/verification metadata | Lưu outcome đã che bí mật và revision cấu hình đã kiểm tra |
@@ -170,7 +170,7 @@ quyền đọc/ghi, transaction và migration/backfill.
 - Có ít nhất một event nghiệp vụ end-to-end và một announcement hệ thống.
 - In-app, realtime, email và Telegram được kiểm chứng bằng provider sandbox/mock có
   kịch bản lỗi; test integration thật chỉ dùng kết nối/đích được cấu hình cho việc test.
-- Có test tenant/user isolation, membership revocation, idempotency/race, cooldown,
+- Có test tenant/user isolation, membership revocation, idempotency/race, lưu trữ dữ liệu cooldown cũ,
   immutable payload, secrets redaction, worker lease và fan-out resume.
 - HTTP không phải chờ provider; migration vẫn chạy riêng.
 - Docs service cập nhật trạng thái thật, source events đã hỗ trợ và các giới hạn còn lại.

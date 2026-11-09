@@ -3,6 +3,7 @@ package com.vishop.notification.modules.setting.infrastructure.persistence.repos
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.*;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.*;
@@ -12,6 +13,13 @@ public interface SpringDataNotificationChannelSettingRepository
     extends JpaRepository<NotificationChannelSettingJpaEntity, UUID> {
   Optional<NotificationChannelSettingJpaEntity> findByTenantIdAndChannel(
       UUID tenantId, NotificationChannel channel);
+
+  List<NotificationChannelSettingJpaEntity> findAllByTenantIdAndChannelOrderByIdAsc(
+      UUID tenantId, NotificationChannel channel);
+
+  List<NotificationChannelSettingJpaEntity>
+      findAllByTenantIdAndChannelAndDeletedAtIsNullOrderByIdAsc(
+          UUID tenantId, NotificationChannel channel);
 
   Optional<NotificationChannelSettingJpaEntity> findByIdAndTenantIdAndDeletedAtIsNull(
       UUID id, UUID tenantId);

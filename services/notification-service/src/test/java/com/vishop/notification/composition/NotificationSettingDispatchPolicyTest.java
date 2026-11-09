@@ -99,4 +99,23 @@ class NotificationSettingDispatchPolicyTest {
     assertThat(policy.resolve(tenant, unavailable).channels()).isEmpty();
     verifyNoInteractions(settings, rules);
   }
+
+  @Test
+  void larkIsAvailableWhenAnyOfTheConfiguredGroupsIsEnabledAndVerified() {
+    when(rules.ruleForType(tenant, code))
+        .thenReturn(
+            new RuleView(
+                UUID.randomUUID(),
+                code.code(),
+                "Low stock",
+                true,
+                Set.of(NotificationChannel.LARK),
+                1));
+    when(settings.channels(tenant))
+        .thenReturn(
+            List.of(
+                channel(NotificationChannel.LARK, false, true, false),
+                channel(NotificationChannel.LARK, true, true, true)));
+    assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.LARK);
+  }
 }

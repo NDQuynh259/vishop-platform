@@ -1,6 +1,6 @@
 # Inbox và bảng thông báo
 
-Module inbox ánh xạ hai bảng có sẵn: `notifications` chứa nội dung chung bất biến;
+Phần inbox thuộc module `notification`, ánh xạ hai bảng: `notifications` chứa nội dung chung bất biến;
 `notification_recipients` chứa người nhận và trạng thái đọc/ẩn độc lập của mỗi user.
 V15 thêm cột `id` UUIDv7 làm khóa chính riêng cho recipient, giữ unique
 `(tenant_id, notification_id, user_id)` và trạng thái đọc/ẩn hiện có.
@@ -54,7 +54,7 @@ cả nhánh được phép và bị từ chối.
 
 ## Tạo nội bộ và transaction
 
-Luồng `CreateNotificationCommand → NotificationInboxApplicationService → NotificationInboxJpaAdapter`
+Luồng `CreateNotificationCommand → NotificationService → NotificationJpaAdapter`
 lưu notification và recipient trong cùng transaction. ID mới là UUIDv7. Không có POST tạo nội dung
 hoặc PUT sửa payload từ client; adapter sự kiện và RecipientDirectory xác thực nguồn và tìm
 người nhận đủ điều kiện trước khi gọi command.
@@ -68,6 +68,6 @@ nhận đường dẫn nội bộ ứng dụng.
 không sửa notification chung hoặc recipient khác. Read-all chỉ tác động mục được phép đọc,
 chưa đọc và nằm trước cutoff.
 
-`NotificationInboxModuleConfiguration` đăng ký entity, adapter, service và CQRS handler.
+`NotificationModuleConfiguration` đăng ký entity, adapter, service và CQRS handler.
 Schema có sẵn từ V1/V5 và khóa chính recipient riêng từ V15. Event consumer production, DispatchJournal/outbox toàn workflow,
 runtime HTTP/gateway, realtime và provider sender vẫn cần wiring/adapter tương ứng.

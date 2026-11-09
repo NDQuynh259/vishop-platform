@@ -26,7 +26,7 @@ fromCode trả Optional.empty cho mã không hỗ trợ, null hoặc sai chữ h
 tự biến mã legacy trong DB thành loại hợp lệ. Defaults là dữ liệu bất biến trong code.
 
 NotificationDispatchCoordinator kiểm tra type trực tiếp qua constants, rồi áp policy tenant,
-người nhận, personal preference, cooldown và gửi. NotificationSystemTypePolicy chỉ cho
+người nhận, personal preference và gửi. Cooldown chưa áp dụng. NotificationSystemTypePolicy chỉ cho
 announcement sử dụng type SYSTEM đã được định nghĩa.
 
 Policy feature/type/recipient/preference hiện chỉ còn cổng NotificationDispatchPolicy
@@ -51,7 +51,7 @@ NotificationTypeCode.fromCode / NotificationFeatureCode.fromCode trước khi gh
 
 ## Trạng thái và kiểm thử
 
-Service còn 4 module: notification-setting, notification-inbox, notification-delivery, notification-announcement. Constants là Java
+Service có 3 module: `setting`, `notification`, `announcement`. Constants là Java
 thuần dùng chung, không phụ thuộc các module/framework. Chưa có main runtime, HTTP API
 nghiệp vụ, Kafka hoặc sender; migration CLI và các use case nền vẫn hoạt động qua ports.
 

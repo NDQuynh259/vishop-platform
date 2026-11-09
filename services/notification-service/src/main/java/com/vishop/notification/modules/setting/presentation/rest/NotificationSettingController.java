@@ -27,6 +27,7 @@ import jakarta.validation.Validator;
 import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,35 +35,26 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping(ApiPaths.V1 + "/notification-settings")
+@RequiredArgsConstructor
 public class NotificationSettingController {
   private final CommandBus commands;
   private final QueryBus queries;
   private final ObjectMapper json;
   private final Validator validator;
 
-  public NotificationSettingController(
-      CommandBus commands, QueryBus queries, ObjectMapper json, Validator validator) {
-    this.commands = commands;
-    this.queries = queries;
-    this.json = json;
-    this.validator = validator;
-  }
-
   @PostMapping("/channels")
   @RequirePermission(Notification.SETTINGS_MANAGE)
   public ResponseEntity<ChannelView> createChannel(
       @AuthenticationPrincipal GatewayPrincipal actor,
       @Valid @RequestBody NotificationSettingCreateReq body) {
-    var config =
-        body.getConnectionConfig() == null || body.getConnectionConfig().isNull()
-            ? Map.<String, String>of()
-            : connectionConfig(body.getChannel(), body.getConnectionConfig());
-    var created =
-        commands.dispatch(
-            new CreateChannelCommand(
-                actor.tenantId(), body.getChannel(), body.getName(), body.getEnabled(), config));
+    var config = body.getConnectionConfig() == null || body.getConnectionConfig().isNull()
+        ? Map.<String, String>of()
+        : connectionConfig(body.getChannel(), body.getConnectionConfig());
+    var created = commands.dispatch(
+        new CreateChannelCommand(
+            actor.tenantId(), body.getChannel(), body.getName(), body.getEnabled(), config));
     return ResponseEntity.created(
-            URI.create(ApiPaths.V1 + "/notification-settings/channels/" + created.id()))
+        URI.create(ApiPaths.V1 + "/notification-settings/channels/" + created.id()))
         .body(created);
   }
 
@@ -75,7 +67,7 @@ public class NotificationSettingController {
         ApiPaths.V1 + "/notification-settings/channels",
         queries.dispatch(new ListChannelsQuery(actor.tenantId())),
         pagination,
-        channel -> channel.channel().name());
+        channel -> channel.channel().name() + ":" + (channel.id() == null ? "default" : channel.id()));
   }
 
   @GetMapping("/channels/{channelId}")
@@ -101,26 +93,24 @@ public class NotificationSettingController {
       var current = queries.dispatch(new GetChannelQuery(actor.tenantId(), channelId));
       config = connectionConfig(current.channel(), body.getConnectionConfig());
     }
-    var change =
-        new ChannelUpdate(
-            body.getEnabled(),
-            config,
-            body.getVersion(),
-            body.getName(),
-            body.getBotToken(),
-            body.getChatId(),
-            body.getMessageThreadId());
+    var change = new ChannelUpdate(
+        body.getEnabled(),
+        config,
+        body.getVersion(),
+        body.getName(),
+        body.getBotToken(),
+        body.getChatId(),
+        body.getMessageThreadId());
     return commands.dispatch(new UpdateChannelCommand(actor.tenantId(), channelId, change));
   }
 
   private Map<String, String> connectionConfig(NotificationChannel channel, JsonNode config) {
-    Class<? extends NotificationSettingUpdateReq.ConnectionConfig> type =
-        switch (channel) {
-          case IN_APP -> NotificationSettingUpdateReq.InAppConfig.class;
-          case TELEGRAM -> NotificationSettingUpdateReq.TelegramConfig.class;
-          case EMAIL -> NotificationSettingUpdateReq.EmailConfig.class;
-          case LARK -> NotificationSettingUpdateReq.LarkConfig.class;
-        };
+    Class<? extends NotificationSettingUpdateReq.ConnectionConfig> type = switch (channel) {
+      case IN_APP -> NotificationSettingUpdateReq.InAppConfig.class;
+      case TELEGRAM -> NotificationSettingUpdateReq.TelegramConfig.class;
+      case EMAIL -> NotificationSettingUpdateReq.EmailConfig.class;
+      case LARK -> NotificationSettingUpdateReq.LarkConfig.class;
+    };
     if (!config.isObject()) {
       throw new BadRequestException("connectionConfig must be an object");
     }
@@ -131,7 +121,8 @@ public class NotificationSettingController {
       throw new BusinessRuleViolationException("Invalid connectionConfig for " + channel);
     }
     var violations = validator.validate(connection);
-    if (!violations.isEmpty()) throw new ConstraintViolationException(violations);
+    if (!violations.isEmpty())
+      throw new ConstraintViolationException(violations);
     return connection.toMap();
   }
 }

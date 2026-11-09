@@ -1,5 +1,6 @@
 package io.github.coreplatform.common.security.filter;
 
+import io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter;
 import io.github.coreplatform.common.security.context.CommonUserDetails;
 import io.github.coreplatform.common.security.context.TenantContext;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
@@ -8,21 +9,16 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Verifies signed tokens; identity headers alone confer no authority. */
+@RequiredArgsConstructor
 public class InternalHeaderAuthFilter extends OncePerRequestFilter {
   private final JwtTokenProvider tokens;
-  private final io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter
-      converter;
-
-  public InternalHeaderAuthFilter(
-      JwtTokenProvider tokens,
-      io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter converter) {
-    this.tokens = tokens;
-    this.converter = converter;
-  }
+  private final JwtAuthenticationConverter converter;
 
   @Override
   protected void doFilterInternal(
@@ -33,7 +29,7 @@ public class InternalHeaderAuthFilter extends OncePerRequestFilter {
     try {
       String token = extractToken(request);
       if (token != null) {
-        org.springframework.security.core.Authentication authentication;
+        Authentication authentication;
         try {
           authentication = converter.convert(tokens.verify(token));
           if (authentication == null || !authentication.isAuthenticated())

@@ -1,6 +1,6 @@
 package com.vishop.notification.composition.dispatch;
 
-import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
+import com.vishop.notification.modules.notification.application.api.NotificationDeliveryApi;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import java.util.List;

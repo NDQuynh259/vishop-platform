@@ -26,8 +26,10 @@ Nếu không gửi tên lúc tạo, API dùng tên enum kênh. PUT có thể đ�
 `name` thì giữ tên hiện tại. Tên được trim và trả về trong GET/POST/PUT.
 Tenant lấy từ principal. Khi bỏ `connectionConfig`, cấu hình ban đầu là object rỗng.
 API trả 201, JSON có `id`/`version`, và Location trỏ tới GET/PUT theo ID vừa tạo.
-Mỗi tenant chỉ có một bản ghi cho mỗi kênh: POST trùng trả 409, không ghi đè hoặc
-khôi phục bản ghi đã soft-delete. Điều kiện unique vẫn được giữ khi tạo đồng thời.
+LARK cho phép nhiều bản ghi trong cùng tenant, mỗi nhóm có `id`, tên và cấu hình webhook
+riêng. POST tạo nhóm mới, GET/PUT dùng ID của nhóm; không ghi đè cấu hình nhóm khác.
+IN_APP/EMAIL/TELEGRAM vẫn có một bản ghi mỗi tenant/kênh, POST trùng trả 409 kể cả khi đã soft-delete.
+Danh sách trả đủ các nhóm Lark chưa xóa; cursor dùng channel cùng setting ID để không lặp/bỏ sót nhóm.
 
 ```http
 POST /api/v1/notification-settings/channels
@@ -156,10 +158,14 @@ Test connection, gửi thử và ngắt kết nối chưa nằm trong các API t
 
 ## Persistence
 
-`NotificationChannelSettingJpaEntity` dùng UUIDv7, unique tenant/channel, audit,
+`NotificationChannelSettingJpaEntity` dùng UUIDv7, unique tenant/id/channel để bảo vệ FK delivery, audit,
 soft delete và optimistic locking. `channel` là enum lưu bằng `EnumType.STRING`;
 `connectionConfig` là JSONB. Mapper chọn record cấu hình theo enum khi đọc/ghi,
 không suy đoán loại từ field JSON. Legacy Telegram aliases vẫn đọc được.
+
+V19 bỏ unique tenant/channel toàn bảng, thay bằng partial unique index cho các kênh khác LARK.
+Adapter đọc nhiều kết nối Lark theo ID; API nội bộ lấy một cấu hình theo channel sẽ báo conflict
+khi có nhiều bản ghi, yêu cầu dùng settingId. Ghi/đọc theo ID và tenant giữ nguyên optimistic locking.
 
 V9 backfill UUIDv7. V10 chuyển các cột connection cũ sang JSONB. V11 cho phép
 LARK trong constraint channel. API bật/tắt giữ toàn bộ cấu hình riêng của kênh;

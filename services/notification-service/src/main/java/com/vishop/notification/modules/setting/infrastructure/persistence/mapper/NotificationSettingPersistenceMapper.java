@@ -8,15 +8,13 @@ import com.vishop.notification.modules.setting.infrastructure.persistence.model.
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.Map;
 import java.util.Objects;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class NotificationSettingPersistenceMapper {
   private final ObjectMapper json;
-
-  public NotificationSettingPersistenceMapper(ObjectMapper json) {
-    this.json = json;
-  }
 
   public Connection connection(
       NotificationChannel channel, NotificationChannelSettingJpaEntity entity) {

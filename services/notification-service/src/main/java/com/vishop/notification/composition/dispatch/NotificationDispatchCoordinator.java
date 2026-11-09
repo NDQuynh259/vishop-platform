@@ -1,8 +1,7 @@
 package com.vishop.notification.composition.dispatch;
 
-import com.vishop.notification.modules.delivery.application.command.EnqueueDeliveriesCommand;
-import com.vishop.notification.modules.delivery.application.command.ReserveRoutesCommand;
-import com.vishop.notification.modules.inbox.application.command.CreateNotificationCommand;
+import com.vishop.notification.modules.notification.application.command.CreateNotificationCommand;
+import com.vishop.notification.modules.notification.application.command.EnqueueDeliveriesCommand;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
@@ -71,7 +70,7 @@ public final class NotificationDispatchCoordinator {
           setting.restrictForUser(message.tenantId(), user, message.type(), policy.channels());
       if (!channels.isEmpty()) routes.put(user, channels);
     }
-    var allowed = commands.dispatch(new ReserveRoutesCommand(message, Map.copyOf(routes)));
+    var allowed = Map.copyOf(routes);
     if (allowed.isEmpty()) return skipped();
     var inApp =
         allowed.entrySet().stream()

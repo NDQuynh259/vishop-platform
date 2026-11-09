@@ -20,7 +20,8 @@ public final class GatewayIdentityHeaders {
   private final String systemRole;
 
   public static final UUID TECHNICAL_USER = new UUID(0, 0);
-  private static final List<String> NAMES = List.of(X_USER_ID, X_SESSION_ID, X_TENANT_ID, X_ROLE_ID, X_SYSTEM_ROLE);
+  private static final List<String> NAMES =
+      List.of(X_USER_ID, X_SESSION_ID, X_TENANT_ID, X_ROLE_ID, X_SYSTEM_ROLE);
 
   public GatewayIdentityHeaders(
       UUID userId, UUID sessionId, UUID tenantId, UUID roleId, String systemRole) {
@@ -59,8 +60,7 @@ public final class GatewayIdentityHeaders {
 
   private static String one(Function<String, List<String>> headers, String name) {
     var values = headers.apply(name);
-    if (values == null || values.isEmpty())
-      return null;
+    if (values == null || values.isEmpty()) return null;
     if (values.size() != 1 || values.getFirst() == null || values.getFirst().isBlank()) {
       throw new UnauthorizedException("Ambiguous or empty gateway identity header");
     }
@@ -68,11 +68,9 @@ public final class GatewayIdentityHeaders {
   }
 
   private static UUID id(String value) {
-    if (value == null)
-      return null;
+    if (value == null) return null;
     UUID id = UUID.fromString(value);
-    if (!id.toString().equalsIgnoreCase(value))
-      throw new IllegalArgumentException("Invalid UUID");
+    if (!id.toString().equalsIgnoreCase(value)) throw new IllegalArgumentException("Invalid UUID");
     return id;
   }
 
@@ -80,8 +78,7 @@ public final class GatewayIdentityHeaders {
     var headers = new HttpHeaders();
     headers.set(X_USER_ID, userId.toString());
     headers.set(X_SYSTEM_ROLE, systemRole);
-    if (sessionId != null)
-      headers.set(X_SESSION_ID, sessionId.toString());
+    if (sessionId != null) headers.set(X_SESSION_ID, sessionId.toString());
     if (tenantId != null) {
       headers.set(X_TENANT_ID, tenantId.toString());
       headers.set(X_ROLE_ID, roleId.toString());

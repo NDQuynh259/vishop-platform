@@ -83,12 +83,12 @@ catalog table. Threshold schema vẫn chờ contract của domain nguồn.
 | --- | --- | --- |
 | GET | /notification-settings/types | Cấu hình từng loại và nguồn kế thừa |
 | GET | /notification-settings/types/{type} | Rule, recipients, threshold schema và effective channels |
-| PATCH | /notification-settings/types/{type} | enabled, channels, thresholds, cooldownSeconds, version |
+| PATCH | /notification-settings/types/{type} | enabled, channels, version |
 | PUT | /notification-settings/types/{type}/recipients | Body recipientIds, version; thay thế danh sách user |
 | GET | /notification-settings/types/{type}/recipient-candidates | Tìm member hợp lệ có quyền, paging/filter q |
 
 JSON channels hiện triển khai là mảng enum `IN_APP`/`EMAIL`/`TELEGRAM`/`LARK`. Không tự thêm kênh tùy ý. Rule absent kế thừa
-catalog defaults. cooldownSeconds tối thiểu 86400. Threshold sai schema trả 422;
+catalog defaults. Cooldown chưa áp dụng và không có tham số cooldownSeconds. Threshold sai schema trả 422;
 không có source config contract thì trả unsupported thay vì báo đã áp dụng.
 Danh sách rỗng nghĩa dùng resolver theo type; nếu type không có resolver thì không gửi,
 response giải thích. Recipient candidates và mutation dùng cùng kiểm tra quyền.

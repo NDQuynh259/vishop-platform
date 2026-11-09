@@ -5,19 +5,18 @@ import static org.mockito.Mockito.*;
 
 import com.vishop.notification.composition.publication.NotificationSystemTypePolicy;
 import com.vishop.notification.modules.announcement.application.api.NotificationAnnouncementApi;
-import com.vishop.notification.modules.announcement.application.service.NotificationAnnouncementApplicationService;
+import com.vishop.notification.modules.announcement.application.service.NotificationAnnouncementService;
 import com.vishop.notification.modules.announcement.domain.entity.NotificationAnnouncement;
 import com.vishop.notification.modules.announcement.domain.port.NotificationAnnouncementRepository;
-import com.vishop.notification.modules.delivery.application.api.NotificationDeliveryApi;
-import com.vishop.notification.modules.delivery.application.service.NotificationDeliveryApplicationService;
-import com.vishop.notification.modules.delivery.domain.port.NotificationDeliveryRepository;
+import com.vishop.notification.modules.notification.application.api.NotificationDeliveryApi;
+import com.vishop.notification.modules.notification.application.service.NotificationDeliveryService;
+import com.vishop.notification.modules.notification.domain.port.NotificationDeliveryRepository;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -31,7 +30,7 @@ class NotificationApplicationTest {
   void groupDeliveriesKeepOptionalUserAndConnectionBindingAndWebhookCase() {
     var repo = mock(NotificationDeliveryRepository.class);
     var service =
-        new NotificationDeliveryApplicationService(
+        new NotificationDeliveryService(
             repo,
             CLOCK,
             UUID::randomUUID,
@@ -65,7 +64,7 @@ class NotificationApplicationTest {
   void deliveryCollapsesSameDestinationAndRejectsUnsupportedChannelBeforeAppend() {
     var repo = mock(NotificationDeliveryRepository.class);
     var service =
-        new NotificationDeliveryApplicationService(
+        new NotificationDeliveryService(
             repo, CLOCK, UUID::randomUUID, Set.of(NotificationChannel.EMAIL));
     UUID tenant = UUID.randomUUID(), notification = UUID.randomUUID();
     var jobs =
@@ -98,21 +97,6 @@ class NotificationApplicationTest {
   }
 
   @Test
-  void cooldownAdapterCannotAddRecipientsOrChannels() {
-    var repo = mock(NotificationDeliveryRepository.class);
-    var service =
-        new NotificationDeliveryApplicationService(
-            repo, CLOCK, UUID::randomUUID, Set.of(NotificationChannel.EMAIL));
-    UUID user = UUID.randomUUID();
-    var message = message();
-    var input = Map.of(user, Set.of(NotificationChannel.IN_APP));
-    when(repo.reserveAllowedRoutes(message, input, NOW))
-        .thenReturn(Map.of(user, Set.of(NotificationChannel.IN_APP, NotificationChannel.EMAIL)));
-    assertThatThrownBy(() -> service.reserveAllowedRoutes(message, input))
-        .isInstanceOf(IllegalStateException.class);
-  }
-
-  @Test
   void announcementChecksTypeConstantsAndUsesCompareAndSwapVersion() {
     var policy = new NotificationSystemTypePolicy();
     assertThatThrownBy(() -> policy.requirePublishableSystemType("STOCK_LOW"))
@@ -135,8 +119,7 @@ class NotificationApplicationTest {
     when(repo.find(id)).thenReturn(Optional.of(draft));
     assertThatThrownBy(() -> policy.requirePublishableSystemType("CUSTOM_LEGACY_TYPE"))
         .isInstanceOf(IllegalArgumentException.class);
-    var service =
-        new NotificationAnnouncementApplicationService(repo, policy, CLOCK, UUID::randomUUID);
+    var service = new NotificationAnnouncementService(repo, policy, CLOCK, UUID::randomUUID);
     var published = service.publish(id, 0);
     assertThat(published.publishedAt()).isEqualTo(NOW);
     verify(repo)

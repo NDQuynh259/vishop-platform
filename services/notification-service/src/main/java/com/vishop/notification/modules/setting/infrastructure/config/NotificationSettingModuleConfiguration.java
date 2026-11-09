@@ -1,5 +1,6 @@
 package com.vishop.notification.modules.setting.infrastructure.config;
 
+import com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationJpaEntity;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi;
 import com.vishop.notification.modules.setting.application.command.CreateChannelCommandHandler;
 import com.vishop.notification.modules.setting.application.command.CreateRuleCommandHandler;
@@ -16,7 +17,8 @@ import com.vishop.notification.modules.setting.application.service.NotificationS
 import com.vishop.notification.modules.setting.domain.entity.NotificationSettingState.Connection;
 import com.vishop.notification.modules.setting.domain.port.NotificationAlertRuleRepository;
 import com.vishop.notification.modules.setting.domain.port.NotificationSettingManagementRepository;
-import com.vishop.notification.modules.setting.infrastructure.persistence.NotificationAlertRuleJpaAdapter;
+import com.vishop.notification.modules.setting.infrastructure.persistence.adapters.NotificationAlertRuleJpaAdapter;
+import com.vishop.notification.modules.setting.infrastructure.persistence.adapters.NotificationSettingJpaAdapter;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.NotificationChannelSettingJpaEntity;
 import com.vishop.notification.modules.setting.infrastructure.persistence.mapper.NotificationSettingPersistenceMapper;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationChannelSettingRepository;
@@ -32,11 +34,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @Configuration(proxyBeanMethods = false)
-@EntityScan(basePackageClasses = NotificationChannelSettingJpaEntity.class)
+@EntityScan(
+    basePackageClasses = {NotificationChannelSettingJpaEntity.class, NotificationJpaEntity.class})
 @EnableJpaRepositories(basePackageClasses = SpringDataNotificationChannelSettingRepository.class)
 @Import({
   NotificationSettingPersistenceMapper.class,
   NotificationAlertRuleJpaAdapter.class,
+  NotificationSettingJpaAdapter.class,
   CreateRuleCommandHandler.class,
   UpdateRuleCommandHandler.class,
   ListRulesQueryHandler.class,
