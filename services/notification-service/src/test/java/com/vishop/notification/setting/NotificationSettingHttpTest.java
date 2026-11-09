@@ -46,7 +46,7 @@ class NotificationSettingHttpTest {
           .collect(java.util.stream.Collectors.toMap(c -> c, c -> UUID.randomUUID()));
 
   String path(NotificationChannel channel) {
-    return "/api/v1/notification-settings/channels/" + channelIds.get(channel);
+    return "/api/v1/notifications/settings/channels/" + channelIds.get(channel);
   }
 
   MockMvc mvc;
@@ -150,7 +150,7 @@ class NotificationSettingHttpTest {
         .thenReturn(created);
 
     mvc.perform(
-            post("/api/v1/notification-settings/channels")
+            post("/api/v1/notifications/settings/channels")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"channel\":\"LARK\",\"name\":\"Lark"
@@ -178,7 +178,7 @@ class NotificationSettingHttpTest {
     var json = new ObjectMapper();
     for (String name : List.of("", " ", "x".repeat(151))) {
       mvc.perform(
-              post("/api/v1/notification-settings/channels")
+              post("/api/v1/notifications/settings/channels")
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       json.writeValueAsString(
@@ -199,7 +199,7 @@ class NotificationSettingHttpTest {
   void postRequiresManagePermissionAndValidChannelConfiguration() throws Exception {
     actor(tenant, Set.of("notifications.settings.view"));
     mvc.perform(
-            post("/api/v1/notification-settings/channels")
+            post("/api/v1/notifications/settings/channels")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"channel\":\"IN_APP\",\"enabled\":true}"))
         .andExpect(status().isForbidden());
@@ -211,7 +211,7 @@ class NotificationSettingHttpTest {
             "{\"channel\":\"EMAIL\",\"enabled\":false,\"connectionConfig\":{\"fromAddress\":\"invalid\"}}",
             "{\"channel\":\"EMAIL\",\"enabled\":false,\"connectionConfig\":{\"appToken\":\"wrong-channel\"}}")) {
       mvc.perform(
-              post("/api/v1/notification-settings/channels")
+              post("/api/v1/notifications/settings/channels")
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(body))
           .andExpect(status().isUnprocessableEntity());
@@ -225,18 +225,19 @@ class NotificationSettingHttpTest {
         new GatewayPrincipal(user, tenant, "USER", "MEMBER", Set.of("notifications.settings.view"));
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken(principal, "unused", List.of()));
-    mvc.perform(get("/api/v1/notification-settings/channels")).andExpect(status().isForbidden());
+    mvc.perform(get("/api/v1/notifications/settings/channels")).andExpect(status().isForbidden());
     verifyNoInteractions(api);
   }
 
   @Test
   void authenticationTenantAndPermissionAreRequired() throws Exception {
-    mvc.perform(get("/api/v1/notification-settings/channels")).andExpect(status().isUnauthorized());
+    mvc.perform(get("/api/v1/notifications/settings/channels"))
+        .andExpect(status().isUnauthorized());
     // A tenantless identity has no role permissions in GatewayIdentityFilter.
     actor(null, Set.of());
-    mvc.perform(get("/api/v1/notification-settings/channels")).andExpect(status().isForbidden());
+    mvc.perform(get("/api/v1/notifications/settings/channels")).andExpect(status().isForbidden());
     actor(tenant, Set.of());
-    mvc.perform(get("/api/v1/notification-settings/channels")).andExpect(status().isForbidden());
+    mvc.perform(get("/api/v1/notifications/settings/channels")).andExpect(status().isForbidden());
     verifyNoInteractions(api);
   }
 
@@ -255,7 +256,7 @@ class NotificationSettingHttpTest {
   void tenantIdentityAlwaysComesFromPrincipal() throws Exception {
     actor(tenant, Set.of("notifications.settings.view"));
     mvc.perform(
-            get("/api/v1/notification-settings/channels")
+            get("/api/v1/notifications/settings/channels")
                 .param("tenantId", UUID.randomUUID().toString())
                 .param("userId", UUID.randomUUID().toString()))
         .andExpect(status().isOk());
@@ -271,7 +272,7 @@ class NotificationSettingHttpTest {
                 .content("{\"enabled\":false}"))
         .andExpect(status().isUnprocessableEntity());
     mvc.perform(
-            put("/api/v1/notification-settings/channels/SMS")
+            put("/api/v1/notifications/settings/channels/SMS")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"channels\":[\"SMS\"],\"version\":0}"))
         .andExpect(status().isBadRequest());
@@ -289,8 +290,8 @@ class NotificationSettingHttpTest {
                     new ObjectMapper(),
                     validators.getValidator()))
             .build();
-    routes.perform(get("/api/v1/notification-settings/features")).andExpect(status().isNotFound());
-    routes.perform(get("/api/v1/notification-settings/types")).andExpect(status().isNotFound());
+    routes.perform(get("/api/v1/notifications/settings/features")).andExpect(status().isNotFound());
+    routes.perform(get("/api/v1/notifications/settings/types")).andExpect(status().isNotFound());
     routes.perform(get("/api/v1/notification-preferences")).andExpect(status().isNotFound());
     verifyNoInteractions(api);
   }

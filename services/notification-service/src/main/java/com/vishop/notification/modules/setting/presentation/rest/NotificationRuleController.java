@@ -26,7 +26,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping(ApiPaths.V1 + "/notification-settings/rules")
+@RequestMapping(ApiPaths.V1 + "/notifications/settings/rules")
 @RequiredArgsConstructor
 public class NotificationRuleController {
   private final CommandBus commands;
@@ -38,7 +38,7 @@ public class NotificationRuleController {
       @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
     return ListEnvelope.from(
-        ApiPaths.V1 + "/notification-settings/rules",
+        ApiPaths.V1 + "/notifications/settings/rules",
         queries.dispatch(new ListRulesQuery(actor.tenantId())),
         pagination,
         RuleView::getType);
@@ -60,7 +60,7 @@ public class NotificationRuleController {
             new CreateRuleCommand(
                 actor.tenantId(), body.getType(), body.getEnabled(), body.getChannels()));
     return ResponseEntity.created(
-            URI.create(ApiPaths.V1 + "/notification-settings/rules/" + created.getId()))
+            URI.create(ApiPaths.V1 + "/notifications/settings/rules/" + created.getId()))
         .body(created);
   }
 

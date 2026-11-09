@@ -26,6 +26,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import java.net.URI;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
@@ -34,7 +35,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping(ApiPaths.V1 + "/notification-settings")
+@RequestMapping(ApiPaths.V1 + "/notifications/settings")
 @RequiredArgsConstructor
 public class NotificationSettingController {
   private final CommandBus commands;
@@ -54,7 +55,8 @@ public class NotificationSettingController {
         new CreateChannelCommand(
             actor.tenantId(), body.getChannel(), body.getName(), body.getEnabled(), config));
     return ResponseEntity.created(
-        URI.create(ApiPaths.V1 + "/notification-settings/channels/" + created.id()))
+        Objects.requireNonNull(
+            URI.create(ApiPaths.V1 + "/notifications/settings/channels/" + created.id())))
         .body(created);
   }
 
@@ -64,7 +66,7 @@ public class NotificationSettingController {
       @AuthenticationPrincipal GatewayPrincipal actor,
       @ParameterObject PaginationRequest pagination) {
     return ListEnvelope.from(
-        ApiPaths.V1 + "/notification-settings/channels",
+        ApiPaths.V1 + "/notifications/settings/channels",
         queries.dispatch(new ListChannelsQuery(actor.tenantId())),
         pagination,
         channel -> channel.channel().name() + ":" + (channel.id() == null ? "default" : channel.id()));

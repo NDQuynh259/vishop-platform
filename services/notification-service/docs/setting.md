@@ -9,10 +9,10 @@ Base path: `/api/v1`. Tenant lấy từ `GatewayPrincipal`, không lấy từ bo
 
 | Method | Endpoint | Quyền |
 | --- | --- | --- |
-| GET | `/notification-settings/channels` | `notifications.settings.view` |
-| POST | `/notification-settings/channels` | `notifications.settings.manage` |
-| GET | `/notification-settings/channels/{channelId}` | `notifications.settings.view` |
-| PUT | `/notification-settings/channels/{channelId}` | `notifications.settings.manage` |
+| GET | `/notifications/settings/channels` | `notifications.settings.view` |
+| POST | `/notifications/settings/channels` | `notifications.settings.manage` |
+| GET | `/notifications/settings/channels/{channelId}` | `notifications.settings.view` |
+| PUT | `/notifications/settings/channels/{channelId}` | `notifications.settings.manage` |
 
 `channelId` là UUID của bản ghi trong `notification_settings`, không phải enum kênh.
 Response có field `id` để frontend gọi GET/PUT. Truy vấn luôn lọc theo cả ID và tenant

@@ -43,7 +43,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-@SpringBootTest(classes = NotificationInboxPersistenceTest.Config.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@SpringBootTest(
+    classes = NotificationInboxPersistenceTest.Config.class,
+    webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class NotificationInboxPersistenceTest {
   static final Instant NOW = Instant.parse("2026-11-07T12:00:00.123456Z");
   static EmbeddedPostgres postgres;
@@ -96,22 +98,15 @@ class NotificationInboxPersistenceTest {
 
   @AfterAll
   static void stop() throws Exception {
-    if (postgres != null)
-      postgres.close();
+    if (postgres != null) postgres.close();
   }
 
-  @Autowired
-  NotificationApi inbox;
-  @Autowired
-  TestClock clock;
-  @Autowired
-  NotificationInboxShopAccess shops;
-  @Autowired
-  CommandBus commands;
-  @Autowired
-  QueryBus queries;
-  @Autowired
-  JdbcTemplate jdbc;
+  @Autowired NotificationApi inbox;
+  @Autowired TestClock clock;
+  @Autowired NotificationInboxShopAccess shops;
+  @Autowired CommandBus commands;
+  @Autowired QueryBus queries;
+  @Autowired JdbcTemplate jdbc;
 
   @Autowired
   com.vishop.notification.modules.notification.domain.port.NotificationRepository repository;
@@ -163,18 +158,19 @@ class NotificationInboxPersistenceTest {
   void createPersistsPayloadAndIndependentRecipientStates() {
     UUID id = create("shared", "inventory.view", null, user, other);
     assertThat(id.version()).isEqualTo(7);
-    var recipientIds = jdbc.queryForList(
-        "SELECT id FROM notification_recipients WHERE notification_id=?", UUID.class, id);
+    var recipientIds =
+        jdbc.queryForList(
+            "SELECT id FROM notification_recipients WHERE notification_id=?", UUID.class, id);
     assertThat(recipientIds).hasSize(2).doesNotHaveDuplicates();
     assertThat(recipientIds)
         .allSatisfy(recipientId -> assertThat(recipientId.version()).isEqualTo(7));
     assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE id=?", Long.class, id))
         .isEqualTo(1);
     assertThat(
-        jdbc.queryForObject(
-            "SELECT count(*) FROM notification_recipients WHERE notification_id=?",
-            Long.class,
-            id))
+            jdbc.queryForObject(
+                "SELECT count(*) FROM notification_recipients WHERE notification_id=?",
+                Long.class,
+                id))
         .isEqualTo(2);
     var a = actor(user, "inventory.view");
     var b = actor(other, "inventory.view");
@@ -193,15 +189,15 @@ class NotificationInboxPersistenceTest {
     assertThat(inbox.list(a, filter(20, null)).items()).isEmpty();
     assertThat(inbox.getById(b, id).getId()).isEqualTo(id);
     assertThat(
-        jdbc.queryForObject(
-            "SELECT deleted_at IS NULL FROM notifications WHERE id=?", Boolean.class, id))
+            jdbc.queryForObject(
+                "SELECT deleted_at IS NULL FROM notifications WHERE id=?", Boolean.class, id))
         .isTrue();
     assertThat(
-        jdbc.queryForObject(
-            "SELECT version FROM notification_recipients WHERE notification_id=? AND user_id=?",
-            Long.class,
-            id,
-            user))
+            jdbc.queryForObject(
+                "SELECT version FROM notification_recipients WHERE notification_id=? AND user_id=?",
+                Long.class,
+                id,
+                user))
         .isEqualTo(2);
   }
 
@@ -222,8 +218,9 @@ class NotificationInboxPersistenceTest {
       assertThatThrownBy(() -> inbox.markRead(a, id)).isInstanceOf(EntityNotFoundException.class);
       assertThatThrownBy(() -> inbox.archive(a, id)).isInstanceOf(EntityNotFoundException.class);
     }
-    var foreign = new InboxActor(
-        UUID.randomUUID(), user, Set.of("inventory.view", "finance.settlement.view"));
+    var foreign =
+        new InboxActor(
+            UUID.randomUUID(), user, Set.of("inventory.view", "finance.settlement.view"));
     assertThat(inbox.list(foreign, filter(20, null)).items()).isEmpty();
     assertThatThrownBy(() -> inbox.getById(foreign, publicId))
         .isInstanceOf(EntityNotFoundException.class);
@@ -237,9 +234,9 @@ class NotificationInboxPersistenceTest {
     assertThat(inbox.getById(a, scoped).getShopId()).isEqualTo(shop);
     assertThat(inbox.unreadCount(a).getCount()).isEqualTo(2);
     assertThat(
-        inbox
-            .list(a, new InboxFilter(null, null, null, shop, null, CursorParams.of(null, 20)))
-            .items())
+            inbox
+                .list(a, new InboxFilter(null, null, null, shop, null, CursorParams.of(null, 20)))
+                .items())
         .extracting(NotificationView::getId)
         .containsExactly(scoped);
   }
@@ -259,12 +256,12 @@ class NotificationInboxPersistenceTest {
     assertThat(inbox.getById(a, later).getReadAt()).isNull();
     for (UUID id : List.of(hidden, deniedShop)) {
       assertThat(
-          jdbc.queryForObject(
-              "SELECT read_at IS NULL FROM notification_recipients WHERE notification_id=? AND"
-                  + " user_id=?",
-              Boolean.class,
-              id,
-              user))
+              jdbc.queryForObject(
+                  "SELECT read_at IS NULL FROM notification_recipients WHERE notification_id=? AND"
+                      + " user_id=?",
+                  Boolean.class,
+                  id,
+                  user))
           .isTrue();
     }
     assertThatThrownBy(() -> inbox.markAllRead(a, clock.at.plusSeconds(1)))
@@ -298,17 +295,17 @@ class NotificationInboxPersistenceTest {
     UUID one = ids.iterator().next();
     inbox.markRead(a, one);
     assertThat(
-        inbox
-            .list(
-                a,
-                new InboxFilter(
-                    NotificationTypeCode.STOCK_LOW,
-                    NotificationMessage.Severity.WARNING,
-                    false,
-                    null,
-                    null,
-                    CursorParams.of(null, 20)))
-            .items())
+            inbox
+                .list(
+                    a,
+                    new InboxFilter(
+                        NotificationTypeCode.STOCK_LOW,
+                        NotificationMessage.Severity.WARNING,
+                        false,
+                        null,
+                        null,
+                        CursorParams.of(null, 20)))
+                .items())
         .hasSize(2);
     assertThatThrownBy(() -> inbox.list(a, filter(20, "invalid-cursor")))
         .isInstanceOf(io.github.coreplatform.common.domain.exception.BadRequestException.class);
@@ -327,53 +324,60 @@ class NotificationInboxPersistenceTest {
     create("offset-shop", "inventory.view", UUID.randomUUID(), user);
     UUID hidden = create("offset-hidden", "inventory.view", null, user);
     inbox.archive(a, hidden);
-    var foreign = new NotificationMessage(
-        UUID.randomUUID(),
-        "offset-foreign",
-        "STOCK_LOW",
-        "SKU",
-        "foreign",
-        "inventory.view",
-        null,
-        NotificationMessage.Severity.WARNING,
-        "Other tenant",
-        "Check",
-        null,
-        NOW);
+    var foreign =
+        new NotificationMessage(
+            UUID.randomUUID(),
+            "offset-foreign",
+            "STOCK_LOW",
+            "SKU",
+            "foreign",
+            "inventory.view",
+            null,
+            NotificationMessage.Severity.WARNING,
+            "Other tenant",
+            "Check",
+            null,
+            NOW);
     inbox.create(foreign, Set.of(user));
-    var page1 = inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(1, 2), null));
+    var page1 =
+        inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(1, 2), null));
     assertThat(page1.items()).extracting(NotificationView::getId).containsExactly(latest, second);
     assertThat(page1.total()).isEqualTo(3);
     assertThat(page1.totalPages()).isEqualTo(2);
     assertThat(page1.hasNextPage()).isTrue();
     assertThat(page1.nextCursor()).isNull();
-    var page2 = inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(2, 2), null));
+    var page2 =
+        inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(2, 2), null));
     assertThat(page2.items()).extracting(NotificationView::getId).containsExactly(first);
     assertThat(page2.hasNextPage()).isFalse();
-    var empty = inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(3, 2), null));
+    var empty =
+        inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(3, 2), null));
     assertThat(empty.items()).isEmpty();
     assertThat(empty.total()).isEqualTo(3);
     inbox.markRead(a, latest);
-    var unread = inbox.list(
-        a,
-        new InboxFilter(
-            NotificationTypeCode.STOCK_LOW,
-            NotificationMessage.Severity.WARNING,
-            false,
-            null,
-            OffsetPagination.of(1, 20),
-            null));
+    var unread =
+        inbox.list(
+            a,
+            new InboxFilter(
+                NotificationTypeCode.STOCK_LOW,
+                NotificationMessage.Severity.WARNING,
+                false,
+                null,
+                OffsetPagination.of(1, 20),
+                null));
     assertThat(unread.total()).isEqualTo(2);
     assertThat(unread.items()).extracting(NotificationView::getId).containsExactly(second, first);
-    var denied = inbox.list(
-        actor(user), new InboxFilter(null, null, null, null, OffsetPagination.of(1, 20), null));
+    var denied =
+        inbox.list(
+            actor(user), new InboxFilter(null, null, null, null, OffsetPagination.of(1, 20), null));
     assertThat(denied.total()).isZero();
     assertThat(denied.items()).isEmpty();
     assertThatThrownBy(
-        () -> inbox.list(
-            a,
-            new InboxFilter(
-                null, null, null, null, OffsetPagination.of(Integer.MAX_VALUE, 100), null)))
+            () ->
+                inbox.list(
+                    a,
+                    new InboxFilter(
+                        null, null, null, null, OffsetPagination.of(Integer.MAX_VALUE, 100), null)))
         .isInstanceOf(io.github.coreplatform.common.domain.exception.BadRequestException.class);
   }
 
@@ -387,24 +391,25 @@ class NotificationInboxPersistenceTest {
     assertThat(inbox.getById(a, id).getReadAt()).isEqualTo(read);
     assertThatThrownBy(() -> inbox.getById(actor(other, "inventory.view"), id))
         .isInstanceOf(EntityNotFoundException.class);
-    var changed = new NotificationMessage(
-        tenant,
-        m.sourceEventId(),
-        m.type(),
-        m.subjectType(),
-        m.subjectId(),
-        m.requiredPermission(),
-        null,
-        m.severity(),
-        "Changed",
-        m.body(),
-        m.actionUrl(),
-        m.occurredAt());
+    var changed =
+        new NotificationMessage(
+            tenant,
+            m.sourceEventId(),
+            m.type(),
+            m.subjectType(),
+            m.subjectId(),
+            m.requiredPermission(),
+            null,
+            m.severity(),
+            "Changed",
+            m.body(),
+            m.actionUrl(),
+            m.occurredAt());
     assertThatThrownBy(() -> inbox.create(changed, Set.of(user)))
         .isInstanceOf(ConflictException.class);
     assertThat(
-        jdbc.queryForObject(
-            "SELECT count(*) FROM notifications WHERE tenant_id=?", Long.class, tenant))
+            jdbc.queryForObject(
+                "SELECT count(*) FROM notifications WHERE tenant_id=?", Long.class, tenant))
         .isEqualTo(1);
   }
 
@@ -414,10 +419,11 @@ class NotificationInboxPersistenceTest {
     var start = new CountDownLatch(1);
     UUID id;
     try (var pool = Executors.newFixedThreadPool(2)) {
-      Callable<UUID> create = () -> {
-        start.await();
-        return inbox.create(message, Set.of(user));
-      };
+      Callable<UUID> create =
+          () -> {
+            start.await();
+            return inbox.create(message, Set.of(user));
+          };
       var first = pool.submit(create);
       var second = pool.submit(create);
       start.countDown();
@@ -427,97 +433,104 @@ class NotificationInboxPersistenceTest {
     var reads = new CountDownLatch(1);
     try (var pool = Executors.newFixedThreadPool(2)) {
       UUID notificationId = id;
-      Callable<Instant> read = () -> {
-        reads.await();
-        return inbox.markRead(actor(user, "inventory.view"), notificationId).getReadAt();
-      };
+      Callable<Instant> read =
+          () -> {
+            reads.await();
+            return inbox.markRead(actor(user, "inventory.view"), notificationId).getReadAt();
+          };
       var first = pool.submit(read);
       var second = pool.submit(read);
       reads.countDown();
       assertThat(second.get(15, TimeUnit.SECONDS)).isEqualTo(first.get(15, TimeUnit.SECONDS));
     }
     assertThat(
-        jdbc.queryForObject(
-            "SELECT version FROM notification_recipients WHERE notification_id=? AND user_id=?",
-            Long.class,
-            id,
-            user))
+            jdbc.queryForObject(
+                "SELECT version FROM notification_recipients WHERE notification_id=? AND user_id=?",
+                Long.class,
+                id,
+                user))
         .isEqualTo(1);
   }
 
   @Test
   void recipientWriteFailureRollsBackTheWholeNotification() {
     UUID id = io.github.coreplatform.common.domain.UuidV7.nextId();
-    var notification = new com.vishop.notification.modules.notification.domain.entity.Notification(
-        id, message("rollback", "inventory.view", null), NOW);
-    var recipient = new com.vishop.notification.modules.notification.domain.entity.NotificationRecipient(
-        io.github.coreplatform.common.domain.UuidV7.nextId(),
-        tenant,
-        id,
-        user,
-        NOW,
-        null,
-        null);
-    var duplicateRecipient = new com.vishop.notification.modules.notification.domain.entity.NotificationRecipient(
-        io.github.coreplatform.common.domain.UuidV7.nextId(),
-        tenant,
-        id,
-        user,
-        NOW,
-        null,
-        null);
+    var notification =
+        new com.vishop.notification.modules.notification.domain.entity.Notification(
+            id, message("rollback", "inventory.view", null), NOW);
+    var recipient =
+        new com.vishop.notification.modules.notification.domain.entity.NotificationRecipient(
+            io.github.coreplatform.common.domain.UuidV7.nextId(),
+            tenant,
+            id,
+            user,
+            NOW,
+            null,
+            null);
+    var duplicateRecipient =
+        new com.vishop.notification.modules.notification.domain.entity.NotificationRecipient(
+            io.github.coreplatform.common.domain.UuidV7.nextId(),
+            tenant,
+            id,
+            user,
+            NOW,
+            null,
+            null);
     assertThatThrownBy(
-        () -> repository.append(notification, List.of(recipient, duplicateRecipient)))
+            () -> repository.append(notification, List.of(recipient, duplicateRecipient)))
         .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE id=?", Long.class, id))
         .isZero();
     assertThat(
-        jdbc.queryForObject(
-            "SELECT count(*) FROM notification_recipients WHERE notification_id=?",
-            Long.class,
-            id))
+            jdbc.queryForObject(
+                "SELECT count(*) FROM notification_recipients WHERE notification_id=?",
+                Long.class,
+                id))
         .isZero();
   }
 
   @Test
   void invalidSourcePayloadsDoNotCreateRows() {
     var m = message("invalid", "inventory.view", null);
-    for (String action : List.of(
-        "https://example.com", "//example.com", "javascript:alert(1)", "/\\\\example.com")) {
-      var invalid = new NotificationMessage(
-          tenant,
-          m.sourceEventId(),
-          m.type(),
-          m.subjectType(),
-          m.subjectId(),
-          m.requiredPermission(),
-          null,
-          m.severity(),
-          m.title(),
-          m.body(),
-          action,
-          m.occurredAt());
+    for (String action :
+        List.of(
+            "https://example.com", "//example.com", "javascript:alert(1)", "/\\\\example.com")) {
+      var invalid =
+          new NotificationMessage(
+              tenant,
+              m.sourceEventId(),
+              m.type(),
+              m.subjectType(),
+              m.subjectId(),
+              m.requiredPermission(),
+              null,
+              m.severity(),
+              m.title(),
+              m.body(),
+              action,
+              m.occurredAt());
       assertThatThrownBy(() -> inbox.create(invalid, Set.of(user)))
           .isInstanceOf(BusinessRuleViolationException.class);
     }
-    var unknown = new NotificationMessage(
-        tenant,
-        "unknown",
-        "UNKNOWN_TYPE",
-        "SKU",
-        "1",
-        "inventory.view",
-        null,
-        m.severity(),
-        m.title(),
-        m.body(),
-        null,
-        m.occurredAt());
+    var unknown =
+        new NotificationMessage(
+            tenant,
+            "unknown",
+            "UNKNOWN_TYPE",
+            "SKU",
+            "1",
+            "inventory.view",
+            null,
+            m.severity(),
+            m.title(),
+            m.body(),
+            null,
+            m.occurredAt());
     assertThatThrownBy(() -> inbox.create(unknown, Set.of(user)))
         .isInstanceOf(BusinessRuleViolationException.class);
     assertThat(
-        jdbc.queryForObject(
-            "SELECT count(*) FROM notifications WHERE tenant_id=?", Long.class, tenant))
+            jdbc.queryForObject(
+                "SELECT count(*) FROM notifications WHERE tenant_id=?", Long.class, tenant))
         .isZero();
   }
 
@@ -527,17 +540,19 @@ class NotificationInboxPersistenceTest {
     var principal = new GatewayPrincipal(user, tenant, "USER", "MEMBER", Set.of("inventory.view"));
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, List.of()));
-    var mvc = MockMvcBuilders.standaloneSetup(new NotificationInboxController(commands, queries))
-        .setCustomArgumentResolvers(
-            new AuthenticationPrincipalArgumentResolver(),
-            new io.github.coreplatform.common.web.pagination.PaginationRequestArgumentResolver())
-        .setControllerAdvice(new GlobalExceptionHandler())
-        .build();
+    var mvc =
+        MockMvcBuilders.standaloneSetup(new NotificationInboxController(commands, queries))
+            .setCustomArgumentResolvers(
+                new AuthenticationPrincipalArgumentResolver(),
+                new io.github.coreplatform.common.web.pagination
+                    .PaginationRequestArgumentResolver())
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .build();
     String path = "/api/v1/notifications";
     mvc.perform(
-        get(path)
-            .param("tenantId", UUID.randomUUID().toString())
-            .param("userId", other.toString()))
+            get(path)
+                .param("tenantId", UUID.randomUUID().toString())
+                .param("userId", other.toString()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data[0].id").value(id.toString()));
     mvc.perform(get(path + "/unread-count"))
@@ -547,9 +562,9 @@ class NotificationInboxPersistenceTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.readAt").exists());
     mvc.perform(
-        post(path + "/read-all")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"before\":\"2026-11-07T12:00:00.123456Z\"}"))
+            post(path + "/read-all")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"before\":\"2026-11-07T12:00:00.123456Z\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.updatedCount").value(0));
     mvc.perform(delete(path + "/" + id)).andExpect(status().isNoContent());

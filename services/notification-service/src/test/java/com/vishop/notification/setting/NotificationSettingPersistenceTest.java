@@ -112,7 +112,7 @@ class NotificationSettingPersistenceTest {
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, List.of()));
     try {
-      String path = "/api/v1/notification-settings/rules";
+      String path = "/api/v1/notifications/settings/rules";
       var response =
           mvc.perform(
                   post(path)
@@ -543,7 +543,7 @@ class NotificationSettingPersistenceTest {
               tenant,
               channelId(NotificationChannel.LARK),
               new NotificationSettingManagementApi.ChannelUpdate(false, Map.of(), 0));
-      String path = "/api/v1/notification-settings/channels/" + initial.id();
+      String path = "/api/v1/notifications/settings/channels/" + initial.id();
       String body =
           """
           {"enabled":false,"version":1,"connectionConfig":{
@@ -576,12 +576,12 @@ class NotificationSettingPersistenceTest {
                   .content(
                       "{\"enabled\":false,\"version\":1,\"connectionConfig\":{\"chatId\":\"-1\"}}"))
           .andExpect(status().isUnprocessableEntity());
-      mvc.perform(get("/api/v1/notification-settings/channels"))
+      mvc.perform(get("/api/v1/notifications/settings/channels"))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.data.length()").value(4))
           .andExpect(jsonPath("$.pageInfo.total").value(4));
       mvc.perform(
-              get("/api/v1/notification-settings/channels").param("page", "2").param("limit", "1"))
+              get("/api/v1/notifications/settings/channels").param("page", "2").param("limit", "1"))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.data.length()").value(1))
           .andExpect(jsonPath("$.pageInfo.page").value(2))
@@ -590,7 +590,7 @@ class NotificationSettingPersistenceTest {
       var channelNames = new java.util.HashSet<String>();
       for (int i = 0; i < 4; i++) {
         var request =
-            get("/api/v1/notification-settings/channels")
+            get("/api/v1/notifications/settings/channels")
                 .param("pageMode", "cursor")
                 .param("limit", "1");
         if (cursor != null) request.param("cursor", cursor);
@@ -636,7 +636,7 @@ class NotificationSettingPersistenceTest {
               + " alerts\",\"enabled\":false,\"connectionConfig\":{\"appToken\":\"secret-ref\"}}";
       var response =
           mvc.perform(
-                  post("/api/v1/notification-settings/channels")
+                  post("/api/v1/notifications/settings/channels")
                       .contentType(MediaType.APPLICATION_JSON)
                       .content(body))
               .andExpect(status().isCreated())
@@ -650,7 +650,7 @@ class NotificationSettingPersistenceTest {
       assertThat(rows.findById(id).orElseThrow().getConnectionConfig())
           .containsEntry("appToken", "secret-ref");
       mvc.perform(
-              post("/api/v1/notification-settings/channels")
+              post("/api/v1/notifications/settings/channels")
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(
                       "{\"channel\":\"LARK\",\"enabled\":false,\"connectionConfig\":{\"appToken\":\"replacement\"}}"))
@@ -726,7 +726,7 @@ class NotificationSettingPersistenceTest {
         .setAuthentication(new UsernamePasswordAuthenticationToken(actor, "unused", List.of()));
     try {
       for (UUID id : List.of(UUID.randomUUID(), foreign.id(), deleted.id())) {
-        String path = "/api/v1/notification-settings/channels/" + id;
+        String path = "/api/v1/notifications/settings/channels/" + id;
         mvc.perform(get(path)).andExpect(status().isNotFound());
         mvc.perform(
                 put(path)
@@ -739,7 +739,7 @@ class NotificationSettingPersistenceTest {
                     .content("{\"enabled\":false,\"version\":1,\"connectionConfig\":{}}"))
             .andExpect(status().isNotFound());
       }
-      String path = "/api/v1/notification-settings/channels/" + own.id();
+      String path = "/api/v1/notifications/settings/channels/" + own.id();
       mvc.perform(get(path))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.id").value(own.id().toString()))
@@ -978,7 +978,7 @@ class NotificationSettingPersistenceTest {
         .setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, List.of()));
     try {
       mvc.perform(
-              get("/api/v1/notification-settings/channels").param("page", "2").param("limit", "3"))
+              get("/api/v1/notifications/settings/channels").param("page", "2").param("limit", "3"))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.pageInfo.total").value(5))
           .andExpect(jsonPath("$.data.length()").value(2));
@@ -987,7 +987,7 @@ class NotificationSettingPersistenceTest {
       var groupIds = new HashSet<String>();
       for (int page = 0; page < 5; page++) {
         var request =
-            get("/api/v1/notification-settings/channels")
+            get("/api/v1/notifications/settings/channels")
                 .param("pageMode", "cursor")
                 .param("limit", "1");
         if (cursor != null) request.param("cursor", cursor);

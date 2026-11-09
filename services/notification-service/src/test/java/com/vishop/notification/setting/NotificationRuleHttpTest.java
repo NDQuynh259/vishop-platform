@@ -36,7 +36,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class NotificationRuleHttpTest {
-  static final String PATH = "/api/v1/notification-settings/rules";
+  static final String PATH = "/api/v1/notifications/settings/rules";
   final UUID tenant = UUID.randomUUID();
   final UUID ruleId = UUID.randomUUID();
   final NotificationAlertRuleService service = mock(NotificationAlertRuleService.class);
