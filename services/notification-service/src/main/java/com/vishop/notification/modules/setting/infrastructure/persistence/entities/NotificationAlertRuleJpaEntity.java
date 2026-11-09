@@ -6,6 +6,8 @@ import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(
@@ -28,17 +30,9 @@ public class NotificationAlertRuleJpaEntity {
   @Column(nullable = false)
   private boolean enabled;
 
-  @Column(name = "in_app_enabled", nullable = false)
-  private boolean inAppEnabled;
-
-  @Column(name = "email_enabled", nullable = false)
-  private boolean emailEnabled;
-
-  @Column(name = "telegram_enabled", nullable = false)
-  private boolean telegramEnabled;
-
-  @Column(name = "lark_enabled", nullable = false)
-  private boolean larkEnabled;
+  @JdbcTypeCode(SqlTypes.ARRAY)
+  @Column(nullable = false, columnDefinition = "text[]")
+  private String[] channels = {"IN_APP"};
 
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;

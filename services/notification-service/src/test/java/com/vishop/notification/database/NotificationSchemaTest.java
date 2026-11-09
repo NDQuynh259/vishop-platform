@@ -44,7 +44,7 @@ class NotificationSchemaTest {
     }
     String url = postgres.getJdbcUrl("postgres", name);
     flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(15);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(16);
     db = DriverManager.getConnection(url, "postgres", "postgres");
     execute(
         "INSERT INTO"
@@ -155,7 +155,7 @@ class NotificationSchemaTest {
                 .load()
                 .migrate()
                 .migrationsExecuted)
-        .isEqualTo(4);
+        .isEqualTo(5);
     try (var connection = DriverManager.getConnection(url, "postgres", "postgres");
         var statement = connection.createStatement();
         var result =
@@ -283,7 +283,7 @@ class NotificationSchemaTest {
               + "'00000000-0000-0000-0000-000000000005',"
               + "'2026-01-01 00:00:00Z','2026-01-02 00:00:00Z')");
       var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(15 - previousVersion);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(16 - previousVersion);
       latest.validate();
       try (var result =
           statement.executeQuery(
@@ -490,14 +490,14 @@ class NotificationSchemaTest {
                 "UPDATE notification_settings SET connection_config='{\"telegramChatId\":\"123\"}'"
                     + " WHERE channel='EMAIL'"));
     execute(
-        "INSERT INTO notification_alert_rules(id,tenant_id,type,telegram_enabled) VALUES"
-            + " (?,?,'STOCK_LOW',true)",
+        "INSERT INTO notification_alert_rules(id,tenant_id,type,channels) VALUES"
+            + " (?,?,'STOCK_LOW',ARRAY['TELEGRAM'])",
         UUID.randomUUID(),
         tenant);
     assertThat(
             scalar(
                 "SELECT count(*) FROM notification_alert_rules WHERE tenant_id=? AND"
-                    + " telegram_enabled",
+                    + " channels @> ARRAY['TELEGRAM']",
                 tenant))
         .isEqualTo(1);
   }
@@ -716,8 +716,9 @@ class NotificationSchemaTest {
 
   private void dedup(UUID tenantId, UUID user, String channel) throws SQLException {
     execute(
-        "INSERT INTO notification_deduplication VALUES"
-            + " (?,'STOCK_LOW','SKU','sku-1',?,?,now(),'WARNING')",
+        "INSERT INTO notification_deduplication(id,tenant_id,type,subject_type,subject_id,user_id,channel,last_notified_at,last_severity) VALUES"
+            + " (?,?,'STOCK_LOW','SKU','sku-1',?,?,now(),'WARNING')",
+        UuidV7.nextId(),
         tenantId,
         user,
         channel);

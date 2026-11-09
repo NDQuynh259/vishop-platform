@@ -8,7 +8,11 @@ import java.util.Set;
 import java.util.UUID;
 
 public interface NotificationDeliveryApi {
-  record Target(UUID userId, NotificationChannel channel, String destination) {}
+  record Target(UUID userId, NotificationChannel channel, String destination, UUID settingId) {
+    public Target(UUID userId, NotificationChannel channel, String destination) {
+      this(userId, channel, destination, null);
+    }
+  }
 
   Map<UUID, Set<NotificationChannel>> reserveAllowedRoutes(
       NotificationMessage message, Map<UUID, Set<NotificationChannel>> routes);

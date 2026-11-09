@@ -75,19 +75,13 @@ public class NotificationAlertRuleJpaAdapter implements NotificationAlertRuleRep
     if (!row.getType().equals(rule.getType()))
       throw new IllegalArgumentException("Rule type is immutable");
     row.setEnabled(rule.isEnabled());
-    row.setInAppEnabled(rule.getChannels().contains(NotificationChannel.IN_APP));
-    row.setEmailEnabled(rule.getChannels().contains(NotificationChannel.EMAIL));
-    row.setTelegramEnabled(rule.getChannels().contains(NotificationChannel.TELEGRAM));
-    row.setLarkEnabled(rule.getChannels().contains(NotificationChannel.LARK));
+    row.setChannels(rule.getChannels().stream().sorted().map(Enum::name).toArray(String[]::new));
     row.touch();
   }
 
   private NotificationAlertRule view(NotificationAlertRuleJpaEntity row) {
     var channels = EnumSet.noneOf(NotificationChannel.class);
-    if (row.isInAppEnabled()) channels.add(NotificationChannel.IN_APP);
-    if (row.isEmailEnabled()) channels.add(NotificationChannel.EMAIL);
-    if (row.isTelegramEnabled()) channels.add(NotificationChannel.TELEGRAM);
-    if (row.isLarkEnabled()) channels.add(NotificationChannel.LARK);
+    for (String channel : row.getChannels()) channels.add(NotificationChannel.valueOf(channel));
     return new NotificationAlertRule(
         row.getId(), row.getType(), row.isEnabled(), channels, row.getVersion());
   }

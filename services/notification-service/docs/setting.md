@@ -184,6 +184,9 @@ Giai đoạn này dùng hai bảng: `notification_settings` cho kết nối kên
 `ruleId` là UUID bản ghi. Tenant lấy từ principal; ID tenant khác, đã xóa hoặc không tồn tại trả 404.
 `type` lúc tạo là mã enum `NotificationTypeCode`, không đổi qua PUT.
 `channels` là tập enum `IN_APP`, `EMAIL`, `TELEGRAM`, `LARK`; tập rỗng nghĩa không gửi qua kênh nào.
+
+Từ V16, DB lưu tập này trong `channels TEXT[]`, thay bốn cờ boolean cũ. Backfill giữ
+nguyên lựa chọn từng kênh và dữ liệu audit, bao gồm rule đã xóa mềm. API không đổi.
 Mỗi tenant chỉ có một rule cho mỗi type. POST trùng trả 409, kể cả bản ghi đã soft-delete.
 PUT yêu cầu version hiện tại; version cũ trả 409, kể cả hai request ghi đồng thời.
 

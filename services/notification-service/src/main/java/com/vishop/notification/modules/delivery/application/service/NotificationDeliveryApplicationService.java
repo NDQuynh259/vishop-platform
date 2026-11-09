@@ -61,7 +61,8 @@ public final class NotificationDeliveryApplicationService implements Notificatio
                 target.userId(),
                 target.channel(),
                 destination,
-                now));
+                now,
+                target.settingId()));
     }
     if (!jobs.isEmpty()) repository.append(List.copyOf(jobs.values()));
     return jobs.values().stream().map(NotificationDeliveryJob::id).toList();

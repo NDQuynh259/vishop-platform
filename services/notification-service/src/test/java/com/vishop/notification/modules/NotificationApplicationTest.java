@@ -28,6 +28,40 @@ class NotificationApplicationTest {
   static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
   @Test
+  void groupDeliveriesKeepOptionalUserAndConnectionBindingAndWebhookCase() {
+    var repo = mock(NotificationDeliveryRepository.class);
+    var service =
+        new NotificationDeliveryApplicationService(
+            repo,
+            CLOCK,
+            UUID::randomUUID,
+            Set.of(NotificationChannel.TELEGRAM, NotificationChannel.LARK));
+    UUID setting = UUID.randomUUID();
+    var jobs =
+        service.enqueue(
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            List.of(
+                new NotificationDeliveryApi.Target(
+                    null, NotificationChannel.TELEGRAM, "-100123", setting),
+                new NotificationDeliveryApi.Target(
+                    UUID.randomUUID(), NotificationChannel.TELEGRAM, " -100123 ", setting),
+                new NotificationDeliveryApi.Target(
+                    null, NotificationChannel.LARK, "https://example.test/Webhook"),
+                new NotificationDeliveryApi.Target(
+                    null, NotificationChannel.LARK, "https://example.test/webhook")));
+    assertThat(jobs).hasSize(3);
+    verify(repo)
+        .append(
+            argThat(
+                values ->
+                    values.size() == 3
+                        && values.getFirst().userId() == null
+                        && setting.equals(values.getFirst().settingId())
+                        && values.getFirst().destination().equals("-100123")));
+  }
+
+  @Test
   void deliveryCollapsesSameDestinationAndRejectsUnsupportedChannelBeforeAppend() {
     var repo = mock(NotificationDeliveryRepository.class);
     var service =

@@ -77,8 +77,8 @@ or database creation occurs in the CLI. Application UUIDs require no extensions.
 | `notification_recipients` | In-app inbox and independent read timestamp per tenant/user |
 | `notification_alert_rules` | Per-tenant/type channel settings, thresholds and cooldown (at least 24 hours) |
 | `notification_settings` | Tenant channel switches and provider/bot connection configuration |
-| `notification_deduplication` | Rolling cooldown state per tenant/type/subject/user/channel |
-| `notification_deliveries` | Durable email jobs, attempt limits, retry date and worker lease |
+| `notification_deduplication` | UUIDv7 cooldown rows per tenant/type/subject/channel and user or external destination |
+| `notification_deliveries` | Durable EMAIL/TELEGRAM/LARK jobs, optional user/setting IDs, retries and worker leases |
 | `notification_delivery_attempts` | Provider attempt outcomes, including unknown outcomes |
 | `consumed_messages` | Event processing idempotency, compatible with common-persistence |
 | `outbox_events` | Transactional publication, including future realtime signals |
@@ -96,6 +96,14 @@ lifecycle callbacks and versions through `@Version`; other modules still require
 V15 gives `notification_recipients` its own UUIDv7 `id` primary key. Existing rows are
 backfilled without changing read/archive state; new recipient IDs come from the application.
 The unique `(tenant_id, notification_id, user_id)` constraint and tenant/notification FK remain.
+
+V16 redesigns the existing nine tables without deleting their rows. Rule channels move
+to a `channels TEXT[]` collection; queue channels include EMAIL, TELEGRAM and LARK.
+Delivery/cooldown routes may bind a tenant/channel setting and may target a shared
+destination without a user. Deduplication receives its own UUIDv7 ID. SHA256 destination
+keys preserve email case normalization and case-sensitive chat/webhook identities.
+See the [V16 database design and ERD](docs/database-design.md) for migration, constraints
+and the deployment requirement to update JPA code together with the schema.
 
 V5 adds common audit columns to business/configuration tables: `created_at`/`updated_at`
 default to `now()`, `deleted_at` defaults to NULL and `version` defaults to 0 with a
@@ -175,21 +183,20 @@ returns only connection metadata. The default port rejects credential writes and
 channel enablement until secret storage and provider verification adapters are installed.
 See [setting implementation](docs/setting.md).
 
-Tenant type rules and code catalog defaults have Telegram switches (default off); personal
-preferences default to allowing the tenant policy. These configure future delivery routing.
-The durable delivery queue and cooldown channel constraints still support in-app/email as
-originally specified; the Telegram sender, queue expansion and test-connection API remain
-subsequent work. Creating a bot configuration does not itself send any messages.
+Tenant type rules and code catalog defaults select enabled channels. The V16 queue supports
+EMAIL/TELEGRAM/LARK; cooldown supports these channels and IN_APP. Provider workers,
+delivery/cooldown persistence adapters, audience resolvers and test-connection APIs remain
+subsequent work. Creating a bot configuration does not itself send messages.
 
-Consumers must record consumed messages, notifications, recipients, email jobs and outbox
+Consumers must record consumed messages, notifications, recipients, delivery jobs and outbox
 events in one transaction. To enforce BR-14-02, upsert and lock the deduplication key,
 then suppress notifications within the cooldown unless severity increases
 (`INFO < WARNING < CRITICAL`). The table supplies concurrency keys; time and escalation
 decisions remain application logic. Threshold evaluation belongs to the source domain.
 
-Email jobs can target users independently of in-app preferences; `user_id` is optional
-for external invitees. Destinations are snapshots and case-insensitively deduplicated
-per notification/channel. Workers must recheck recipient eligibility, claim jobs with
+External jobs may target users, invitees or shared groups; `user_id` is optional.
+Destinations are snapshots, deduplicated per notification/channel. EMAIL ignores case;
+TELEGRAM/LARK preserve case. Workers must recheck recipient eligibility, claim jobs with
 `FOR UPDATE SKIP LOCKED`, set a unique lock token and lease, and fence every completion
 by that token. Expired leases can be recovered. `SENT` records require `sent_at`;
 terminal failures retain their history. SMTP cannot guarantee exactly-once delivery after

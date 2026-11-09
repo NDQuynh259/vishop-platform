@@ -19,7 +19,8 @@ public record NotificationDeliveryJob(
     Instant nextAttemptAt,
     UUID lockToken,
     Instant lockedUntil,
-    Instant sentAt) {
+    Instant sentAt,
+    UUID settingId) {
   public enum Status {
     PENDING,
     PROCESSING,
@@ -35,7 +36,10 @@ public record NotificationDeliveryJob(
     Objects.requireNonNull(channel);
     Objects.requireNonNull(status);
     Objects.requireNonNull(nextAttemptAt);
-    if (channel == NotificationChannel.IN_APP || destination == null || destination.isBlank())
+    if (channel == NotificationChannel.IN_APP
+        || destination == null
+        || destination.isBlank()
+        || destination.length() > 2048)
       throw new IllegalArgumentException("Provider destination required");
     if (maxAttempts <= 0 || attemptCount < 0 || attemptCount > maxAttempts)
       throw new IllegalArgumentException("Invalid attempt budget");
@@ -53,6 +57,18 @@ public record NotificationDeliveryJob(
       NotificationChannel channel,
       String destination,
       Instant now) {
+    return pending(id, tenant, notification, user, channel, destination, now, null);
+  }
+
+  public static NotificationDeliveryJob pending(
+      UUID id,
+      UUID tenant,
+      UUID notification,
+      UUID user,
+      NotificationChannel channel,
+      String destination,
+      Instant now,
+      UUID settingId) {
     return new NotificationDeliveryJob(
         id,
         tenant,
@@ -66,7 +82,8 @@ public record NotificationDeliveryJob(
         now,
         null,
         null,
-        null);
+        null,
+        settingId);
   }
 
   public NotificationDeliveryJob claim(UUID token, Instant now, Duration lease) {
@@ -90,7 +107,8 @@ public record NotificationDeliveryJob(
         nextAttemptAt,
         token,
         now.plus(lease),
-        null);
+        null,
+        settingId);
   }
 
   public NotificationDeliveryJob complete(UUID token, Instant now) {
@@ -108,7 +126,8 @@ public record NotificationDeliveryJob(
         nextAttemptAt,
         null,
         null,
-        now);
+        now,
+        settingId);
   }
 
   public NotificationDeliveryJob fail(UUID token, Instant now, Instant retryAt) {
@@ -129,7 +148,8 @@ public record NotificationDeliveryJob(
         retry ? retryAt : nextAttemptAt,
         null,
         null,
-        null);
+        null,
+        settingId);
   }
 
   private void requireLease(UUID token, Instant now) {

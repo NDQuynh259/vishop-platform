@@ -127,7 +127,7 @@ class NotificationSettingPersistenceTest {
       assertThat(id.version()).isEqualTo(7);
       var stored = ruleRows.findById(id).orElseThrow();
       assertThat(stored.getTenantId()).isEqualTo(tenant);
-      assertThat(stored.isLarkEnabled()).isTrue();
+      assertThat(stored.getChannels()).contains("LARK");
       jdbc.update(
           "UPDATE notification_alert_rules SET thresholds=?::jsonb,cooldown_seconds=? WHERE id=?",
           "{\"legacyLimit\":10}",

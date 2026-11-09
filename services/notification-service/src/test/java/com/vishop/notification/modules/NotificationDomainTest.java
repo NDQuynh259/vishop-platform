@@ -54,6 +54,31 @@ class NotificationDomainTest {
   }
 
   @Test
+  void deliveryConnectionBindingSurvivesWorkerStateTransitions() {
+    UUID setting = UUID.randomUUID(), token = UUID.randomUUID();
+    var job =
+        NotificationDeliveryJob.pending(
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            null,
+            NotificationChannel.TELEGRAM,
+            "-100123",
+            NOW,
+            setting);
+    var processing = job.claim(token, NOW, Duration.ofSeconds(30));
+    var retried = processing.fail(token, NOW.plusSeconds(1), NOW.plusSeconds(10));
+    assertThat(retried.settingId()).isEqualTo(setting);
+    assertThat(retried.userId()).isNull();
+    var sent =
+        retried
+            .claim(token, NOW.plusSeconds(10), Duration.ofSeconds(30))
+            .complete(token, NOW.plusSeconds(11));
+    assertThat(sent.settingId()).isEqualTo(setting);
+    assertThat(sent.userId()).isNull();
+  }
+
+  @Test
   void retryHonorsDueTimeAndStopsAtBudget() {
     NotificationDeliveryJob job = pending();
     Instant time = NOW;
