@@ -42,7 +42,7 @@ hợp đồng hiện hành, giới hạn scope và phần wiring còn thiếu �
 | PLATFORM_ADMIN | CMS announcement và vận hành platform theo policy; catalog thay đổi qua code release |
 
 Tùy chọn cá nhân yêu cầu membership active và chỉ sửa bản thân.
-Quyền notifications.view không thay thế required_permission/shop scope của từng notification.
+Quyền notifications.view không thay thế required_permission và tenant của từng notification.
 
 ## 1. In-app — HTTP/JPA đã triển khai
 
@@ -60,7 +60,7 @@ occurredAt, createdAt, readAt. actionUrl chỉ là đường dẫn/đích hợp 
 Không có POST tạo thông báo tùy ý hoặc PATCH sửa title/body từ client.
 Filter category/featureCode trong thiết kế mở rộng chưa có ở API inbox hiện hành;
 hiện hỗ trợ type/severity/read/shopId/cursor/limit. Quyền notifications.view ở bảng đề xuất
-chưa được đưa vào IAM; inbox kiểm tra đăng nhập và required_permission/shop scope từng item.
+chưa được đưa vào IAM; inbox kiểm tra đăng nhập, required_permission và tenant từng item.
 
 ## 2. Nhóm tính năng — kế hoạch, chưa triển khai
 

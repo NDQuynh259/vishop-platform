@@ -42,15 +42,14 @@ thông báo tạo sau cutoff không bị đánh dấu đọc.
 ## Phạm vi truy cập
 
 Mọi list/detail/count/read/read-all/archive đều yêu cầu liên kết recipient đúng tenant/user,
-notification chưa xóa mềm, user hiện có required_permission và quyền shop tương ứng nếu có shopId.
-Các thao tác đọc bỏ recipient đã ẩn. Ngoài phạm vi hoặc không tồn tại trả 404 theo ID;
-count/list không để lộ mục bị chặn. Quyền cấu hình không cấp thêm quyền đọc nội dung nghiệp vụ.
+notification chưa xóa mềm và user hiện có `required_permission`. Mọi shop thuộc tenant đang đăng nhập
+đều được phép truy cập nên các thông báo có gắn `shopId` trong cùng tenant hiển thị bình thường
+(và vẫn hỗ trợ lọc theo query `?shopId=`). Các thao tác đọc bỏ recipient đã ẩn. Ngoài phạm vi hoặc
+không tồn tại trả 404 theo ID; count/list không để lộ mục bị chặn. Quyền cấu hình không cấp thêm
+quyền đọc nội dung nghiệp vụ.
 
 Inbox cá nhân dùng `isAuthenticated()` và kiểm tra từng item ở DB, không yêu cầu permission
-`notifications.view` chưa có trong catalog IAM hiện tại. `NotificationInboxShopAccess` là port
-đọc phạm vi shop từ nguồn tin cậy; bean mặc định trả tập rỗng và chặn mục có shopId đến khi có
-adapter thực tế. Không nhận scope/permissions từ client. Test cung cấp scope giả lập để xác nhận
-cả nhánh được phép và bị từ chối.
+`notifications.view` chưa có trong catalog IAM hiện tại. Không nhận scope/permissions từ client.
 
 ## Luồng xác thực từ Gateway đến Controller
 

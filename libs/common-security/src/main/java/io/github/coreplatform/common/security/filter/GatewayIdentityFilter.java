@@ -20,8 +20,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Filter chạy một lần mỗi request tại các downstream service để khôi phục danh tính và quyền từ
- * các internal header do API Gateway truyền xuống.
+ * Filter chạy một lần mỗi request tại các downstream service để khôi phục danh tính và quyền từ các
+ * internal header do API Gateway truyền xuống.
  */
 @RequiredArgsConstructor
 public final class GatewayIdentityFilter extends OncePerRequestFilter {
@@ -38,7 +38,8 @@ public final class GatewayIdentityFilter extends OncePerRequestFilter {
       GatewayPrincipal actor = null;
       try {
         // Đọc các internal header định danh từ API Gateway (X-User-Id, X-Tenant-Id, X-Role-Id, ...)
-        var identity = GatewayIdentityHeaders.read(name -> Collections.list(request.getHeaders(name)));
+        var identity =
+            GatewayIdentityHeaders.read(name -> Collections.list(request.getHeaders(name)));
         if (identity != null) {
           // Chặn technical user (00000000-...) gọi vào các endpoint nghiệp vụ yêu cầu user thực
           if (GatewayIdentityHeaders.TECHNICAL_USER.equals(identity.getUserId()))
@@ -46,17 +47,19 @@ public final class GatewayIdentityFilter extends OncePerRequestFilter {
 
           // Phân giải permissions của role trong tenant (tra cứu từ cache/Redis); nếu chưa chọn
           // tenant thì bỏ qua
-          var grant = identity.getTenantId() == null
-              ? null
-              : roles.resolve(identity.getTenantId(), identity.getRoleId());
+          var grant =
+              identity.getTenantId() == null
+                  ? null
+                  : roles.resolve(identity.getTenantId(), identity.getRoleId());
 
-          actor = new GatewayPrincipal(
-              identity.getUserId(),
-              identity.getTenantId(),
-              identity.getSystemRole(),
-              grant == null ? null : grant.getRoleKey(),
-              grant == null ? Set.of() : grant.getPermissions(),
-              identity.getSessionId());
+          actor =
+              new GatewayPrincipal(
+                  identity.getUserId(),
+                  identity.getTenantId(),
+                  identity.getSystemRole(),
+                  grant == null ? null : grant.getRoleKey(),
+                  grant == null ? Set.of() : grant.getPermissions(),
+                  identity.getSessionId());
         }
       } catch (UnauthorizedException | IllegalArgumentException ex) {
         response.sendError(401);
@@ -80,8 +83,7 @@ public final class GatewayIdentityFilter extends OncePerRequestFilter {
                     null,
                     actor.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
         // Nạp tenantId vào ThreadLocal cho tầng dữ liệu / multi-tenancy
-        if (actor.tenantId() != null)
-          TenantContext.set(actor.tenantId());
+        if (actor.tenantId() != null) TenantContext.set(actor.tenantId());
       }
       chain.doFilter(request, response);
     } finally {

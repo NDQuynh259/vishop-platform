@@ -45,7 +45,9 @@ infra/.env.example. Browser writes send X-Requested-With: XMLHttpRequest and cre
 ## Migrate, run and verify
 
 Hibernate validates mappings; migrations do not run on application startup. Set
-IAM_DB_URL, IAM_DB_USER and IAM_DB_PASSWORD, then apply migrations including V13.
+IAM_DB_URL, IAM_DB_USER and IAM_DB_PASSWORD, then apply migrations through V14.
+V14 adds notification settings permissions for existing and future OWNER roles and refreshes
+their authorization outbox projections.
 Drain old gateway traffic during the coordinated cutover: V13 requires membership
 checks in the new gateway. See [membership cache](../../docs/core-architecture/membership-cache.md).
 

@@ -79,4 +79,3 @@ public class NotificationRuleController {
             new RuleChange(body.getEnabled(), body.getChannels(), body.getVersion())));
   }
 }
-

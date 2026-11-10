@@ -5,7 +5,6 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -20,7 +19,6 @@ public record CommonUserDetails(
     UUID tenantId,
     String systemRole,
     String tenantRole,
-    Set<UUID> accessibleShopIds,
     Collection<? extends GrantedAuthority> authorities)
     implements UserDetails, Serializable {
 
@@ -29,8 +27,6 @@ public record CommonUserDetails(
     Objects.requireNonNull(userId, "userId must not be null");
     Objects.requireNonNull(tenantId, "tenantId must not be null");
     if (!SystemRole.isValid(systemRole)) throw new IllegalArgumentException("Invalid system role");
-    accessibleShopIds =
-        accessibleShopIds != null ? Set.copyOf(accessibleShopIds) : Collections.emptySet();
     authorities =
         authorities != null
             ? Collections.unmodifiableCollection(authorities)
@@ -91,17 +87,6 @@ public record CommonUserDetails(
   @Override
   public boolean isEnabled() {
     return true;
-  }
-
-  // #endregion
-
-  // #region hasShopAccess
-  /** Checks if the current user has access rights to the given shop within the tenant. */
-  public boolean hasShopAccess(UUID shopId) {
-    if (shopId == null) {
-      return false;
-    }
-    return accessibleShopIds.contains(shopId);
   }
 
   // #endregion

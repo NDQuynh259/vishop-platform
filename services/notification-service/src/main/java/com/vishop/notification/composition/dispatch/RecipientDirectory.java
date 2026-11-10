@@ -9,7 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Trusted adapter: active membership, permission/shop scope, type resolver and verified
+ * Trusted adapter: active membership, tenant-scoped permissions, type resolver and verified
  * destinations. Empty selectedRecipients means use a type-specific resolver, never all tenant
  * members. Implement from an authorized local projection; do not perform provider calls in the
  * transaction. Shared chat targets require a separate audience policy and collapse to one target

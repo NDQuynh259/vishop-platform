@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.coreplatform.common.domain.constants.SystemRole;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,8 +18,6 @@ class CommonUserDetailsTest {
   void shouldCreateCommonUserDetailsSuccessfully() {
     UUID userId = UUID.randomUUID();
     UUID tenantId = UUID.randomUUID();
-    UUID shop1 = UUID.randomUUID();
-    UUID shop2 = UUID.randomUUID();
 
     CommonUserDetails user =
         new CommonUserDetails(
@@ -28,7 +25,6 @@ class CommonUserDetailsTest {
             tenantId,
             SystemRole.USER.name(),
             "OWNER",
-            Set.of(shop1, shop2),
             List.of(new SimpleGrantedAuthority("order.create")));
 
     assertThat(user.userId()).isEqualTo(userId);
@@ -39,11 +35,6 @@ class CommonUserDetailsTest {
     assertThat(user.isAccountNonExpired()).isTrue();
     assertThat(user.isAccountNonLocked()).isTrue();
     assertThat(user.isCredentialsNonExpired()).isTrue();
-
-    assertThat(user.hasShopAccess(shop1)).isTrue();
-    assertThat(user.hasShopAccess(shop2)).isTrue();
-    assertThat(user.hasShopAccess(UUID.randomUUID())).isFalse();
-    assertThat(user.hasShopAccess(null)).isFalse();
 
     assertThat(user.tenantRole()).isEqualTo("OWNER");
     assertThat(user.systemRole()).isEqualTo(SystemRole.USER.name());
@@ -63,16 +54,12 @@ class CommonUserDetailsTest {
     UUID validId = UUID.randomUUID();
 
     assertThatThrownBy(
-            () ->
-                new CommonUserDetails(
-                    null, validId, SystemRole.USER.name(), null, Set.of(), List.of()))
+            () -> new CommonUserDetails(null, validId, SystemRole.USER.name(), null, List.of()))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("userId must not be null");
 
     assertThatThrownBy(
-            () ->
-                new CommonUserDetails(
-                    validId, null, SystemRole.USER.name(), null, Set.of(), List.of()))
+            () -> new CommonUserDetails(validId, null, SystemRole.USER.name(), null, List.of()))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("tenantId must not be null");
   }
@@ -81,17 +68,16 @@ class CommonUserDetailsTest {
 
   // #region shouldHandleNullCollectionsGracefully
   @Test
-  @DisplayName("Should handle null collections gracefully by assigning empty immutable collections")
+  @DisplayName(
+      "Should handle null authorities gracefully by assigning an empty immutable collection")
   void shouldHandleNullCollectionsGracefully() {
     UUID userId = UUID.randomUUID();
     UUID tenantId = UUID.randomUUID();
 
     CommonUserDetails user =
-        new CommonUserDetails(userId, tenantId, SystemRole.USER.name(), null, null, null);
+        new CommonUserDetails(userId, tenantId, SystemRole.USER.name(), null, null);
 
-    assertThat(user.accessibleShopIds()).isEmpty();
     assertThat(user.authorities()).isEmpty();
-    assertThat(user.hasShopAccess(UUID.randomUUID())).isFalse();
     assertThat(user.hasAuthority("any.perm")).isFalse();
   }
   // #endregion

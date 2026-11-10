@@ -1,15 +1,12 @@
 package com.vishop.notification.inbox;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.vishop.notification.modules.notification.application.api.NotificationApi;
 import com.vishop.notification.modules.notification.application.command.*;
 import com.vishop.notification.modules.notification.application.dto.*;
-import com.vishop.notification.modules.notification.application.port.NotificationInboxShopAccess;
 import com.vishop.notification.modules.notification.infrastructure.config.NotificationModuleConfiguration;
 import com.vishop.notification.modules.notification.presentation.rest.controller.NotificationInboxController;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
@@ -75,12 +72,6 @@ class NotificationInboxPersistenceTest {
     TestClock testClock() {
       return new TestClock();
     }
-
-    @Bean
-    @Primary
-    NotificationInboxShopAccess testShops() {
-      return mock(NotificationInboxShopAccess.class);
-    }
   }
 
   @DynamicPropertySource
@@ -103,7 +94,6 @@ class NotificationInboxPersistenceTest {
 
   @Autowired NotificationApi inbox;
   @Autowired TestClock clock;
-  @Autowired NotificationInboxShopAccess shops;
   @Autowired CommandBus commands;
   @Autowired QueryBus queries;
   @Autowired JdbcTemplate jdbc;
@@ -116,8 +106,6 @@ class NotificationInboxPersistenceTest {
   @BeforeEach
   void resetAccess() {
     clock.at = NOW;
-    reset(shops);
-    when(shops.allowedShops(any(), any())).thenReturn(Set.of());
   }
 
   @AfterEach
@@ -202,18 +190,34 @@ class NotificationInboxPersistenceTest {
   }
 
   @Test
-  void visibilityAndMutationsAlwaysRespectTenantRecipientPermissionAndShopAccess() {
+  void visibilityAndMutationsAlwaysRespectTenantRecipientPermissionAndAllowTenantShops() {
     UUID publicId = create("visible", "inventory.view", null, user);
     UUID finance = create("finance", "finance.settlement.view", null, user);
     UUID notRecipient = create("other", "inventory.view", null, other);
     UUID shop = UUID.randomUUID();
-    UUID scoped = create("shop", "inventory.view", shop, user);
+    clock.at = NOW.plusSeconds(1);
+    UUID shopScoped = create("shop", "inventory.view", shop, user);
     var a = actor(user, "inventory.view");
     assertThat(inbox.list(a, filter(20, null)).items())
         .extracting(NotificationView::getId)
-        .containsExactly(publicId);
-    assertThat(inbox.unreadCount(a).getCount()).isEqualTo(1);
-    for (UUID id : List.of(finance, notRecipient, scoped, UUID.randomUUID())) {
+        .containsExactly(shopScoped, publicId);
+    assertThat(inbox.unreadCount(a).getCount()).isEqualTo(2);
+    assertThat(inbox.getById(a, shopScoped).getShopId()).isEqualTo(shop);
+    assertThat(
+            inbox
+                .list(a, new InboxFilter(null, null, null, shop, null, CursorParams.of(null, 20)))
+                .items())
+        .extracting(NotificationView::getId)
+        .containsExactly(shopScoped);
+    assertThat(
+            inbox
+                .list(
+                    a,
+                    new InboxFilter(
+                        null, null, null, UUID.randomUUID(), null, CursorParams.of(null, 20)))
+                .items())
+        .isEmpty();
+    for (UUID id : List.of(finance, notRecipient, UUID.randomUUID())) {
       assertThatThrownBy(() -> inbox.getById(a, id)).isInstanceOf(EntityNotFoundException.class);
       assertThatThrownBy(() -> inbox.markRead(a, id)).isInstanceOf(EntityNotFoundException.class);
       assertThatThrownBy(() -> inbox.archive(a, id)).isInstanceOf(EntityNotFoundException.class);
@@ -222,39 +226,33 @@ class NotificationInboxPersistenceTest {
         new InboxActor(
             UUID.randomUUID(), user, Set.of("inventory.view", "finance.settlement.view"));
     assertThat(inbox.list(foreign, filter(20, null)).items()).isEmpty();
-    assertThatThrownBy(() -> inbox.getById(foreign, publicId))
-        .isInstanceOf(EntityNotFoundException.class);
-    assertThatThrownBy(() -> inbox.markRead(foreign, publicId))
-        .isInstanceOf(EntityNotFoundException.class);
-    assertThatThrownBy(() -> inbox.archive(foreign, publicId))
-        .isInstanceOf(EntityNotFoundException.class);
-    assertThat(inbox.markAllRead(foreign, NOW).getUpdatedCount()).isZero();
+    for (UUID id : List.of(publicId, shopScoped)) {
+      assertThatThrownBy(() -> inbox.getById(foreign, id))
+          .isInstanceOf(EntityNotFoundException.class);
+      assertThatThrownBy(() -> inbox.markRead(foreign, id))
+          .isInstanceOf(EntityNotFoundException.class);
+      assertThatThrownBy(() -> inbox.archive(foreign, id))
+          .isInstanceOf(EntityNotFoundException.class);
+    }
+    assertThat(inbox.markAllRead(foreign, clock.at).getUpdatedCount()).isZero();
     assertThat(inbox.unreadCount(actor(user)).getCount()).isZero();
-    when(shops.allowedShops(tenant, user)).thenReturn(Set.of(shop));
-    assertThat(inbox.getById(a, scoped).getShopId()).isEqualTo(shop);
-    assertThat(inbox.unreadCount(a).getCount()).isEqualTo(2);
-    assertThat(
-            inbox
-                .list(a, new InboxFilter(null, null, null, shop, null, CursorParams.of(null, 20)))
-                .items())
-        .extracting(NotificationView::getId)
-        .containsExactly(scoped);
   }
 
   @Test
   void readAllHonorsCutoffAndDoesNotMarkHiddenOrLaterNotifications() {
     UUID older = create("older", "inventory.view", null, user);
     UUID hidden = create("hidden", "finance.settlement.view", null, user);
-    UUID deniedShop = create("denied-shop", "inventory.view", UUID.randomUUID(), user);
+    UUID shopOlder = create("shop-older", "inventory.view", UUID.randomUUID(), user);
     clock.at = NOW.plusSeconds(1);
     UUID later = create("later", "inventory.view", null, user);
     clock.at = NOW.plusSeconds(2);
     var a = actor(user, "inventory.view");
-    assertThat(inbox.markAllRead(a, NOW).getUpdatedCount()).isEqualTo(1);
+    assertThat(inbox.markAllRead(a, NOW).getUpdatedCount()).isEqualTo(2);
     assertThat(inbox.markAllRead(a, NOW).getUpdatedCount()).isZero();
     assertThat(inbox.getById(a, older).getReadAt()).isNotNull();
+    assertThat(inbox.getById(a, shopOlder).getReadAt()).isNotNull();
     assertThat(inbox.getById(a, later).getReadAt()).isNull();
-    for (UUID id : List.of(hidden, deniedShop)) {
+    for (UUID id : List.of(hidden, later)) {
       assertThat(
               jdbc.queryForObject(
                   "SELECT read_at IS NULL FROM notification_recipients WHERE notification_id=? AND"
@@ -318,10 +316,11 @@ class NotificationInboxPersistenceTest {
     clock.at = NOW.plusSeconds(1);
     UUID second = create("offset-second", "inventory.view", null, user);
     clock.at = NOW.plusSeconds(2);
+    UUID third = create("offset-shop", "inventory.view", UUID.randomUUID(), user);
+    clock.at = NOW.plusSeconds(3);
     UUID latest = create("offset-latest", "inventory.view", null, user);
     create("offset-other-user", "inventory.view", null, other);
     create("offset-private", "finance.settlement.view", null, user);
-    create("offset-shop", "inventory.view", UUID.randomUUID(), user);
     UUID hidden = create("offset-hidden", "inventory.view", null, user);
     inbox.archive(a, hidden);
     var foreign =
@@ -341,19 +340,19 @@ class NotificationInboxPersistenceTest {
     inbox.create(foreign, Set.of(user));
     var page1 =
         inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(1, 2), null));
-    assertThat(page1.items()).extracting(NotificationView::getId).containsExactly(latest, second);
-    assertThat(page1.total()).isEqualTo(3);
+    assertThat(page1.items()).extracting(NotificationView::getId).containsExactly(latest, third);
+    assertThat(page1.total()).isEqualTo(4);
     assertThat(page1.totalPages()).isEqualTo(2);
     assertThat(page1.hasNextPage()).isTrue();
     assertThat(page1.nextCursor()).isNull();
     var page2 =
         inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(2, 2), null));
-    assertThat(page2.items()).extracting(NotificationView::getId).containsExactly(first);
+    assertThat(page2.items()).extracting(NotificationView::getId).containsExactly(second, first);
     assertThat(page2.hasNextPage()).isFalse();
     var empty =
         inbox.list(a, new InboxFilter(null, null, null, null, OffsetPagination.of(3, 2), null));
     assertThat(empty.items()).isEmpty();
-    assertThat(empty.total()).isEqualTo(3);
+    assertThat(empty.total()).isEqualTo(4);
     inbox.markRead(a, latest);
     var unread =
         inbox.list(
@@ -365,8 +364,10 @@ class NotificationInboxPersistenceTest {
                 null,
                 OffsetPagination.of(1, 20),
                 null));
-    assertThat(unread.total()).isEqualTo(2);
-    assertThat(unread.items()).extracting(NotificationView::getId).containsExactly(second, first);
+    assertThat(unread.total()).isEqualTo(3);
+    assertThat(unread.items())
+        .extracting(NotificationView::getId)
+        .containsExactly(third, second, first);
     var denied =
         inbox.list(
             actor(user), new InboxFilter(null, null, null, null, OffsetPagination.of(1, 20), null));

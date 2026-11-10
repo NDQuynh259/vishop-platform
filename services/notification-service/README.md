@@ -73,7 +73,7 @@ or database creation occurs in the CLI. Application UUIDs require no extensions.
 
 | Table | Purpose |
 | --- | --- |
-| `notifications` | Shared title/body, type, severity, source event, subject, permission and optional shop scope |
+| `notifications` | Shared title/body, type, severity, source event, subject, permission and optional shop reference |
 | `notification_recipients` | In-app inbox and independent read timestamp per tenant/user |
 | `notification_alert_rules` | Per-tenant/type channel settings; legacy thresholds/cooldown columns are inactive |
 | `notification_settings` | Tenant channel switches and provider/bot connection configuration |
@@ -92,7 +92,8 @@ setting per tenant. Listing returns every active Lark group; cursor identity inc
 Tenant/user/shop IDs are external references to their owning services; no cross-database
 foreign keys. Local foreign keys include tenant ID to reject mismatched tenant links.
 These constraints do not replace authorization: every API query must scope by tenant
-and user, and recheck membership, permission and shop access before exposing content.
+and user, and recheck membership and business permission before exposing content.
+Tenant members can access every shop belonging to their tenant; no per-user shop grant is required.
 
 In-app list and unread queries use `(tenant_id, user_id)` on recipients; join notifications
 on both tenant and notification ID. Read-all should use a cutoff timestamp so it does not

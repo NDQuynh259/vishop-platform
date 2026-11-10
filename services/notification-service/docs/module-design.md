@@ -99,14 +99,14 @@ explicit recipients hoặc personal preferences. Các bảng còn lại giữ sc
 
 - DispatchJournal.once cần adapter transaction thật cho consumed marker, inbox,
   queue và outbox; hiện chưa có implementation PostgreSQL.
-- RecipientDirectory kiểm tra membership/quyền/shop, resolver theo type và đích đã xác minh.
+- RecipientDirectory kiểm tra membership/quyền trong tenant, resolver theo type và đích đã xác minh.
   Explicit selection vẫn giới hạn kết quả nếu directory trả dư người.
 - Dispatch dùng trực tiếp các route đã qua kiểm tra quyền/cấu hình, không reserve cooldown.
 - Delivery gộp EMAIL destination sau trim/lowercase; claim/complete/fail theo lease/token,
   due time và attempt budget. Không tự reclaim kết quả provider chưa xác định.
 - Recipient read idempotent, giữ readAt đầu tiên; archive không sửa notification chung.
-- Inbox HTTP/JPA đã có; [API và phạm vi đọc](inbox.md) gồm recipient, permission và shop.
-  Adapter quyền shop thực tế chưa có; mặc định chặn mục có shopId.
+- Inbox HTTP/JPA đã có; [API và phạm vi đọc](inbox.md) kiểm tra tenant, recipient và
+  `required_permission` (mọi shop thuộc tenant đang đăng nhập đều truy cập được).
 - NotificationSystemTypePolicy dùng constants thật, chỉ cho announcement type SYSTEM.
 - NotificationAnnouncement draft có audience tường minh; published snapshot bất biến. Repository save
   phải compare-and-swap expectedVersion; publish chưa fan-out hoặc gửi provider.

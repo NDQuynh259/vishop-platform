@@ -28,7 +28,7 @@ class IamSchemaTest {
             .dataSource(postgres.getPostgresDatabase())
             .locations("classpath:db/migration")
             .load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(13);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(14);
   }
 
   @AfterAll
@@ -130,7 +130,7 @@ class IamSchemaTest {
 
       var upgraded =
           Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
-      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(8);
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(9);
       upgraded.validate();
       try (var upgradeConnection = database.getConnection();
           var statement = upgradeConnection.createStatement()) {
@@ -241,6 +241,53 @@ class IamSchemaTest {
         "23514",
         "INSERT INTO role_permissions(role_id,permission_key) VALUES (?,'unknown.action')",
         role(tenant, "OPERATIONS"));
+  }
+
+  @Test
+  void notificationPermissionsUpgradeExistingOwnersAndRefreshAuthorization() throws Exception {
+    try (var upgrade = EmbeddedPostgres.builder().setPort(0).start()) {
+      var database = upgrade.getPostgresDatabase();
+      Flyway.configure()
+          .dataSource(database)
+          .locations("classpath:db/migration")
+          .target("13")
+          .load()
+          .migrate();
+      try (var c = database.getConnection();
+          var statement = c.createStatement()) {
+        statement.execute(
+            "INSERT INTO tenants(code,name) VALUES ('notification-upgrade','Existing Tenant')");
+        statement.execute("INSERT INTO roles(tenant_id,name) SELECT id,'Custom' FROM tenants");
+        statement.execute("UPDATE authorization_outbox SET pending=false");
+      }
+      var upgraded =
+          Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(1);
+      upgraded.validate();
+      try (var c = database.getConnection();
+          var statement = c.createStatement()) {
+        try (var row =
+            statement.executeQuery(
+                """
+SELECT
+  (SELECT count(*) FROM role_permissions p JOIN roles r ON r.id=p.role_id
+    WHERE r.builtin_key='OWNER' AND p.permission_key LIKE 'notifications.settings.%')=2
+  AND NOT EXISTS (
+    SELECT 1 FROM role_permissions p JOIN roles r ON r.id=p.role_id
+    WHERE r.builtin_key IS DISTINCT FROM 'OWNER'
+      AND p.permission_key LIKE 'notifications.settings.%')
+  AND EXISTS (
+    SELECT 1 FROM authorization_outbox a JOIN roles r
+      ON a.state_key='auth:role:' || r.tenant_id || ':' || r.id
+    WHERE r.builtin_key='OWNER' AND a.pending
+      AND a.payload->'permissions' @> '["notifications.settings.view","notifications.settings.manage"]'::jsonb)
+""")) {
+          assertThat(row.next()).isTrue();
+          assertThat(row.getBoolean(1)).isTrue();
+        }
+      }
+      assertThat(upgraded.migrate().migrationsExecuted).isZero();
+    }
   }
 
   @Test
@@ -459,7 +506,7 @@ class IamSchemaTest {
       }
       var upgraded =
           Flyway.configure().dataSource(database).locations("classpath:db/migration").load();
-      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(3);
+      assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(4);
       upgraded.validate();
       try (var c = database.getConnection();
           var statement = c.createStatement()) {

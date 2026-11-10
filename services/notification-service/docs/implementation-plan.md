@@ -66,7 +66,7 @@ schema validate và mapping đầy đủ; đọc/ghi dùng JPA, không JDBC runt
 - API tenant feature/type settings và danh sách người nhận; FE dùng danh mục hardcode.
 - API preference cá nhân và effective-settings kèm lý do kênh bị tắt.
 - Lookup quyền giống nhau cho list/detail/count/realtime: membership đang active,
-  quyền dữ liệu/shop còn hiệu lực, parent/recipient chưa xóa.
+  quyền dữ liệu trong tenant còn hiệu lực, parent/recipient chưa xóa.
 - Không có recipient explicit: resolver theo từng type; type chưa có resolver không gửi.
   Thông báo không có người hợp lệ không fan-out cho toàn tenant.
 - Ngưỡng có schema/validator theo type và được service nghiệp vụ sở hữu tiếp nhận qua

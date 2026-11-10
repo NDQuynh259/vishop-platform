@@ -2,11 +2,9 @@ package io.github.coreplatform.common.security.config;
 
 import io.github.coreplatform.common.security.audit.SpringSecurityAuditorAware;
 import io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter;
-import io.github.coreplatform.common.security.authorization.ShopSecurity;
 import io.github.coreplatform.common.security.filter.InternalHeaderAuthFilter;
 import io.github.coreplatform.common.security.jwt.JwtAutoConfiguration;
 import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
-
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -27,8 +25,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Spring Boot AutoConfiguration for Core Platform Security. Provides pre-configured stateless
- * SecurityFilterChain, internal header filter, ShopSecurity SpEL evaluator, and Spring Data
- * AuditorAware.
+ * SecurityFilterChain, internal header filter, and Spring Data AuditorAware.
  */
 @AutoConfiguration(after = JwtAutoConfiguration.class)
 @EnableWebSecurity
@@ -42,18 +39,8 @@ public class CommonSecurityAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnBean(JwtAuthenticationConverter.class)
   public InternalHeaderAuthFilter internalHeaderAuthFilter(
-      JwtTokenProvider tokens,
-      JwtAuthenticationConverter converter) {
+      JwtTokenProvider tokens, JwtAuthenticationConverter converter) {
     return new InternalHeaderAuthFilter(tokens, converter);
-  }
-
-  // #endregion
-
-  // #region shopSecurity
-  @Bean
-  @ConditionalOnMissingBean
-  public ShopSecurity shopSecurity() {
-    return new ShopSecurity();
   }
 
   // #endregion
@@ -76,9 +63,7 @@ public class CommonSecurityAutoConfiguration {
   @ConditionalOnMissingBean(SecurityFilterChain.class)
   @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
   public SecurityFilterChain defaultSecurityFilterChain(
-      HttpSecurity http,
-      ObjectProvider<InternalHeaderAuthFilter> filters)
-      throws Exception {
+      HttpSecurity http, ObjectProvider<InternalHeaderAuthFilter> filters) throws Exception {
 
     var authFilter = filters.getIfAvailable();
     if (authFilter != null)
@@ -88,15 +73,16 @@ public class CommonSecurityAutoConfiguration {
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            authorize -> authorize
-                .requestMatchers(
-                    "/actuator/health",
-                    "/actuator/info",
-                    "/actuator/prometheus",
-                    "/v3/api-docs/**")
-                .permitAll()
-                .anyRequest()
-                .authenticated())
+            authorize ->
+                authorize
+                    .requestMatchers(
+                        "/actuator/health",
+                        "/actuator/info",
+                        "/actuator/prometheus",
+                        "/v3/api-docs/**")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated())
         .build();
   }
   // #endregion

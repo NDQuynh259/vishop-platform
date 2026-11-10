@@ -92,7 +92,7 @@ public class NotificationJpaAdapter implements NotificationRepository {
   public List<NotificationInboxEntry> findAll(
       NotificationInboxScope scope, NotificationInboxFilter filter) {
     if (scope.getPermissions().isEmpty()) return List.of();
-    String conditions = listConditions(scope, filter);
+    String conditions = listConditions(filter);
     var query =
         em.createQuery(
             "select n,r.readAt from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
@@ -115,15 +115,15 @@ public class NotificationJpaAdapter implements NotificationRepository {
     var query =
         em.createQuery(
             "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
-                + listConditions(scope, filter),
+                + listConditions(filter),
             Long.class);
     bind(query, scope);
     bindList(query, filter);
     return query.getSingleResult();
   }
 
-  private String listConditions(NotificationInboxScope scope, NotificationInboxFilter filter) {
-    String conditions = visible(scope) + " and r.deletedAt is null";
+  private String listConditions(NotificationInboxFilter filter) {
+    String conditions = visible() + " and r.deletedAt is null";
     if (filter.getType() != null) conditions += " and n.type=:type";
     if (filter.getSeverity() != null) conditions += " and n.severity=:severity";
     if (filter.getRead() != null)
@@ -149,7 +149,7 @@ public class NotificationJpaAdapter implements NotificationRepository {
     var query =
         em.createQuery(
             "select n,r.readAt from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
-                + visible(scope)
+                + visible()
                 + " and r.deletedAt is null and n.id=:id",
             Object[].class);
     bind(query, scope).setParameter("id", id);
@@ -162,7 +162,7 @@ public class NotificationJpaAdapter implements NotificationRepository {
         em.createQuery(
             "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where"
                 + " "
-                + visible(scope)
+                + visible()
                 + " and r.deletedAt is null and r.readAt is null",
             Long.class);
     bind(query, scope);
@@ -177,7 +177,7 @@ public class NotificationJpaAdapter implements NotificationRepository {
               "update NotificationRecipientJpaEntity r set r.readAt=case when r.createdAt>:at then"
                   + " r.createdAt else :at end,r.updatedAt=case when r.updatedAt>:at then"
                   + " r.updatedAt else :at end,r.version=r.version+1 where "
-                  + recipientScope(scope)
+                  + recipientScope()
                   + " and r.deletedAt is null and r.readAt is null and r.notificationId=:id");
       bind(query, scope).setParameter("id", id).setParameter("at", at).executeUpdate();
     }
@@ -192,7 +192,7 @@ public class NotificationJpaAdapter implements NotificationRepository {
             "update NotificationRecipientJpaEntity r set r.readAt=case when r.createdAt>:at then"
                 + " r.createdAt else :at end,r.updatedAt=case when r.updatedAt>:at then r.updatedAt"
                 + " else :at end,r.version=r.version+1 where "
-                + recipientScope(scope)
+                + recipientScope()
                 + " and r.deletedAt is null and r.readAt is null and r.createdAt<=:before");
     return bind(query, scope).setParameter("at", at).setParameter("before", before).executeUpdate();
   }
@@ -204,7 +204,7 @@ public class NotificationJpaAdapter implements NotificationRepository {
         em.createQuery(
             "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where"
                 + " "
-                + visible(scope)
+                + visible()
                 + " and n.id=:id",
             Long.class);
     bind(existing, scope).setParameter("id", id);
@@ -214,39 +214,33 @@ public class NotificationJpaAdapter implements NotificationRepository {
             "update NotificationRecipientJpaEntity r set r.deletedAt=case when r.createdAt>:at then"
                 + " r.createdAt else :at end,r.updatedAt=case when r.updatedAt>:at then r.updatedAt"
                 + " else :at end,r.version=r.version+1 where "
-                + recipientScope(scope)
+                + recipientScope()
                 + " and r.deletedAt is null and r.notificationId=:id");
     bind(query, scope).setParameter("id", id).setParameter("at", at).executeUpdate();
   }
 
-  private String visible(NotificationInboxScope scope) {
+  private String visible() {
     return "n.id=r.notificationId and n.tenantId=r.tenantId and r.tenantId=:tenant and"
         + " r.userId=:user and "
-        + payloadScope(scope);
+        + payloadScope();
   }
 
-  private String recipientScope(NotificationInboxScope scope) {
+  private String recipientScope() {
     return "r.tenantId=:tenant and r.userId=:user and r.notificationId in (select n.id from"
         + " NotificationJpaEntity n where "
-        + payloadScope(scope)
+        + payloadScope()
         + ")";
   }
 
-  private String payloadScope(NotificationInboxScope scope) {
-    return "n.tenantId=:tenant and n.deletedAt is null and n.requiredPermission in :permissions and"
-        + " "
-        + (scope.getShopIds().isEmpty()
-            ? "n.shopId is null"
-            : "(n.shopId is null or n.shopId in :shops)");
+  private String payloadScope() {
+    return "n.tenantId=:tenant and n.deletedAt is null and n.requiredPermission in :permissions";
   }
 
   private Query bind(Query query, NotificationInboxScope scope) {
-    query
+    return query
         .setParameter("tenant", scope.getTenantId())
         .setParameter("user", scope.getUserId())
         .setParameter("permissions", scope.getPermissions());
-    if (!scope.getShopIds().isEmpty()) query.setParameter("shops", scope.getShopIds());
-    return query;
   }
 
   private NotificationInboxEntry entry(Object[] row) {

@@ -5,7 +5,6 @@ import com.vishop.notification.modules.notification.application.command.CreateNo
 import com.vishop.notification.modules.notification.application.command.EnqueueDeliveriesCommandHandler;
 import com.vishop.notification.modules.notification.application.command.MarkAllNotificationsReadCommandHandler;
 import com.vishop.notification.modules.notification.application.command.MarkNotificationReadCommandHandler;
-import com.vishop.notification.modules.notification.application.port.NotificationInboxShopAccess;
 import com.vishop.notification.modules.notification.application.query.GetNotificationQueryHandler;
 import com.vishop.notification.modules.notification.application.query.ListInboxQueryHandler;
 import com.vishop.notification.modules.notification.application.query.UnreadCountQueryHandler;
@@ -59,20 +58,13 @@ public class NotificationModuleConfiguration {
   }
 
   @Bean
-  NotificationService notificationService(
-      NotificationRepository repository, Clock clock, NotificationInboxShopAccess shops) {
-    return new NotificationService(repository, clock, UuidV7::nextId, shops);
+  NotificationService notificationService(NotificationRepository repository, Clock clock) {
+    return new NotificationService(repository, clock, UuidV7::nextId);
   }
 
   @Bean
   @ConditionalOnMissingBean(Clock.class)
   Clock notificationClock() {
     return Clock.systemUTC();
-  }
-
-  @Bean
-  @ConditionalOnMissingBean(NotificationInboxShopAccess.class)
-  NotificationInboxShopAccess notificationInboxShopAccess() {
-    return (tenant, user) -> Set.of();
   }
 }

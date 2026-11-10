@@ -24,7 +24,6 @@ public final class SecurityHeaders {
   public static final String X_PERMISSIONS = "X-Permissions";
   public static final String X_USER_ROLES = "X-User-Roles";
   public static final String X_USER_PERMISSIONS = "X-User-Permissions";
-  public static final String X_USER_SHOPS = "X-User-Shops";
   public static final String X_GATEWAY_CONTEXT = "X-Gateway-Context";
   public static final String X_IAM_INTERNAL_KEY = "X-Iam-Internal-Key";
 
@@ -40,7 +39,6 @@ public final class SecurityHeaders {
           X_TENANT_ID,
           X_USER_ROLES,
           X_USER_PERMISSIONS,
-          X_USER_SHOPS,
           X_GATEWAY_CONTEXT,
           X_IAM_INTERNAL_KEY);
 

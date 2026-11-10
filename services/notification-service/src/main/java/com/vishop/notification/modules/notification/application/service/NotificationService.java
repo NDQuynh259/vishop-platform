@@ -6,7 +6,6 @@ import com.vishop.notification.modules.notification.application.dto.InboxFilter;
 import com.vishop.notification.modules.notification.application.dto.NotificationView;
 import com.vishop.notification.modules.notification.application.dto.UnreadCount;
 import com.vishop.notification.modules.notification.application.dto.UpdatedCount;
-import com.vishop.notification.modules.notification.application.port.NotificationInboxShopAccess;
 import com.vishop.notification.modules.notification.domain.entity.Notification;
 import com.vishop.notification.modules.notification.domain.entity.NotificationInboxEntry;
 import com.vishop.notification.modules.notification.domain.entity.NotificationInboxFilter;
@@ -37,7 +36,6 @@ public class NotificationService implements NotificationApi {
   private final NotificationRepository repository;
   private final Clock clock;
   private final Supplier<UUID> ids;
-  private final NotificationInboxShopAccess shops;
 
   @Transactional
   public UUID create(NotificationMessage message, Set<UUID> inAppRecipients) {
@@ -159,10 +157,7 @@ public class NotificationService implements NotificationApi {
 
   private NotificationInboxScope scope(InboxActor actor) {
     return new NotificationInboxScope(
-        actor.getTenantId(),
-        actor.getUserId(),
-        actor.getPermissions(),
-        shops.allowedShops(actor.getTenantId(), actor.getUserId()));
+        actor.getTenantId(), actor.getUserId(), actor.getPermissions());
   }
 
   private NotificationView view(NotificationInboxEntry entry) {

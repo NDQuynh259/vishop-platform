@@ -43,7 +43,6 @@ class InternalHeaderAuthFilterTest {
                     UUID.fromString(tenant),
                     claims.get("systemRole", String.class),
                     claims.get("tenantRole", String.class),
-                    java.util.Set.of(),
                     authorities);
             return new org.springframework.security.authentication
                 .UsernamePasswordAuthenticationToken(principal, null, authorities);
@@ -64,7 +63,6 @@ class InternalHeaderAuthFilterTest {
   void shouldAuthenticateWhenValidHeadersPresent() throws ServletException, IOException {
     UUID userId = UUID.randomUUID();
     UUID tenantId = UUID.randomUUID();
-    UUID shopId = UUID.randomUUID();
 
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.addHeader(
@@ -86,7 +84,6 @@ class InternalHeaderAuthFilterTest {
     request.addHeader(SecurityHeaders.X_TENANT_ID, tenantId.toString());
     request.addHeader(SecurityHeaders.X_USER_ROLES, "OWNER, OPERATOR");
     request.addHeader(SecurityHeaders.X_USER_PERMISSIONS, "order.create, product.view");
-    request.addHeader(SecurityHeaders.X_USER_SHOPS, shopId.toString());
 
     MockHttpServletResponse response = new MockHttpServletResponse();
     AtomicBoolean filterChainExecuted = new AtomicBoolean(false);
@@ -105,7 +102,6 @@ class InternalHeaderAuthFilterTest {
             CommonUserDetails user = SecurityContextHelper.requiredCurrentUser();
             assertThat(user.userId()).isEqualTo(userId);
             assertThat(user.tenantId()).isEqualTo(tenantId);
-            assertThat(user.hasShopAccess(shopId)).isFalse();
             assertThat(user.systemRole()).isEqualTo(SystemRole.USER.name());
             assertThat(user.tenantRole()).isEqualTo("OWNER");
             assertThat(user.getAuthorities())

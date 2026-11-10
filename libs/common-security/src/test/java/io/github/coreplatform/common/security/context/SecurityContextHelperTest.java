@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.coreplatform.common.domain.constants.SystemRole;
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -31,7 +32,7 @@ class SecurityContextHelperTest {
     UUID userId = UUID.randomUUID();
     UUID tenantId = UUID.randomUUID();
     CommonUserDetails user =
-        new CommonUserDetails(userId, tenantId, SystemRole.USER.name(), null, Set.of(), List.of());
+        new CommonUserDetails(userId, tenantId, SystemRole.USER.name(), null, List.of());
 
     SecurityContextHolder.getContext()
         .setAuthentication(
@@ -39,6 +40,24 @@ class SecurityContextHelperTest {
 
     assertThat(SecurityContextHelper.getCurrentUser()).contains(user);
     assertThat(SecurityContextHelper.requiredCurrentUser()).isEqualTo(user);
+    assertThat(SecurityContextHelper.getCurrentUserId()).contains(userId);
+    assertThat(SecurityContextHelper.requiredCurrentUserId()).isEqualTo(userId);
+    assertThat(SecurityContextHelper.getCurrentTenantId()).contains(tenantId);
+    assertThat(SecurityContextHelper.requiredCurrentTenantId()).isEqualTo(tenantId);
+  }
+
+  @Test
+  @DisplayName("Should extract userId and tenantId from GatewayPrincipal when authenticated")
+  void shouldExtractGatewayPrincipalIdsWhenAuthenticated() {
+    UUID userId = UUID.randomUUID();
+    UUID tenantId = UUID.randomUUID();
+    GatewayPrincipal principal =
+        new GatewayPrincipal(userId, tenantId, SystemRole.USER.name(), "OWNER", Set.of());
+
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+
+    assertThat(SecurityContextHelper.getCurrentUser()).isEmpty();
     assertThat(SecurityContextHelper.getCurrentUserId()).contains(userId);
     assertThat(SecurityContextHelper.requiredCurrentUserId()).isEqualTo(userId);
     assertThat(SecurityContextHelper.getCurrentTenantId()).contains(tenantId);

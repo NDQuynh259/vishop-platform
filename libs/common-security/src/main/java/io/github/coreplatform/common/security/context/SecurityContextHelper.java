@@ -1,5 +1,6 @@
 package io.github.coreplatform.common.security.context;
 
+import io.github.coreplatform.common.security.gateway.GatewayPrincipal;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -19,13 +20,7 @@ public final class SecurityContextHelper {
   // #region getCurrentUser
   /** Retrieves the current authenticated CommonUserDetails if present. */
   public static Optional<CommonUserDetails> getCurrentUser() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth != null
-        && auth.isAuthenticated()
-        && auth.getPrincipal() instanceof CommonUserDetails userDetails) {
-      return Optional.of(userDetails);
-    }
-    return Optional.empty();
+    return authenticatedPrincipal(CommonUserDetails.class);
   }
 
   // #endregion
@@ -45,7 +40,9 @@ public final class SecurityContextHelper {
   // #region getCurrentUserId
   /** Retrieves the current authenticated userId if present. */
   public static Optional<UUID> getCurrentUserId() {
-    return getCurrentUser().map(CommonUserDetails::userId);
+    return getCurrentUser()
+        .map(CommonUserDetails::userId)
+        .or(() -> authenticatedPrincipal(GatewayPrincipal.class).map(GatewayPrincipal::userId));
   }
 
   // #endregion
@@ -53,7 +50,11 @@ public final class SecurityContextHelper {
   // #region requiredCurrentUserId
   /** Retrieves the current authenticated userId or throws IllegalStateException. */
   public static UUID requiredCurrentUserId() {
-    return requiredCurrentUser().userId();
+    return getCurrentUserId()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "Authenticated user context is required for this operation"));
   }
 
   // #endregion
@@ -61,11 +62,18 @@ public final class SecurityContextHelper {
   // #region getCurrentTenantId
   /** Retrieves the current tenantId from user context or TenantContext. */
   public static Optional<UUID> getCurrentTenantId() {
-    Optional<UUID> userTenantId = getCurrentUser().map(CommonUserDetails::tenantId);
-    if (userTenantId.isPresent()) {
-      return userTenantId;
+    return getCurrentUser()
+        .map(CommonUserDetails::tenantId)
+        .or(() -> authenticatedPrincipal(GatewayPrincipal.class).map(GatewayPrincipal::tenantId))
+        .or(() -> Optional.ofNullable(TenantContext.get()));
+  }
+
+  private static <T> Optional<T> authenticatedPrincipal(Class<T> type) {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth != null && auth.isAuthenticated() && type.isInstance(auth.getPrincipal())) {
+      return Optional.of(type.cast(auth.getPrincipal()));
     }
-    return Optional.ofNullable(TenantContext.get());
+    return Optional.empty();
   }
 
   // #endregion
