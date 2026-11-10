@@ -1,9 +1,15 @@
 package io.github.coreplatform.common.security.config;
 
 import io.github.coreplatform.common.security.audit.SpringSecurityAuditorAware;
+import io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter;
 import io.github.coreplatform.common.security.authorization.ShopSecurity;
 import io.github.coreplatform.common.security.filter.InternalHeaderAuthFilter;
+import io.github.coreplatform.common.security.jwt.JwtAutoConfiguration;
+import io.github.coreplatform.common.security.jwt.JwtTokenProvider;
+
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -24,7 +30,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * SecurityFilterChain, internal header filter, ShopSecurity SpEL evaluator, and Spring Data
  * AuditorAware.
  */
-@AutoConfiguration(after = io.github.coreplatform.common.security.jwt.JwtAutoConfiguration.class)
+@AutoConfiguration(after = JwtAutoConfiguration.class)
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 @ConditionalOnClass(name = "jakarta.servlet.Filter")
@@ -34,11 +40,10 @@ public class CommonSecurityAutoConfiguration {
   // #region internalHeaderAuthFilter
   @Bean
   @ConditionalOnMissingBean
-  @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(
-      io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter.class)
+  @ConditionalOnBean(JwtAuthenticationConverter.class)
   public InternalHeaderAuthFilter internalHeaderAuthFilter(
-      io.github.coreplatform.common.security.jwt.JwtTokenProvider tokens,
-      io.github.coreplatform.common.security.authentication.JwtAuthenticationConverter converter) {
+      JwtTokenProvider tokens,
+      JwtAuthenticationConverter converter) {
     return new InternalHeaderAuthFilter(tokens, converter);
   }
 
@@ -72,7 +77,7 @@ public class CommonSecurityAutoConfiguration {
   @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
   public SecurityFilterChain defaultSecurityFilterChain(
       HttpSecurity http,
-      org.springframework.beans.factory.ObjectProvider<InternalHeaderAuthFilter> filters)
+      ObjectProvider<InternalHeaderAuthFilter> filters)
       throws Exception {
 
     var authFilter = filters.getIfAvailable();
@@ -83,16 +88,15 @@ public class CommonSecurityAutoConfiguration {
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            authorize ->
-                authorize
-                    .requestMatchers(
-                        "/actuator/health",
-                        "/actuator/info",
-                        "/actuator/prometheus",
-                        "/v3/api-docs/**")
-                    .permitAll()
-                    .anyRequest()
-                    .authenticated())
+            authorize -> authorize
+                .requestMatchers(
+                    "/actuator/health",
+                    "/actuator/info",
+                    "/actuator/prometheus",
+                    "/v3/api-docs/**")
+                .permitAll()
+                .anyRequest()
+                .authenticated())
         .build();
   }
   // #endregion
