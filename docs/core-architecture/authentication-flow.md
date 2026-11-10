@@ -50,6 +50,37 @@ gọi `RedisGatewayRolePermissions.resolve(tenantId, roleId)` và đưa permissi
 vào authorities. `@RequirePermission(Notification.SETTINGS_MANAGE)` kiểm tra
 authority tương ứng trước khi chạy controller. Controller không kiểm quyền lần nữa.
 
+Với các endpoint cá nhân (như Inbox) chỉ yêu cầu đăng nhập, `@PreAuthorize("isAuthenticated()")` kiểm tra danh tính đã nạp trong `SecurityContextHolder`:
+
+```text
+[ 1. Client ]
+      │  Gửi request kèm Token:
+      │  GET /api/v1/notifications
+      │  Authorization: Bearer eyJhbGci...
+      ▼
+[ 2. API Gateway ]
+      │  • Gateway giải mã & kiểm tra Token hợp lệ.
+      │  • Gateway bóc tách User ra và chuyển thành các Header nội bộ:
+      │      X-User-Id: "0192d244-..."
+      │      X-Tenant-Id: "0192d244-..."
+      │      X-Role-Id: "0192d244-..."
+      │      X-System-Role: "USER"
+      │  • Gateway bắn tiếp HTTP request này vào mạng nội bộ tới downstream service.
+      ▼
+[ 3. Downstream Service: GatewayIdentityFilter ]
+      │  (Đứng chắn trước mọi Controller)
+      │  • Filter đọc các header "X-User-Id", "X-Tenant-Id"... từ request.
+      │  • Nếu có header hợp lệ ──► Filter tự tay "nạp" vào Spring Security:
+      │      SecurityContextHolder.getContext().setAuthentication(
+      │          new UsernamePasswordAuthenticationToken(actor, null, authorities)
+      │      );
+      ▼
+[ 4. Controller: @PreAuthorize("isAuthenticated()") ]
+      │  • Trước khi Controller chạy, Spring Security kiểm tra:
+      │    "Trong SecurityContextHolder của Thread này đã có Authentication chưa?"
+      │  • Vì Filter ở bước 3 đã nạp vào rồi ──► Spring biết ngay user ĐÃ ĐĂNG NHẬP ──► Cho phép chạy!
+```
+
 Gateway vẫn hỗ trợ phiên chưa chọn tenant cho API auth, tenant, lời mời và CMS.
 API nghiệp vụ như notification-settings bắt buộc có tenant ngay tại gateway;
 thiếu tenant trả 403 trước khi forward. Gateway lấy tenant từ danh tính đã xác thực,

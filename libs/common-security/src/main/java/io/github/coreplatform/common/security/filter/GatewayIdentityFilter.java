@@ -19,6 +19,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/**
+ * Filter chạy một lần mỗi request tại các downstream service để khôi phục danh tính và quyền từ
+ * các internal header do API Gateway truyền xuống.
+ */
 @RequiredArgsConstructor
 public final class GatewayIdentityFilter extends OncePerRequestFilter {
   private final GatewayRolePermissions roles;
@@ -27,28 +31,32 @@ public final class GatewayIdentityFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
+    // Xóa sạch context cũ trước khi xử lý để tránh rò rỉ dữ liệu khi thread được tái sử dụng
     SecurityContextHolder.clearContext();
     TenantContext.clear();
     try {
       GatewayPrincipal actor = null;
       try {
-        var identity =
-            GatewayIdentityHeaders.read(name -> Collections.list(request.getHeaders(name)));
+        // Đọc các internal header định danh từ API Gateway (X-User-Id, X-Tenant-Id, X-Role-Id, ...)
+        var identity = GatewayIdentityHeaders.read(name -> Collections.list(request.getHeaders(name)));
         if (identity != null) {
+          // Chặn technical user (00000000-...) gọi vào các endpoint nghiệp vụ yêu cầu user thực
           if (GatewayIdentityHeaders.TECHNICAL_USER.equals(identity.getUserId()))
             throw new UnauthorizedException("User identity required");
-          var grant =
-              identity.getTenantId() == null
-                  ? null
-                  : roles.resolve(identity.getTenantId(), identity.getRoleId());
-          actor =
-              new GatewayPrincipal(
-                  identity.getUserId(),
-                  identity.getTenantId(),
-                  identity.getSystemRole(),
-                  grant == null ? null : grant.getRoleKey(),
-                  grant == null ? Set.of() : grant.getPermissions(),
-                  identity.getSessionId());
+
+          // Phân giải permissions của role trong tenant (tra cứu từ cache/Redis); nếu chưa chọn
+          // tenant thì bỏ qua
+          var grant = identity.getTenantId() == null
+              ? null
+              : roles.resolve(identity.getTenantId(), identity.getRoleId());
+
+          actor = new GatewayPrincipal(
+              identity.getUserId(),
+              identity.getTenantId(),
+              identity.getSystemRole(),
+              grant == null ? null : grant.getRoleKey(),
+              grant == null ? Set.of() : grant.getPermissions(),
+              identity.getSessionId());
         }
       } catch (UnauthorizedException | IllegalArgumentException ex) {
         response.sendError(401);
@@ -57,20 +65,28 @@ public final class GatewayIdentityFilter extends OncePerRequestFilter {
         response.sendError(403);
         return;
       } catch (RuntimeException ex) {
+        // Fail-closed: Lỗi hạ tầng (vd: mất kết nối Redis khi tra cứu quyền) -> trả 503 và chặn
+        // request
         response.sendError(503);
         return;
       }
       if (actor != null) {
+        // Nạp principal và authorities vào Spring SecurityContext để Controller và
+        // @PreAuthorize/@RequirePermission sử dụng
         SecurityContextHolder.getContext()
             .setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                     actor,
                     null,
                     actor.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
-        if (actor.tenantId() != null) TenantContext.set(actor.tenantId());
+        // Nạp tenantId vào ThreadLocal cho tầng dữ liệu / multi-tenancy
+        if (actor.tenantId() != null)
+          TenantContext.set(actor.tenantId());
       }
       chain.doFilter(request, response);
     } finally {
+      // Luôn dọn dẹp context sau khi request hoàn tất để tránh rò rỉ sang request khác trong
+      // thread pool
       SecurityContextHolder.clearContext();
       TenantContext.clear();
     }

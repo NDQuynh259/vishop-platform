@@ -52,6 +52,45 @@ Inbox cá nhân dùng `isAuthenticated()` và kiểm tra từng item ở DB, kh�
 adapter thực tế. Không nhận scope/permissions từ client. Test cung cấp scope giả lập để xác nhận
 cả nhánh được phép và bị từ chối.
 
+## Luồng xác thực từ Gateway đến Controller
+
+Hộp thư cá nhân không yêu cầu permission tĩnh mà bảo vệ bằng `@PreAuthorize("isAuthenticated()")`. Luồng chuyển giao context từ Gateway vào Controller:
+
+```text
+[ 1. Client ]
+      │  Gửi request kèm Token:
+      │  GET /api/v1/notifications
+      │  Authorization: Bearer eyJhbGci...
+      ▼
+[ 2. API Gateway ]
+      │  • Gateway giải mã & kiểm tra Token hợp lệ.
+      │  • Gateway bóc tách User ra và chuyển thành các Header nội bộ:
+      │      X-User-Id: "0192d244-..."
+      │      X-Tenant-Id: "0192d244-..."
+      │      X-Role-Id: "0192d244-..."
+      │      X-System-Role: "USER"
+      │  • Gateway bắn tiếp HTTP request này vào mạng nội bộ tới notification-service.
+      ▼
+[ 3. notification-service: GatewayIdentityFilter ]
+      │  (Đứng chắn trước mọi Controller)
+      │  • Filter đọc các header "X-User-Id", "X-Tenant-Id"... từ request.
+      │  • Nếu có header hợp lệ ──► Filter tự tay "nạp" vào Spring Security:
+      │      SecurityContextHolder.getContext().setAuthentication(
+      │          new UsernamePasswordAuthenticationToken(actor, null, authorities)
+      │      );
+      ▼
+[ 4. Controller: @PreAuthorize("isAuthenticated()") ]
+      │  • Trước khi Controller chạy, Spring Security kiểm tra:
+      │    "Trong SecurityContextHolder của Thread này đã có Authentication chưa?"
+      │  • Vì Filter ở bước 3 đã nạp vào rồi ──► Spring biết ngay user ĐÃ ĐĂNG NHẬP ──► Cho phép chạy!
+```
+
+### Cơ chế chi tiết:
+1. **API Gateway forward Header**: Gateway loại bỏ token thô và chèn các HTTP header tin cậy: `X-User-Id`, `X-Tenant-Id`, `X-Role-Id`, `X-System-Role`, `X-Session-Id`.
+2. **`GatewayIdentityFilter` nạp Context**: Đọc các header này qua `GatewayIdentityHeaders`, lấy role permissions từ Redis (nếu có tenant), khởi tạo `GatewayPrincipal actor`, và nạp vào `SecurityContextHolder` kèm `TenantContext`.
+3. **`@PreAuthorize("isAuthenticated()")` bảo vệ Controller**: Spring AOP kiểm tra `SecurityContextHolder.getContext().getAuthentication()`. Do đối tượng `UsernamePasswordAuthenticationToken` đã được nạp và có trạng thái `authenticated=true`, request được phép vào Controller.
+
+
 ## Tạo nội bộ và transaction
 
 Luồng `CreateNotificationCommand → NotificationService → NotificationJpaAdapter`
