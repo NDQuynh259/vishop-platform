@@ -15,9 +15,12 @@ import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.DomainException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
+import io.github.coreplatform.common.domain.exception.ServiceUnavailableException;
+import io.github.coreplatform.common.domain.exception.TooManyRequestsException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,8 +28,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +44,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.MethodNotAllowedException;
+import org.springframework.web.server.ResponseStatusException;
 
 class GlobalExceptionHandlerTest {
 
@@ -317,9 +325,106 @@ class GlobalExceptionHandlerTest {
   // Dummy Controller for Testing
   // ==========================================
 
+  @Test
+  void capacityFailurePreservesRetryDelayAndCommonProblemFields() throws Exception {
+    mockMvc
+        .perform(
+            get("/test/temporary/limited/7")
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .header("X-Request-Id", "req-limit"))
+        .andExpect(status().isTooManyRequests())
+        .andExpect(header().string("Content-Type", containsString("application/problem+json")))
+        .andExpect(header().string("Retry-After", "7"))
+        .andExpect(jsonPath("$.type").value("/errors/too-many-requests"))
+        .andExpect(jsonPath("$.code").value("too_many_requests"))
+        .andExpect(jsonPath("$.requestId").value("req-limit"))
+        .andExpect(jsonPath("$.instance").value("/test/temporary/limited/7"))
+        .andExpect(jsonPath("$.timestamp").isNotEmpty());
+  }
+
+  @Test
+  void unavailableFailurePreservesItsOwnRetryDelay() throws Exception {
+    mockMvc
+        .perform(get("/test/temporary/unavailable/11"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(header().string("Retry-After", "11"))
+        .andExpect(jsonPath("$.code").value("service_unavailable"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"limited", "unavailable"})
+  void temporaryFailuresWithoutAKnownDelayDoNotInventRetryAfter(String kind) throws Exception {
+    mockMvc
+        .perform(get("/test/temporary/" + kind + "/-1"))
+        .andExpect(status().is(kind.equals("limited") ? 429 : 503))
+        .andExpect(header().doesNotExist("Retry-After"));
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({
+    "403,forbidden",
+    "429,too_many_requests",
+    "499,http_499"
+  })
+  void frameworkStatusExceptionsKeepTheirStatusAndUseTheCommonResponse(int status, String code)
+      throws Exception {
+    mockMvc
+        .perform(get("/test/response-status/" + status))
+        .andExpect(status().is(status))
+        .andExpect(jsonPath("$.status").value(status))
+        .andExpect(jsonPath("$.code").value(code))
+        .andExpect(jsonPath("$.detail").isNotEmpty())
+        .andExpect(header().doesNotExist("Retry-After"));
+  }
+
+  @Test
+  void frameworkStatusExceptionHeadersArePreserved() throws Exception {
+    mockMvc
+        .perform(get("/test/method-not-allowed"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(header().string("Allow", "GET"));
+  }
+
+  @Test
+  void databaseOutagesUseTheShared503MappingWithoutLeakingConnectionDetails() throws Exception {
+    mockMvc
+        .perform(get("/test/database-unavailable"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("service_unavailable"))
+        .andExpect(
+            jsonPath("$.detail")
+                .value("The database is temporarily unavailable. Please try again later."))
+        .andExpect(jsonPath("$.requestId").isNotEmpty())
+        .andExpect(header().doesNotExist("Retry-After"));
+  }
+
   @RestController
   @RequestMapping("/test")
   static class TestController {
+
+    @GetMapping("/temporary/{kind}/{delay}")
+    public String temporaryFailure(
+        @PathVariable("kind") String kind, @PathVariable("delay") long delay) {
+      Long retryAfter = delay < 0 ? null : delay;
+      if (kind.equals("limited"))
+        throw new TooManyRequestsException("Too many requests", retryAfter);
+      throw new ServiceUnavailableException("Temporarily unavailable", retryAfter);
+    }
+
+    @GetMapping("/response-status/{status}")
+    public String responseStatus(@PathVariable("status") int status) {
+      throw new ResponseStatusException(HttpStatusCode.valueOf(status));
+    }
+
+    @GetMapping("/method-not-allowed")
+    public String methodNotAllowed() {
+      throw new MethodNotAllowedException(HttpMethod.POST, List.of(HttpMethod.GET));
+    }
+
+    @GetMapping("/database-unavailable")
+    public String databaseUnavailable() {
+      throw new DataAccessResourceFailureException("Sensitive connection info: password=secret");
+    }
 
     // #region validationEndpoint
     @PostMapping("/validation")

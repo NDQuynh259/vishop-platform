@@ -49,7 +49,14 @@ Tầng Domain và Application không được tự sinh mã lỗi HTTP hay forma
 | Không tìm thấy bản ghi theo ID | `EntityNotFoundException("Tenant", id)` | `404 Not Found` |
 | Xung đột dữ liệu (trùng unique key, stale version concurrency) | `ConflictException("tenant_code_exists", ...)` | `409 Conflict` |
 | Lỗi dữ liệu không thể xử lý / logic sai | `IllegalArgumentException` / `IllegalStateException` | `400 Bad Request` |
-| Lỗi server ngoài ý muốn (DB sập, lỗi kết nối) | Bất kỳ runtime exception chưa bắt | `500 Internal Server Error` |
+| Vượt hạn mức request hoặc kết nối | `TooManyRequestsException` dùng chung | `429 Too Many Requests` |
+| Dịch vụ hoặc tài nguyên DB tạm thời không sẵn sàng | `ServiceUnavailableException` / `DataAccessResourceFailureException` | `503 Service Unavailable` |
+| Lỗi server ngoài ý muốn chưa phân loại | Bất kỳ runtime exception chưa bắt | `500 Internal Server Error` |
+
+Loại exception dùng chung nằm trong `common-domain`; exception nghiệp vụ riêng nằm trong
+`domain/exception` của module sở hữu và kế thừa loại lỗi chung phù hợp. Controller dùng handler
+chung từ `common-web`, không tự dựng Problem Details cho những loại lỗi đã có ánh xạ.
+Chi tiết về retry và HTTP boundary xem [Xử lý ngoại lệ](error-handling.md).
 
 ### 3.2. Cấu trúc Response chuẩn RFC 9457
 ```json

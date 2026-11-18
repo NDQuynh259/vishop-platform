@@ -5,7 +5,9 @@ import com.vishop.notification.modules.notification.domain.entity.NotificationIn
 import com.vishop.notification.modules.notification.domain.entity.NotificationInboxFilter;
 import com.vishop.notification.modules.notification.domain.entity.NotificationInboxScope;
 import com.vishop.notification.modules.notification.domain.entity.NotificationRecipient;
+import com.vishop.notification.modules.notification.domain.port.NotificationRecipientRetentionRepository;
 import com.vishop.notification.modules.notification.domain.port.NotificationRepository;
+import com.vishop.notification.modules.notification.domain.valueobject.NotificationRetentionPolicy;
 import com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationJpaEntity;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import io.github.coreplatform.common.domain.exception.ConflictException;
@@ -18,12 +20,14 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class NotificationJpaAdapter implements NotificationRepository {
+public class NotificationJpaAdapter
+    implements NotificationRepository, NotificationRecipientRetentionRepository {
   private final EntityManager em;
 
   @Transactional
@@ -217,6 +221,40 @@ public class NotificationJpaAdapter implements NotificationRepository {
                 + recipientScope()
                 + " and r.deletedAt is null and r.notificationId=:id");
     bind(query, scope).setParameter("id", id).setParameter("at", at).executeUpdate();
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 10)
+  public int purgeVisibleBefore(Instant cutoffInclusive, int batchSize) {
+    return purgeBatch("created_at", "deleted_at IS NULL", cutoffInclusive, batchSize);
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 10)
+  public int purgeArchivedBefore(Instant cutoffInclusive, int batchSize) {
+    return purgeBatch("deleted_at", "deleted_at IS NOT NULL", cutoffInclusive, batchSize);
+  }
+
+  private int purgeBatch(
+      String timestampColumn, String statePredicate, Instant cutoff, int batchSize) {
+    if (cutoff == null || batchSize < 1 || batchSize > NotificationRetentionPolicy.MAX_BATCH_SIZE) {
+      throw new IllegalArgumentException(
+          "A cutoff and bounded batch size are required for recipient retention");
+    }
+    // Column/predicate are internal constants. Replicas skip rows already locked by another worker.
+    return em.createNativeQuery(
+            "WITH expired AS (SELECT id FROM notification_recipients WHERE "
+                + statePredicate
+                + " AND "
+                + timestampColumn
+                + " <= :cutoff ORDER BY "
+                + timestampColumn
+                + ",id"
+                + " LIMIT :batchSize FOR UPDATE SKIP LOCKED)"
+                + " DELETE FROM notification_recipients r USING expired e WHERE r.id=e.id")
+        .setParameter("cutoff", cutoff)
+        .setParameter("batchSize", batchSize)
+        .executeUpdate();
   }
 
   private String visible() {

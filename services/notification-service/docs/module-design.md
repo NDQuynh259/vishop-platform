@@ -16,8 +16,10 @@ Module `setting` có HTTP/JPA cho channel connection và alert rule; xem [settin
 Module `notification` có HTTP/JPA cho nội dung và recipient in-app. External delivery có
 `NotificationDeliveryJpaEntity`, mapper, Spring Data repository và adapter. Provider sender còn cần tích hợp.
 Cooldown đã bỏ khỏi runtime. V18 xóa archive cooldown và bảng attempt history không dùng.
-Chưa có main Spring runtime, Kafka, realtime, secrets adapter hay provider sender
-trong checkout hiện tại. Schema V19 có 7 bảng nghiệp vụ; Lark hỗ trợ nhiều cấu hình nhóm theo ID.
+Adapter [Redis fan-out SSE](realtime-redis.md) sau commit đã có code.
+Job [retention recipient](retention.md) mặc định tắt, dọn cứng theo hai mốc 90 ngày và batch độc lập.
+Chưa có main Spring runtime, Kafka, secrets adapter hay provider sender
+trong checkout hiện tại. Schema V20 có 7 bảng nghiệp vụ; Lark hỗ trợ nhiều cấu hình nhóm theo ID.
 Lỗi kỹ thuật và từng lần gửi dùng logging.
 
 ```text

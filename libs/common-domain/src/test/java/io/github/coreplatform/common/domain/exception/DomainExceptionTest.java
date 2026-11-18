@@ -2,11 +2,23 @@ package io.github.coreplatform.common.domain.exception;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.github.coreplatform.common.domain.BusinessRule;
 import org.junit.jupiter.api.Test;
 
 class DomainExceptionTest {
+
+  @Test
+  void retryDelaysCannotBeNegativeAndUnavailableFailuresPreserveTheirCause() {
+    assertThrows(IllegalArgumentException.class, () -> new TooManyRequestsException("Limit", -1L));
+    assertThrows(
+        IllegalArgumentException.class, () -> new ServiceUnavailableException("Down", -1L));
+    var cause = new RuntimeException("Dependency failure");
+    var failure = new ServiceUnavailableException("Temporarily unavailable", null, cause);
+    assertNull(failure.getRetryAfterSeconds());
+    assertEquals(cause, failure.getCause());
+  }
 
   // #region testDomainException
   @Test

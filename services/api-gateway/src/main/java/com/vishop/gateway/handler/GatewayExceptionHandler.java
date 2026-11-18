@@ -1,13 +1,18 @@
 package com.vishop.gateway.handler;
 
+import io.github.coreplatform.common.domain.exception.RetryableException;
+import io.github.coreplatform.common.domain.exception.ServiceUnavailableException;
+import io.github.coreplatform.common.domain.exception.TooManyRequestsException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
 import org.springframework.cloud.gateway.support.NotFoundException;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -45,11 +50,28 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
       title = "Route Not Found";
       code = "route_not_found";
       detail = "The requested path could not be routed to any downstream service.";
+    } else if (ex instanceof TooManyRequestsException
+        || ex instanceof ServiceUnavailableException) {
+      var retryable = (RetryableException) ex;
+      status =
+          ex instanceof TooManyRequestsException
+              ? HttpStatus.TOO_MANY_REQUESTS
+              : HttpStatus.SERVICE_UNAVAILABLE;
+      title = status.getReasonPhrase();
+      code = retryable.getCode();
+      detail = retryable.getMessage();
+      if (retryable.getRetryAfterSeconds() != null) {
+        response
+            .getHeaders()
+            .set(HttpHeaders.RETRY_AFTER, retryable.getRetryAfterSeconds().toString());
+      }
     } else if (ex instanceof ResponseStatusException rse) {
       status = HttpStatus.resolve(rse.getStatusCode().value());
       if (status == null) status = HttpStatus.INTERNAL_SERVER_ERROR;
       title = status.getReasonPhrase();
+      code = status.name().toLowerCase(Locale.ROOT);
       detail = rse.getReason() != null ? rse.getReason() : detail;
+      response.getHeaders().addAll(rse.getHeaders());
     } else if (ex.getMessage() != null && ex.getMessage().contains("Connection refused")) {
       status = HttpStatus.SERVICE_UNAVAILABLE;
       title = "Service Unavailable";

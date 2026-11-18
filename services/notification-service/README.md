@@ -10,10 +10,16 @@ The setting module implements notification_settings and notification_alert_rules
 channel and per-type rule HTTP APIs with transactional JPA adapters; see
 [setting API and limits](docs/setting.md). The notification module owns shared content, in-app recipients
 and external deliveries. Its JPA adapters persist deliveries;
-HTTP adapters expose personal list/detail/unread/read/archive APIs; see [inbox API](docs/inbox.md).
+HTTP adapters expose personal list/detail/unread/read/archive APIs and an authenticated SSE stream;
+see [inbox API](docs/inbox.md) and [SSE integration](docs/inbox.md#sse-realtime).
 Other persistence/HTTP adapters, event consumers,
-runtime gateway authentication, realtime and provider workers are subsequent work.
-It does not yet start a standalone server or send notifications.
+runtime gateway authentication and provider workers are subsequent work.
+Cross-instance SSE signals use Redis Pub/Sub after commit; see [Redis fan-out](docs/realtime-redis.md)
+for deployment settings, recovery behavior and explicit local development mode.
+Recipient retention is opt-in: visible recipients expire 90 days after creation, including
+unread items; archived recipients expire 90 days after soft deletion. The bounded cleanup job
+preserves shared notifications and deliveries; see [retention configuration](docs/retention.md).
+It does not yet start a standalone HTTP server or send external provider notifications.
 
 V14 removes the unused tables for feature subscriptions, explicit rule recipients and personal preferences.
 NotificationSettingDispatchPolicy combines per-type rules with enabled, available and verified

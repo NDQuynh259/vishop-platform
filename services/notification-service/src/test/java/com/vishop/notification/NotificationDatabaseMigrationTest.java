@@ -28,7 +28,7 @@ class NotificationDatabaseMigrationTest {
       var first = run(environment);
       assertThat(first.exitCode()).as(first.output()).isZero();
       assertThat(first.output())
-          .contains("Notification migrations applied: 19")
+          .contains("Notification migrations applied: 20")
           .doesNotContain("Started NotificationApplication");
       var second = run(environment);
       assertThat(second.exitCode()).isZero();

@@ -41,9 +41,42 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 @SpringBootTest(
+    properties = "notification.realtime.transport=local",
     classes = NotificationInboxPersistenceTest.Config.class,
     webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class NotificationInboxPersistenceTest {
+  @org.springframework.boot.test.mock.mockito.SpyBean
+  com.vishop.notification.modules.notification.presentation.realtime.NotificationSseStreams streams;
+
+  @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+  @Test
+  void creationSignalWaitsForCommitAndSkipsRollbackAndReplay() {
+    var transaction =
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+    UUID id =
+        transaction.execute(
+            status -> {
+              UUID created = create("sse-commit", "inventory.view", null, user);
+              org.mockito.Mockito.verify(streams, org.mockito.Mockito.never())
+                  .broadcastLocal(org.mockito.ArgumentMatchers.any());
+              return created;
+            });
+    org.mockito.Mockito.verify(streams)
+        .broadcastLocal(
+            new com.vishop.notification.modules.notification.application.dto.NotificationCreated(
+                id, tenant, Set.of(user), "inventory.view"));
+    org.mockito.Mockito.clearInvocations(streams);
+    assertThat(create("sse-commit", "inventory.view", null, user)).isEqualTo(id);
+    transaction.executeWithoutResult(
+        status -> {
+          create("sse-rollback", "inventory.view", null, user);
+          status.setRollbackOnly();
+        });
+    org.mockito.Mockito.verify(streams, org.mockito.Mockito.never())
+        .broadcastLocal(org.mockito.ArgumentMatchers.any());
+  }
+
   static final Instant NOW = Instant.parse("2026-11-07T12:00:00.123456Z");
   static EmbeddedPostgres postgres;
 

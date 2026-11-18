@@ -19,7 +19,7 @@ Chưa có main HTTP runtime hoặc Gateway integration.
 | Kết nối kênh | P0 | Cấu hình email, bot/chat Telegram, kiểm tra kết nối và gửi thử |
 | Cá nhân | P0 | Từ chối từng loại/kênh và xem cấu hình hiệu lực |
 | Gửi nền | P0 | Email và Telegram, chống trùng, retry, lịch sử và xử lý lỗi |
-| Realtime | P0 | WebSocket /ws báo có thông báo mới; API luôn là nguồn nội dung |
+| Realtime | P0 | SSE /api/v1/notifications/stream báo có thông báo mới; API luôn là nguồn nội dung |
 | Thông báo hệ thống | P0 | CMS tạo nháp, chọn audience, publish; ghi nhận phạm vi gửi |
 | Vận hành | P0 | Health, metrics, DLT, retry có kiểm soát, audit thao tác cấu hình/publish |
 | Zalo | P1 | Bổ sung adapter và schema khi chốt contract |
@@ -48,7 +48,7 @@ Docker/Compose, Gateway route và context secret riêng khi triển khai runtime
 ### Đợt 1 — Runtime, quyền và hợp đồng tích hợp
 
 - Dựng runtime theo mẫu service hiện hành; giữ migration CLI riêng.
-- Bổ sung quyền IAM cho notification, cấu hình Gateway HTTP và WebSocket.
+- Bổ sung quyền IAM cho notification, cấu hình Gateway HTTP và SSE.
 - JPA mappings validate schema hiện hành, JSON mapping, optimistic locking, soft-delete filtering.
 - Contract recipient/permission lookup qua IAM API hoặc projection có độ mới rõ ràng;
   không join IAM DB, không đọc repository của service khác.
@@ -106,8 +106,10 @@ chat nhận một tin cho cùng event; provider lỗi không làm rollback dữ 
 - Không áp dụng cooldown; giữ idempotency theo source event và unique đích nhận trong mỗi thông báo.
 - Event không hợp lệ đi DLT; retry kỹ thuật không tạo lại recipient/job/outbox.
 - Mapping có version từ event nguồn sang notification type, subject, permission và template.
-- WebSocket `/ws`: xác thực cookie, kiểm tra origin/session, quản lý reconnect và thu hồi.
+- SSE `GET /api/v1/notifications/stream`: xác thực qua gateway, kiểm tra origin/session, quản lý reconnect và thu hồi.
   Sau commit chỉ phát `notification.created { notificationId, tenantId }` tới user hợp lệ.
+- Đã có Redis Pub/Sub fan-out sau commit giữa replica, queue hữu hạn và phát lại `ready` sau resubscribe;
+  xem [Redis fan-out](realtime-redis.md). Runtime/gateway, thu hồi session và load test vẫn cần hoàn thiện.
 - FE refetch inbox/count khi reconnect, đổi tenant hoặc nhận signal phù hợp tenant.
   Nếu tự đếm badge từ signal sẽ sai khi mất/trùng message; count API là nguồn chuẩn.
 

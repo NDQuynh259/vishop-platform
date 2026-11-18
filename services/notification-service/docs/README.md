@@ -10,6 +10,9 @@
 | [Database](database-design.md) | Quyền sở hữu dữ liệu, quan hệ và migration |
 | [Kế hoạch triển khai](implementation-plan.md) | Tính năng, ưu tiên, phụ thuộc và tiêu chí nghiệm thu |
 | [API dự kiến](api-contract.md) | Endpoint, quyền, payload và quy tắc xử lý |
+| [Thiết kế SSE đề xuất](sse-design.md) | Quản lý kết nối trên một server, xử lý tải, session và kế hoạch kiểm chứng |
+| [Redis fan-out SSE](realtime-redis.md) | Sau commit → Redis → SSE từng instance, cấu hình và đồng bộ bù khi mất tín hiệu |
+| [Retention recipient](retention.md) | Người dùng xóa mềm; dọn cứng sau 90 ngày, theo batch và phối hợp nhiều instance |
 
 [README service](../README.md) chứa hướng dẫn sử dụng/cấu hình.
 [Mục lục các service](../../../docs/services/README.md) chứa quy ước tổ chức tài liệu.

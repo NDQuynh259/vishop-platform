@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,29 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class DatabaseExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(DatabaseExceptionHandler.class);
+
+  @ExceptionHandler(DataAccessResourceFailureException.class)
+  public ResponseEntity<ProblemDetail> handleResourceFailure(
+      DataAccessResourceFailureException ex, HttpServletRequest request) {
+    String requestId = resolveRequestId(request);
+    log.error(
+        "[{}] Database unavailable on {} {}",
+        requestId,
+        request.getMethod(),
+        request.getRequestURI(),
+        ex);
+    var problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "The database is temporarily unavailable. Please try again later.");
+    problem.setType(URI.create("/errors/service-unavailable"));
+    problem.setTitle("Service Unavailable");
+    problem.setInstance(resolveInstance(request));
+    problem.setProperty("code", "service_unavailable");
+    problem.setProperty("timestamp", Instant.now().toString());
+    problem.setProperty("requestId", requestId);
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(problem);
+  }
 
   // #region handleDataIntegrityViolation
   @ExceptionHandler(DataIntegrityViolationException.class)

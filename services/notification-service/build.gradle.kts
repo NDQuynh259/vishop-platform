@@ -9,6 +9,7 @@ dependencies {
     implementation(project(":libs:common-security"))
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
     testImplementation("org.springframework.security:spring-security-test")
@@ -17,6 +18,7 @@ dependencies {
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     testImplementation("io.zonky.test:embedded-postgres:2.1.0")
     testImplementation("com.tngtech.archunit:archunit:1.3.0")
+    testImplementation("com.github.codemonstur:embedded-redis:1.4.3")
     testImplementation(enforcedPlatform("io.zonky.test.postgres:embedded-postgres-binaries-bom:16.15.0"))
 }
 

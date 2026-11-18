@@ -1,6 +1,9 @@
 # Database Notification
 
-Schema V19 có **7 bảng nghiệp vụ**, nâng cấp nhiều nhóm Lark bằng [migration V19](../src/main/resources/db/migration/V19__allow_multiple_lark_group_settings.sql).
+Schema V20 có **7 bảng nghiệp vụ**. [V19](../src/main/resources/db/migration/V19__allow_multiple_lark_group_settings.sql)
+nâng cấp nhiều nhóm Lark; [V20](../src/main/resources/db/migration/V20__index_notification_recipient_retention.sql)
+thêm partial index `(created_at, id) WHERE deleted_at IS NULL` và
+`(deleted_at, id) WHERE deleted_at IS NOT NULL` cho [retention recipient](retention.md).
 Database riêng: `vishop_notification`. V1–V17 giữ nguyên checksum. V18 xóa archive cooldown
 và bảng attempt history không dùng; giữ nội dung, recipient, setting, rule, delivery, consumed marker và outbox.
 

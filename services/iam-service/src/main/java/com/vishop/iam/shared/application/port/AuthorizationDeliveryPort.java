@@ -7,10 +7,4 @@ public interface AuthorizationDeliveryPort {
   void deliverSession(UUID sessionId);
 
   void deliverMembership(UUID tenantId, UUID userId);
-
-  class Unavailable extends RuntimeException {
-    public Unavailable(Throwable cause) {
-      super("Authorization cache is unavailable", cause);
-    }
-  }
 }

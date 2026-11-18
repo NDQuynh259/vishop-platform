@@ -526,7 +526,9 @@ class IamAuthenticationApplicationTest {
   void retryAfterCacheFailureDoesNotDuplicateLogoutAudit() throws Exception {
     var c = register("retry-logout@example.com");
     org.mockito.Mockito.doThrow(
-            new com.vishop.iam.shared.application.port.AuthorizationDeliveryPort.Unavailable(
+            new io.github.coreplatform.common.domain.exception.ServiceUnavailableException(
+                "Authentication state is temporarily unavailable",
+                null,
                 new RuntimeException("Redis down")))
         .doCallRealMethod()
         .when(projection)
@@ -676,7 +678,9 @@ class IamAuthenticationApplicationTest {
         member.userId(),
         role);
     org.mockito.Mockito.doThrow(
-            new com.vishop.iam.shared.application.port.AuthorizationDeliveryPort.Unavailable(
+            new io.github.coreplatform.common.domain.exception.ServiceUnavailableException(
+                "Authentication state is temporarily unavailable",
+                null,
                 new RuntimeException("Redis down")))
         .doCallRealMethod()
         .when(projection)

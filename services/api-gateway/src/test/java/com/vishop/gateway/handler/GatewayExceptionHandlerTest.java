@@ -2,6 +2,8 @@ package com.vishop.gateway.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.coreplatform.common.domain.exception.ServiceUnavailableException;
+import io.github.coreplatform.common.domain.exception.TooManyRequestsException;
 import java.net.ConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,5 +70,28 @@ class GatewayExceptionHandlerTest {
     assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(exchange.getResponse().getHeaders().getContentType())
         .isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+  }
+
+  @Test
+  void sharedCapacityFailureKeepsItsRetryDelay() {
+    var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/limited").build());
+    StepVerifier.create(
+            handler.handle(exchange, new TooManyRequestsException("Too many requests", 7L)))
+        .verifyComplete();
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    assertThat(exchange.getResponse().getHeaders().getFirst("Retry-After")).isEqualTo("7");
+    StepVerifier.create(exchange.getResponse().getBodyAsString())
+        .assertNext(body -> assertThat(body).contains("\"code\": \"too_many_requests\""))
+        .verifyComplete();
+  }
+
+  @Test
+  void sharedUnavailableFailureDoesNotInventARetryDelay() {
+    var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/unavailable").build());
+    StepVerifier.create(
+            handler.handle(exchange, new ServiceUnavailableException("Temporarily unavailable")))
+        .verifyComplete();
+    assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    assertThat(exchange.getResponse().getHeaders().getFirst("Retry-After")).isNull();
   }
 }

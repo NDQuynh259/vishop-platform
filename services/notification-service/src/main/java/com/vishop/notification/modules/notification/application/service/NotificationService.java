@@ -3,6 +3,7 @@ package com.vishop.notification.modules.notification.application.service;
 import com.vishop.notification.modules.notification.application.api.NotificationApi;
 import com.vishop.notification.modules.notification.application.dto.InboxActor;
 import com.vishop.notification.modules.notification.application.dto.InboxFilter;
+import com.vishop.notification.modules.notification.application.dto.NotificationCreated;
 import com.vishop.notification.modules.notification.application.dto.NotificationView;
 import com.vishop.notification.modules.notification.application.dto.UnreadCount;
 import com.vishop.notification.modules.notification.application.dto.UpdatedCount;
@@ -28,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 @RequiredArgsConstructor
@@ -36,72 +38,79 @@ public class NotificationService implements NotificationApi {
   private final NotificationRepository repository;
   private final Clock clock;
   private final Supplier<UUID> ids;
+  private final ApplicationEventPublisher events;
 
   @Transactional
   public UUID create(NotificationMessage message, Set<UUID> inAppRecipients) {
     validate(message);
-    var normalized =
-        new NotificationMessage(
-            message.tenantId(),
-            message.sourceEventId(),
-            message.type(),
-            message.subjectType(),
-            message.subjectId(),
-            message.requiredPermission(),
-            message.shopId(),
-            message.severity(),
-            message.title(),
-            message.body(),
-            message.actionUrl(),
-            message.occurredAt().truncatedTo(ChronoUnit.MICROS));
+    var normalized = new NotificationMessage(
+        message.tenantId(),
+        message.sourceEventId(),
+        message.type(),
+        message.subjectType(),
+        message.subjectId(),
+        message.requiredPermission(),
+        message.shopId(),
+        message.severity(),
+        message.title(),
+        message.body(),
+        message.actionUrl(),
+        message.occurredAt().truncatedTo(ChronoUnit.MICROS)); //
     var notification = new Notification(ids.get(), normalized, now());
-    var recipients =
-        Set.copyOf(inAppRecipients).stream()
-            .map(
-                user ->
-                    new NotificationRecipient(
-                        ids.get(),
-                        message.tenantId(),
-                        notification.id(),
-                        user,
-                        notification.createdAt(),
-                        null,
-                        null))
-            .toList();
-    return repository.append(notification, recipients);
+    var recipients = Set.copyOf(inAppRecipients).stream()
+        .map(
+            user -> new NotificationRecipient(
+                ids.get(),
+                message.tenantId(),
+                notification.id(),
+                user,
+                notification.createdAt(),
+                null,
+                null))
+        .toList();
+    UUID persistedId = repository.append(notification, recipients);
+    // An idempotent replay returns the original ID and must not emit another creation signal.
+    if (notification.id().equals(persistedId) && !inAppRecipients.isEmpty()) {
+      events.publishEvent(
+          new NotificationCreated(
+              persistedId, message.tenantId(), inAppRecipients, message.requiredPermission()));
+    }
+    return persistedId;
   }
 
   public PagedResult<NotificationView> list(InboxActor actor, InboxFilter filter) {
     if ((filter.getPagination() == null) == (filter.getCursorParams() == null))
       throw invalid("Choose exactly one pagination mode");
     long offset = filter.getPagination() == null ? 0 : filter.getPagination().offset();
-    if (offset > Integer.MAX_VALUE) throw new BadRequestException("Pagination offset is too large");
+    if (offset > Integer.MAX_VALUE)
+      throw new BadRequestException("Pagination offset is too large");
     Instant before = null;
     UUID beforeId = null;
     if (filter.getCursor() != null) {
       try {
-        if (filter.getCursor().length() > 256) throw new IllegalArgumentException();
-        String decoded =
-            new String(Base64.getUrlDecoder().decode(filter.getCursor()), StandardCharsets.UTF_8);
+        if (filter.getCursor().length() > 256)
+          throw new IllegalArgumentException();
+        String decoded = new String(Base64.getUrlDecoder().decode(filter.getCursor()), StandardCharsets.UTF_8);
         var parts = decoded.split("\\|", -1);
-        if (parts.length != 2) throw new IllegalArgumentException();
+        if (parts.length != 2)
+          throw new IllegalArgumentException();
         before = Instant.parse(parts[0]);
         beforeId = UUID.fromString(parts[1]);
-        if (!beforeId.toString().equals(parts[1])) throw new IllegalArgumentException();
+        if (!beforeId.toString().equals(parts[1]))
+          throw new IllegalArgumentException();
       } catch (RuntimeException ex) {
         throw new BadRequestException("Invalid notification cursor");
       }
     }
-    var query =
-        new NotificationInboxFilter(
-            filter.getType() == null ? null : filter.getType().code(),
-            filter.getSeverity(),
-            filter.getRead(),
-            filter.getShopId(),
-            before,
-            beforeId,
-            filter.getLimit() + (filter.getPagination() == null ? 1 : 0),
-            (int) offset);
+    var query = new NotificationInboxFilter(
+        filter.getType() == null ? null : filter.getType().code(),
+        filter.getSeverity(),
+        filter.getRead(),
+        filter.getShopId(),
+        before,
+        beforeId,
+        filter.getLimit() + (filter.getPagination() == null ? 1 : 0),
+        (int) offset);
     var scope = scope(actor);
     var rows = repository.findAll(scope, query);
     if (filter.getPagination() != null) {
@@ -116,11 +125,10 @@ public class NotificationService implements NotificationApi {
     String cursor = null;
     if (hasNext) {
       var last = page.getLast().getNotification();
-      cursor =
-          Base64.getUrlEncoder()
-              .withoutPadding()
-              .encodeToString(
-                  (last.createdAt() + "|" + last.id()).getBytes(StandardCharsets.UTF_8));
+      cursor = Base64.getUrlEncoder()
+          .withoutPadding()
+          .encodeToString(
+              (last.createdAt() + "|" + last.id()).getBytes(StandardCharsets.UTF_8));
     }
     return PagedResult.ofCursor(page.stream().map(this::view).toList(), hasNext, cursor);
   }
@@ -187,7 +195,8 @@ public class NotificationService implements NotificationApi {
         || message.subjectType().length() > 100
         || message.subjectId().length() > 200
         || message.requiredPermission().length() > 150
-        || message.title().length() > 300) throw invalid("Notification field is too long");
+        || message.title().length() > 300)
+      throw invalid("Notification field is too long");
     if (message.actionUrl() != null) {
       try {
         var uri = URI.create(message.actionUrl());
@@ -196,7 +205,8 @@ public class NotificationService implements NotificationApi {
             || message.actionUrl().startsWith("//")
             || message.actionUrl().contains("\\")
             || uri.isAbsolute()
-            || uri.getRawAuthority() != null) throw new IllegalArgumentException();
+            || uri.getRawAuthority() != null)
+          throw new IllegalArgumentException();
       } catch (IllegalArgumentException ex) {
         throw invalid("Notification actionUrl must be a local application path");
       }

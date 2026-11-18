@@ -8,6 +8,11 @@ Tài liệu quy định cơ chế quản lý ngoại lệ và trả về lỗi c
 
 Tầng Domain và Application chỉ chịu trách nhiệm phát hiện vi phạm nghiệp vụ và ném đúng loại `DomainException`. Tầng Web (`common-web`) sẽ tự động ánh xạ thành HTTP Response theo chuẩn **RFC 9457 Problem Details**:
 
+- Loại lỗi dùng chung giữa các service nằm trong `libs/common-domain/.../exception`; ánh xạ HTTP nằm trong `common-web`.
+- Exception biểu diễn quy tắc nghiệp vụ riêng nằm trong `modules/<module>/domain/exception` của service sở hữu. Kế thừa loại lỗi chung phù hợp (`BusinessRuleViolationException`, `ConflictException`, ...) và đặt `code` riêng; không thêm HTTP status hoặc Spring annotation vào domain.
+- Controller không khai báo handler riêng chỉ để dựng lại response lỗi dùng chung. `GlobalExceptionHandler` giữ thống nhất `code`, `requestId`, `timestamp` và `instance`.
+- API Gateway dùng adapter WebFlux riêng và dùng lại các loại exception chung; không import Servlet advice vào runtime reactive.
+
 ```java
 // Trong CommandHandler hoặc Aggregate Root:
 if (tenantRepository.existsByCode(command.code())) {
@@ -32,13 +37,23 @@ if (tenantRepository.existsByCode(command.code())) {
 | `UnauthorizedException` / `AuthenticationException` | `401 Unauthorized` | `unauthorized` | Chưa xác thực danh tính hoặc phiên đăng nhập đã hết hạn. |
 | `ForbiddenException` / `AccessDeniedException` | `403 Forbidden` | `forbidden` / `access_denied` | Người dùng đã đăng nhập nhưng không có quyền thao tác trên tài nguyên (tenant/shop). |
 | `BadRequestException` / `IllegalArgumentException` | `400 Bad Request` | `bad_request` | Tham số truyền vào không hợp lệ hoặc tiền điều kiện logic bị vi phạm. |
+| `TooManyRequestsException` | `429 Too Many Requests` | `too_many_requests` | Vượt hạn mức request hoặc kết nối đồng thời; có thể chỉ định thời gian chờ trước khi retry. |
+| `ServiceUnavailableException` | `503 Service Unavailable` | `service_unavailable` | Service hoặc dependency tạm thời không sẵn sàng; thông báo trả client phải an toàn, lỗi gốc giữ trong cause để log. |
+| `DataAccessResourceFailureException` | `503 Service Unavailable` | `service_unavailable` | Không truy cập được tài nguyên DB; xử lý chung bởi `DatabaseExceptionHandler`, không lộ thông tin kết nối. |
+| `ResponseStatusException` | Giữ status của exception | Tên status dạng snake_case; `http_<status>` nếu status không chuẩn | Exception tại HTTP boundary; handler chung giữ các response header của exception. Không dùng trong domain/application. |
 | `HttpMessageNotReadableException` | `400 Bad Request` | `malformed_request` | Body request JSON bị lỗi cú pháp hoặc không thể deserialize. |
 | `MethodArgumentTypeMismatchException` | `400 Bad Request` | `type_mismatch` | Tham số path variable / query param sai kiểu dữ liệu (ví dụ: chuỗi không thể parse thành UUID). |
 | `MissingServletRequestParameterException` | `400 Bad Request` | `missing_parameter` | Thiếu query param bắt buộc. |
 | `HttpRequestMethodNotSupportedException` | `405 Method Not Allowed` | `method_not_allowed` | HTTP method không được hỗ trợ trên endpoint (ví dụ: gửi POST vào GET endpoint). |
 | `HttpMediaTypeNotSupportedException` | `415 Unsupported Media Type` | `unsupported_media_type` | Định dạng Content-Type không được hỗ trợ. |
 | `NoResourceFoundException` | `404 Not Found` | `resource_not_found` | Đường dẫn tài nguyên tĩnh hoặc endpoint không tồn tại. |
-| `Exception` (Mọi lỗi chưa phân loại) | `500 Internal Server Error` | `internal_server_error` | Lỗi sập database, lỗi mạng, lỗi runtime không lường trước. Log đầy đủ SLF4J stack trace với `requestId`, tuyệt đối không lộ chi tiết nội bộ ra client. |
+| `Exception` (Mọi lỗi chưa phân loại) | `500 Internal Server Error` | `internal_server_error` | Lỗi runtime không lường trước và chưa được ánh xạ cụ thể. Log đầy đủ SLF4J stack trace với `requestId`, tuyệt đối không lộ chi tiết nội bộ ra client. |
+
+`TooManyRequestsException` và `ServiceUnavailableException` kế thừa `RetryableException`.
+`retryAfterSeconds` có thể để `null` nếu chưa biết thời gian phục hồi; khi có giá trị phải không âm.
+HTTP adapter chỉ thêm `Retry-After` khi exception chỉ định; không áp mặc định 3 giây cho tất cả service.
+Ví dụ SSE chọn `new TooManyRequestsException("Too many notification streams", 3L)`, còn lỗi DB
+không tự đoán thời điểm phục hồi. Không retry thao tác có tác dụng phụ nếu chưa có bảo đảm idempotency.
 
 ---
 

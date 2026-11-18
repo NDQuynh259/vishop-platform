@@ -6,6 +6,9 @@ import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.DomainException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import io.github.coreplatform.common.domain.exception.ForbiddenException;
+import io.github.coreplatform.common.domain.exception.RetryableException;
+import io.github.coreplatform.common.domain.exception.ServiceUnavailableException;
+import io.github.coreplatform.common.domain.exception.TooManyRequestsException;
 import io.github.coreplatform.common.domain.exception.UnauthorizedException;
 import io.github.coreplatform.common.web.filter.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,13 +16,17 @@ import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -32,6 +39,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -342,6 +350,42 @@ public class GlobalExceptionHandler {
   // #endregion
 
   // #region handleDomain
+  @ExceptionHandler(TooManyRequestsException.class)
+  public ResponseEntity<ProblemDetail> handleTooManyRequests(
+      TooManyRequestsException ex, HttpServletRequest request) {
+    return handleRetryable(ex, HttpStatus.TOO_MANY_REQUESTS, request);
+  }
+
+  @ExceptionHandler(ServiceUnavailableException.class)
+  public ResponseEntity<ProblemDetail> handleServiceUnavailable(
+      ServiceUnavailableException ex, HttpServletRequest request) {
+    return handleRetryable(ex, HttpStatus.SERVICE_UNAVAILABLE, request);
+  }
+
+  private ResponseEntity<ProblemDetail> handleRetryable(
+      RetryableException ex, HttpStatus status, HttpServletRequest request) {
+    var problem =
+        buildProblem(
+            status,
+            "/errors/" + ex.getCode().replace('_', '-'),
+            status.getReasonPhrase(),
+            ex.getCode(),
+            ex.getMessage(),
+            request);
+    log.warn(
+        "[{}] Temporary failure on {} {}: {}",
+        problem.getProperties().get("requestId"),
+        request.getMethod(),
+        request.getRequestURI(),
+        ex.getMessage(),
+        ex.getCause());
+    var response = ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON);
+    if (ex.getRetryAfterSeconds() != null) {
+      response.header(HttpHeaders.RETRY_AFTER, ex.getRetryAfterSeconds().toString());
+    }
+    return response.body(problem);
+  }
+
   @ExceptionHandler(DomainException.class)
   public ResponseEntity<ProblemDetail> handleDomain(
       DomainException ex, HttpServletRequest request) {
@@ -370,6 +414,25 @@ public class GlobalExceptionHandler {
   // ==========================================
   // 3. HTTP Client Errors (400, 404, 405, 415)
   // ==========================================
+
+  @ExceptionHandler(ResponseStatusException.class)
+  public ResponseEntity<ProblemDetail> handleResponseStatus(
+      ResponseStatusException ex, HttpServletRequest request) {
+    var status = ex.getStatusCode();
+    var knownStatus = HttpStatus.resolve(status.value());
+    String title = knownStatus == null ? "HTTP Error" : knownStatus.getReasonPhrase();
+    String code =
+        knownStatus == null
+            ? "http_" + status.value()
+            : knownStatus.name().toLowerCase(Locale.ROOT);
+    var problem =
+        buildProblem(
+            status, "/errors/" + code.replace('_', '-'), title, code, ex.getReason(), request);
+    return ResponseEntity.status(status)
+        .headers(ex.getHeaders())
+        .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+        .body(problem);
+  }
 
   // #region handleIllegalArgumentOrState
   @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
@@ -618,7 +681,7 @@ public class GlobalExceptionHandler {
 
   // #region buildProblem
   private ProblemDetail buildProblem(
-      HttpStatus status,
+      HttpStatusCode status,
       String type,
       String title,
       String code,
@@ -626,8 +689,7 @@ public class GlobalExceptionHandler {
       HttpServletRequest request) {
 
     ProblemDetail problem =
-        ProblemDetail.forStatusAndDetail(
-            status, detail != null ? detail : status.getReasonPhrase());
+        ProblemDetail.forStatusAndDetail(status, detail != null ? detail : title);
     problem.setType(URI.create(type));
     problem.setTitle(title);
     problem.setInstance(resolveInstance(request));

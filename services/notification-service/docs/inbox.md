@@ -14,10 +14,11 @@ permissions lấy từ principal do gateway/filter tạo, không lấy từ body
 | --- | --- | --- |
 | GET | `/notifications` | List envelope, offset hoặc cursor, mặc định 20 mục, tối đa 100 |
 | GET | `/notifications/unread-count` | `{"count": 3}` |
+| GET | `/notifications/stream` | SSE: `ready`, `notification.created` và heartbeat |
 | GET | `/notifications/{notificationId}` | Nội dung và readAt của chính người nhận |
 | PATCH | `/notifications/{notificationId}/read` | Đọc idempotent, trả item và giữ readAt đầu tiên |
 | POST | `/notifications/read-all` | Đọc tới cutoff, trả `{"updatedCount": 3}` |
-| DELETE | `/notifications/{notificationId}` | 204, ẩn riêng recipient; gọi lại vẫn 204 |
+| DELETE | `/notifications/{notificationId}` | 204, xóa mềm riêng recipient; lặp lại 204 khi recipient chưa bị dọn cứng |
 
 List hỗ trợ `type`, `severity`, `read`, `shopId`, `page`, `limit`, `cursor`, `pageMode`. Quyền được áp dụng
 trong DB trước khi phân trang. Thứ tự `created_at DESC, id DESC`; cursor giữ đủ microsecond
@@ -106,6 +107,122 @@ nhận đường dẫn nội bộ ứng dụng.
 không sửa notification chung hoặc recipient khác. Read-all chỉ tác động mục được phép đọc,
 chưa đọc và nằm trước cutoff.
 
+Job [retention recipient](retention.md) có thể bật để dọn cứng: recipient còn trong inbox hết hạn
+sau 90 ngày từ lúc tạo, kể cả chưa đọc; recipient xóa mềm hết hạn sau 90 ngày từ lúc xóa.
+Sau khi dọn, thao tác theo ID trả 404 cho recipient đó. Giữ nội dung chung, delivery và
+recipient khác; replay không tạo lại recipient đã dọn. Job mặc định tắt và cấu hình được.
+
 `NotificationModuleConfiguration` đăng ký entity, adapter, service và CQRS handler.
 Schema có sẵn từ V1/V5 và khóa chính recipient riêng từ V15. Event consumer production, DispatchJournal/outbox toàn workflow,
-runtime HTTP/gateway, realtime và provider sender vẫn cần wiring/adapter tương ứng.
+runtime HTTP/gateway và provider sender vẫn cần wiring/adapter tương ứng.
+Fan-out SSE giữa replica đã có adapter [Redis Pub/Sub](realtime-redis.md).
+
+## SSE realtime
+
+`GET /api/v1/notifications/stream` trả `Content-Type: text/event-stream`,
+`Cache-Control: no-store`, `X-Accel-Buffering: no`. `NotificationModuleConfiguration`
+đăng ký controller, registry và listener. Runtime phải bật method security và cấu hình
+filter xác thực đáng tin cậy giống các API inbox. Không nhận user/tenant/permissions từ client.
+
+Luồng mặc định: tạo notification → DB commit → `NotificationRedisRelay` publish Redis → mọi
+instance nhận Redis → `broadcastLocal()` gửi tới SSE đang giữ ở instance đó. `@TransactionalEventListener`
+nằm ở publisher; registry SSE không tự lắng nghe Spring event. Xem [cấu hình Redis](realtime-redis.md).
+
+Kết nối bắt đầu bằng:
+
+```text
+event:ready
+retry:3000
+data:{}
+
+```
+
+Khi tạo mới notification có recipient in-app, chỉ sau khi transaction commit thành công:
+
+```text
+event:notification.created
+data:{"notificationId":"<uuid>","tenantId":"<uuid>"}
+
+```
+
+Rollback và replay idempotent không phát tín hiệu. Chỉ các kết nối có đúng tenant, user thuộc
+snapshot recipient và có `required_permission` mới nhận event. Payload không chứa danh sách
+người nhận hay nội dung nghiệp vụ. Registry index theo `(tenantId, userId)` nên mỗi event chỉ tra
+các recipient của nó, không quét toàn bộ kết nối. Mỗi tab có kết nối riêng; mặc định tối đa 5 kết nối
+cho một user/tenant trên mỗi instance, 1000 kết nối mỗi instance; vượt giới hạn trả 429 và `Retry-After: 3`.
+
+Lỗi stream dùng `BadRequestException`, `TooManyRequestsException` và `ServiceUnavailableException`
+từ `common-domain`; `GlobalExceptionHandler` trong `common-web` trả Problem Details cùng
+`code`, `requestId`, `timestamp`, `instance`. Controller không có handler riêng.
+SSE chỉ định retry 3 giây cho lỗi hạn mức và shutdown; lỗi thiếu tenant/user không có `Retry-After`.
+
+Heartbeat là comment `:heartbeat` khi kết nối không vừa gửi dữ liệu. Mặc định gửi sau 12–15 giây
+nhàn rỗi, có jitter để rải thời điểm gửi và scheduler kiểm tra mỗi giây. Không xếp heartbeat khi
+writer đang chạy hoặc chờ. Kết nối sống tối đa 60 giây rồi đóng để client
+kết nối lại qua gateway và lấy quyền/session hiện hành. Quyền trong stream là snapshot lúc
+subscribe; thay đổi quyền hoặc logout chưa chủ động ngắt stream đang mở, tối đa tới hết lifetime.
+REST vẫn kiểm tra quyền hiện hành khi tải nội dung. Registry dọn kết nối khi timeout, lỗi,
+completion và shutdown. Mỗi kết nối có tối đa một tác vụ ghi đang chạy hoặc chờ trên pool riêng,
+và mailbox FIFO mặc định tối đa 32 event chờ ngoài event đang ghi. `ready` cũng nằm trong mailbox
+và luôn đi trước thông báo. Pool mặc định có 4 platform thread; queue tác vụ tối đa bằng hạn mức
+kết nối. Không gộp hay thay ID của `notification.created`.
+
+Mailbox đầy chỉ ngắt kết nối tương ứng để client reconnect và đồng bộ lại qua REST. Gỡ registry
+và bỏ event chờ ngay; nếu đang ghi socket, writer hoàn tất/đóng transport sau khi lần ghi trả về,
+không bắt thread sau commit hoặc heartbeat chờ socket đó. Slot toàn instance chỉ được trả lại
+khi writer kết thúc, tránh liên tục nhận kết nối mới trong khi writer cũ còn bị kẹt.
+Một client chậm không thể chiếm nhiều worker bằng các tác vụ ghi xếp chồng; nhiều client chậm
+vẫn có thể chiếm hết pool, nên timeout ghi socket tại runtime/proxy vẫn bắt buộc.
+
+Các hạn mức có thể cấu hình trong runtime import `NotificationModuleConfiguration`:
+
+`NotificationSseProperties` thuộc `notification.infrastructure.config`, phụ trách binding Spring.
+Module configuration chuyển properties thành `NotificationSseSettings` thuần Java để bộ phát SSE
+trong `presentation.realtime` không phụ thuộc vào infrastructure.
+
+```yaml
+notification:
+  sse:
+    max-connections: 1000
+    max-connections-per-user: 5
+    max-pending-events: 32
+    writer-threads: 4
+    heartbeat-interval: 15s
+```
+
+Các giới hạn phải dương; heartbeat từ 1ms và nhỏ hơn 60s. Jitter gửi sớm tối đa 20% so với interval.
+Lifetime 60 giây được giữ cố định vì chưa có adapter thu hồi session/quyền cho stream sống lâu.
+Tăng hạn mức không chứng minh hệ thống phục vụ được lượng tải tương ứng; cần load test cùng
+gateway và REST inbox/count trước khi chọn cấu hình production.
+
+Frontend phải tải lại inbox/count khi nhận `ready` (cả lần đầu, reconnect và mọi lần phát lại trên cùng stream),
+`notification.created`, và khi đổi tenant; đóng stream cũ khi logout hoặc đổi tenant.
+Nên gộp các lần refetch liên tiếp và xử lý event tới trong lúc request đang chạy bằng một lần
+refetch bổ sung. Không tự tăng badge theo số event. Stream không có replay log hoặc event ID;
+`Last-Event-ID` không dùng để khôi phục dữ liệu. DB/REST là nguồn chuẩn khi mất kết nối hoặc process restart.
+Redis resubscribe hoặc listener quá tải có thể làm `ready` phát lại để bù tín hiệu bị lỡ.
+Frontend cũng cần đối soát REST định kỳ và khi trở lại tab; gộp refetch và rải thời điểm đối soát.
+
+Gateway hiện hỗ trợ cookie `access_token` khi không có header Authorization.
+Frontend dùng cookie xác thực có thể kết nối trực tiếp:
+
+```javascript
+const stream = new EventSource('/api/v1/notifications/stream', { withCredentials: true });
+stream.addEventListener('ready', refreshInboxAndCount);
+stream.addEventListener('notification.created', refreshInboxAndCount);
+// Gọi stream.close() khi logout, đổi tenant hoặc unmount.
+```
+
+Gateway cũng hỗ trợ bearer token: native `EventSource` không hỗ trợ đặt header Authorization.
+Nếu frontend dùng bearer header, cần client SSE qua `fetch`/thư viện hỗ trợ bearer header, parse event stream,
+reconnect và hủy bằng AbortController. Không truyền access token trên URL.
+
+Runtime notification hiện chưa có server standalone hoặc route gateway. Khi wiring runtime,
+thêm route `/api/v1/notifications/**`, giữ response streaming, tắt buffering/cache/compression
+gây gom chunk trên proxy, đặt idle timeout lớn hơn heartbeat và cho phép async dispatch
+trong security filter chain. Thiết lập timeout ghi socket để client chậm không giữ writer vô hạn.
+
+Mỗi instance vẫn giữ registry và socket cục bộ. Transport mặc định `notification.realtime.transport=redis`
+phân phối tín hiệu sau commit tới mọi replica dùng chung channel. Không gửi trực tiếp SSE ở publisher
+để tránh gửi trùng tại instance tạo notification. Redis Pub/Sub không replay; mất tín hiệu được bù
+bằng REST. Chế độ `local` chỉ dành cho dev/test hoặc một instance; xem [Redis fan-out](realtime-redis.md).

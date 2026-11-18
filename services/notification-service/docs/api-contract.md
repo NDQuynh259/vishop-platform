@@ -163,10 +163,14 @@ Schema announcement/publish job chưa có trong V5 và phải được bổ sung
 
 ## 8. Realtime và internal contract
 
-- WebSocket `/ws`, event `notification.created`, payload duy nhất
+- SSE `GET /api/v1/notifications/stream` (`text/event-stream`), event `notification.created`, payload duy nhất
   `{ notificationId, tenantId }`; xác thực và origin/session checks.
 - Không có client API join room của user khác. Chỉ server chọn room theo identity đã xác thực.
-- API inbox/count dùng sau reconnect, đổi tenant và nhận signal; WS không thay API quyền đọc.
+- API inbox/count dùng sau `ready` (kể cả reconnect), đổi tenant và nhận signal; SSE không thay API quyền đọc.
+- `ready` có thể phát lại trên cùng SSE sau Redis resubscribe/overload để yêu cầu refetch. Fan-out mặc định
+  dùng Redis Pub/Sub sau commit; cấu hình transport/channel tại [Redis fan-out](realtime-redis.md).
+- Stream mặc định có heartbeat sau 12–15 giây nhàn rỗi (jitter), retry 3 giây và lifetime 60 giây để xác thực lại khi reconnect. Hạn mức, mailbox và writer pool cấu hình qua `notification.sse`; xem [Inbox](inbox.md#sse-realtime).
+  Không replay `Last-Event-ID`; xem [SSE inbox](inbox.md#sse-realtime) cho giới hạn và cách tích hợp.
 - Consumer Kafka nhận integration events/commands theo contract versioned.
 - Không mở public `POST /notifications/send` cho tenant tự điền recipients/payload.
   Nếu sau này cần internal send-command API thì service-auth riêng, allowlist type/template,

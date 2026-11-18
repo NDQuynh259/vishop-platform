@@ -36,6 +36,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(
+    properties = "notification.realtime.transport=local",
     classes = NotificationDeliveryPersistenceTest.Config.class,
     webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class NotificationDeliveryPersistenceTest {

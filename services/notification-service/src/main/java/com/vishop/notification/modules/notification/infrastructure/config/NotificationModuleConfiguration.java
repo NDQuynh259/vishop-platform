@@ -17,6 +17,8 @@ import com.vishop.notification.modules.notification.infrastructure.persistence.a
 import com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationJpaEntity;
 import com.vishop.notification.modules.notification.infrastructure.persistence.mapper.NotificationDeliveryPersistenceMapper;
 import com.vishop.notification.modules.notification.infrastructure.persistence.repositories.SpringDataNotificationDeliveryRepository;
+import com.vishop.notification.modules.notification.presentation.realtime.NotificationSseStreams;
+import com.vishop.notification.modules.notification.presentation.rest.controller.NotificationStreamController;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.NotificationChannelSettingJpaEntity;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.UuidV7;
@@ -25,14 +27,19 @@ import java.time.Clock;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.*;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(NotificationSseProperties.class)
 @EntityScan(
     basePackageClasses = {NotificationJpaEntity.class, NotificationChannelSettingJpaEntity.class})
 @EnableJpaRepositories(basePackageClasses = SpringDataNotificationDeliveryRepository.class)
 @Import({
+  NotificationRealtimeConfiguration.class,
+  NotificationRetentionConfiguration.class,
   NotificationJpaAdapter.class,
   NotificationDeliveryJpaAdapter.class,
   NotificationDeliveryPersistenceMapper.class,
@@ -44,7 +51,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   UnreadCountQueryHandler.class,
   MarkNotificationReadCommandHandler.class,
   MarkAllNotificationsReadCommandHandler.class,
-  ArchiveNotificationCommandHandler.class
+  ArchiveNotificationCommandHandler.class,
+  NotificationStreamController.class
 })
 public class NotificationModuleConfiguration {
   @Bean
@@ -58,8 +66,14 @@ public class NotificationModuleConfiguration {
   }
 
   @Bean
-  NotificationService notificationService(NotificationRepository repository, Clock clock) {
-    return new NotificationService(repository, clock, UuidV7::nextId);
+  NotificationService notificationService(
+      NotificationRepository repository, Clock clock, ApplicationEventPublisher events) {
+    return new NotificationService(repository, clock, UuidV7::nextId, events);
+  }
+
+  @Bean(destroyMethod = "close")
+  NotificationSseStreams notificationSseStreams(Clock clock, NotificationSseProperties properties) {
+    return new NotificationSseStreams(clock, properties.toSettings());
   }
 
   @Bean

@@ -5,6 +5,7 @@ import com.vishop.iam.shared.application.port.AuthorizationDeliveryPort;
 import io.github.coreplatform.common.cache.AuthorizationCacheKeys;
 import io.github.coreplatform.common.cache.CacheKeyBuilder;
 import io.github.coreplatform.common.cache.redis.VersionedAuthorizationCache;
+import io.github.coreplatform.common.domain.exception.ServiceUnavailableException;
 import io.github.coreplatform.common.security.gateway.AuthorizationSnapshot;
 import jakarta.persistence.EntityManager;
 import java.util.List;
@@ -88,7 +89,8 @@ public class AuthorizationProjection implements AuthorizationDeliveryPort {
       if (rows.isEmpty()) throw new IllegalStateException("Missing authorization projection");
       write(decode((String) rows.getFirst()));
     } catch (RuntimeException failure) {
-      throw new AuthorizationDeliveryPort.Unavailable(failure);
+      throw new ServiceUnavailableException(
+          "Authentication state is temporarily unavailable", null, failure);
     }
   }
 
