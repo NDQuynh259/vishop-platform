@@ -113,13 +113,15 @@ val projectCommands = linkedMapOf(
     "runSubscription" to ("Start subscription service (:8083)." to listOf(":services:subscription-service:dev")),
     "migrateSubscription" to ("Run subscription migrations; requires SUBSCRIPTION_DB_URL/USER/PASSWORD." to listOf(":services:subscription-service:migrate")),
     "runAudit" to ("Start audit service (:8082)." to listOf(":services:audit-service:dev")),
+    "runNotification" to ("Start notification service (:8084)." to listOf(":services:notification-service:bootRun")),
     "migrateIam" to ("Run IAM migrations; requires IAM_DB_URL/USER/PASSWORD." to listOf(":services:iam-service:migrate")),
     "migrateAudit" to ("Run audit migrations; requires AUDIT_DB_URL/USER/PASSWORD." to listOf(":services:audit-service:migrate")),
     "migrateNotification" to ("Run notification migrations; requires NOTIFICATION_DB_URL/USER/PASSWORD." to listOf(":services:notification-service:migrate")),
-    "packageAll" to ("Package all four service boot JARs." to listOf(
+    "packageAll" to ("Package service boot JARs." to listOf(
         ":services:iam-service:bootJar",
         ":services:api-gateway:bootJar",
         ":services:audit-service:bootJar",
+        ":services:notification-service:bootJar",
         ":services:subscription-service:bootJar",
     )),
     "buildAll" to ("Build and check every project." to projectTaskPaths("build")),

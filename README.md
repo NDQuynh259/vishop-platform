@@ -142,7 +142,7 @@ Database migration commands run independently of services; see the [IAM](service
 
 ## Services and access
 
-Active runtimes are `iam-service`, `api-gateway`, `audit-service` and `subscription-service`. IAM owns global
+Active runtimes are `iam-service`, `api-gateway`, `audit-service`, `notification-service` and `subscription-service`. IAM owns global
 accounts, system roles, tenants, memberships, tenant roles and permissions in `vishop_iam`.
 The retired identity/tenant services have been removed. Their original code/schema can be
 referenced through Git history. See [IAM runtime and API guide](services/iam-service/README.md).
@@ -172,4 +172,5 @@ Subscription service handles tenant subscription purchases and manual renewals t
 
 Notification has [domain/application modules and schema](services/notification-service/README.md) for in-app
 inboxes, alert settings and delivery workflows. Run `migrateNotification` with explicit
-`NOTIFICATION_DB_URL/USER/PASSWORD` credentials. Its HTTP/Kafka runtime is not implemented yet.
+`NOTIFICATION_DB_URL/USER/PASSWORD` credentials. Start its HTTP runtime with
+`runNotification` and access the inbox through Gateway at `/api/v1/notifications`.

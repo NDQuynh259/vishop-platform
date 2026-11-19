@@ -187,6 +187,25 @@ class GatewayApplicationTest {
   @Autowired org.springframework.cloud.gateway.route.RouteLocator routes;
 
   @Test
+  void notificationInboxAndChildrenRequireAnAuthenticatedGatewayRoute() {
+    for (String path :
+        java.util.List.of("/api/v1/notifications", "/api/v1/notifications/unread-count")) {
+      var exchange =
+          org.springframework.mock.web.server.MockServerWebExchange.from(
+              org.springframework.mock.http.server.reactive.MockServerHttpRequest.get(path));
+      var route =
+          routes
+              .getRoutes()
+              .filterWhen(candidate -> candidate.getPredicate().apply(exchange))
+              .next()
+              .block();
+      assertThat(route).isNotNull();
+      assertThat(route.getId()).isEqualTo("notification-service");
+      webTestClient.get().uri(path).exchange().expectStatus().isUnauthorized();
+    }
+  }
+
+  @Test
   void subscriptionRuntimeRoutesSubscriptionAndPaymentApisAndExposesDocs() {
     for (String path :
         java.util.List.of("/api/v1/subscriptions/orders", "/api/v1/cms/billing/prices")) {

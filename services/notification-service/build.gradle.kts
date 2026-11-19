@@ -1,4 +1,10 @@
-// Notification modules, setting HTTP/JPA adapters, and standalone migration CLI.
+plugins {
+    id("org.springframework.boot")
+}
+
+springBoot {
+    mainClass.set("com.vishop.notification.NotificationApplication")
+}
 tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("-parameters")
 }
@@ -9,6 +15,7 @@ dependencies {
     implementation(project(":libs:common-web"))
     implementation(project(":libs:common-security"))
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     compileOnly("org.projectlombok:lombok")

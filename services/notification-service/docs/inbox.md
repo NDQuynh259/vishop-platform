@@ -114,7 +114,8 @@ recipient khác; replay không tạo lại recipient đã dọn. Job mặc đị
 
 `NotificationModuleConfiguration` đăng ký entity, adapter, service và CQRS handler.
 Schema có sẵn từ V1/V5 và khóa chính recipient riêng từ V15. Event consumer production, DispatchJournal/outbox toàn workflow,
-runtime HTTP/gateway và provider sender vẫn cần wiring/adapter tương ứng.
+và provider sender vẫn cần wiring/adapter tương ứng. HTTP runtime dùng GatewayIdentityFilter
+và Redis quyền của IAM; route qua Gateway yêu cầu phiên đã chọn tenant.
 Fan-out SSE giữa replica đã có adapter [Redis Pub/Sub](realtime-redis.md).
 
 ## SSE realtime
@@ -217,10 +218,9 @@ Gateway cũng hỗ trợ bearer token: native `EventSource` không hỗ trợ đ
 Nếu frontend dùng bearer header, cần client SSE qua `fetch`/thư viện hỗ trợ bearer header, parse event stream,
 reconnect và hủy bằng AbortController. Không truyền access token trên URL.
 
-Runtime notification hiện chưa có server standalone hoặc route gateway. Khi wiring runtime,
-thêm route `/api/v1/notifications/**`, giữ response streaming, tắt buffering/cache/compression
-gây gom chunk trên proxy, đặt idle timeout lớn hơn heartbeat và cho phép async dispatch
-trong security filter chain. Thiết lập timeout ghi socket để client chậm không giữ writer vô hạn.
+Gateway chuyển tiếp stream qua route `/api/v1/notifications/**`. HTTP runtime cho phép
+async dispatch sau khi xác thực request. Khi đặt thêm proxy, tắt buffering/cache/compression
+gây gom chunk, đặt idle timeout lớn hơn heartbeat và thiết lập timeout ghi socket.
 
 Mỗi instance vẫn giữ registry và socket cục bộ. Transport mặc định `notification.realtime.transport=redis`
 phân phối tín hiệu sau commit tới mọi replica dùng chung channel. Không gửi trực tiếp SSE ở publisher

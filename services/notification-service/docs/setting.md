@@ -172,8 +172,8 @@ LARK trong constraint channel. API bật/tắt giữ toàn bộ cấu hình riê
 PUT có connectionConfig thực hiện thay thế toàn bộ, bao gồm appToken của LARK.
 V12 thêm `name varchar(150) NOT NULL`, điền tên enum kênh cho bản ghi cũ và chặn tên trống.
 
-Feature subscription, recipient selection và personal preference chưa triển khai. Main
-HTTP runtime và Gateway verifier production vẫn chưa có trong service.
+Feature subscription, recipient selection và personal preference chưa triển khai.
+HTTP runtime nhận các request cấu hình qua Gateway và tra quyền theo tenant trong Redis của IAM.
 
 ## Rule loại thông báo và kênh gửi
 

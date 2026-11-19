@@ -2,10 +2,16 @@
 
 Service business rules, architecture and database ERDs: [docs/README.md](docs/README.md).
 
-For a dedicated Spring Boot host, set `vishop.env-file.service=notification-service` to
-load the module's `.env.dev` or `.env.prod`. An existing service hosting the module can
-provide the Notification variables through its own deployment environment. The module's
-profile YAML files are under `classpath:notification/` for explicit import by the host.
+Start the HTTP service with `./gradlew runNotification` after migrating its database.
+The dev profile reads `services/notification-service/.env.dev`. Set
+`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` and `SPRING_DATASOURCE_PASSWORD`
+for the runtime database. For a host JVM with locally published PostgreSQL, the URL is
+`jdbc:postgresql://localhost:5432/vishop_notification`. Use the same authorization Redis
+connection and cache key prefix as Gateway. The HTTP listener defaults to
+`127.0.0.1:8084`. Gateway forwards authenticated `/api/v1/notifications` requests and
+subpaths to `NOTIFICATION_SERVICE_URL`. If deploying on separate hosts, configure
+`NOTIFICATION_BIND_ADDRESS` and restrict network access to the trusted Gateway since
+the service consumes Gateway identity headers.
 
 This service contains three business modules (`notification`, `setting`, `announcement`), shared notification constants, database
 schema and standalone Flyway migration CLI. See [module design](docs/module-design.md)
@@ -17,14 +23,14 @@ channel and per-type rule HTTP APIs with transactional JPA adapters; see
 and external deliveries. Its JPA adapters persist deliveries;
 HTTP adapters expose personal list/detail/unread/read/archive APIs and an authenticated SSE stream;
 see [inbox API](docs/inbox.md) and [SSE integration](docs/inbox.md#sse-realtime).
-Other persistence/HTTP adapters, event consumers,
-runtime gateway authentication and provider workers are subsequent work.
+Event consumers and external provider workers are subsequent work.
 Cross-instance SSE signals use Redis Pub/Sub after commit; see [Redis fan-out](docs/realtime-redis.md)
 for deployment settings, recovery behavior and explicit local development mode.
 Recipient retention is opt-in: visible recipients expire 90 days after creation, including
 unread items; archived recipients expire 90 days after soft deletion. The bounded cleanup job
 preserves shared notifications and deliveries; see [retention configuration](docs/retention.md).
-It does not yet start a standalone HTTP server or send external provider notifications.
+The HTTP host exposes the inbox, stream and settings controllers. External provider
+delivery requires a sender implementation.
 
 V14 removes the unused tables for feature subscriptions, explicit rule recipients and personal preferences.
 NotificationSettingDispatchPolicy combines per-type rules with enabled, available and verified
