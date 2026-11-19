@@ -34,6 +34,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @SpringBootTest(
     properties = {
+      "vishop.env-file.enabled=false",
       "vishop.outbox.enabled=false",
       "vishop.subscription.worker.enabled=false",
       "management.tracing.enabled=false",
@@ -45,6 +46,7 @@ import org.springframework.transaction.PlatformTransactionManager;
       "vishop.subscription.sepay.account-holder=VISHOP"
     })
 @AutoConfigureMockMvc
+@ActiveProfiles("prod")
 @Import(SubscriptionApplicationTest.TimeConfiguration.class)
 class SubscriptionApplicationTest {
   @Autowired org.springframework.context.ApplicationContext context;

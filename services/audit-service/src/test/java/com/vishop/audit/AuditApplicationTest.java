@@ -46,6 +46,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
+      "vishop.env-file.enabled=false",
       "spring.kafka.listener.auto-startup=false",
       "management.tracing.enabled=false",
       "management.health.redis.enabled=false"

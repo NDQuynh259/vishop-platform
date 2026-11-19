@@ -1,5 +1,5 @@
 server:
-  port: 8000
+  port: ${GATEWAY_PORT:8000}
 
 spring:
   output:
@@ -112,5 +112,5 @@ vishop:
       max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
     jwt:
       secret: ${vishop.security.jwt.access-token-secret}
-      access-token-secret: ${JWT_ACCESS_SECRET:${GATEWAY_JWT_ACCESS_TOKEN_SECRET:dev_vishop_access_secret_at_least_32_bytes}}
+      access-token-secret: ${JWT_ACCESS_SECRET:${GATEWAY_JWT_ACCESS_TOKEN_SECRET:}}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:3000}

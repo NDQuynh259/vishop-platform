@@ -16,51 +16,36 @@ class NotificationRetentionServiceTest {
       new NotificationRetentionService(repository, Clock.fixed(now, ZoneOffset.UTC));
 
   @Test
-  void boundsTotalWorkAndAlternatesScopesEvenWithAnUnlimitedBacklog() {
-    var policy = new NotificationRetentionPolicy(Duration.ofDays(90), Duration.ofDays(30), 500, 4);
-    var visible = Instant.parse("2026-08-20T12:00:00.123456Z");
-    var archived = Instant.parse("2026-10-19T12:00:00.123456Z");
-    when(repository.purgeVisibleBefore(visible, 500)).thenReturn(500);
-    when(repository.purgeArchivedBefore(archived, 500)).thenReturn(500);
+  void boundsTotalWorkEvenWithAnUnlimitedBacklog() {
+    var policy = new NotificationRetentionPolicy(Duration.ofDays(90), 500, 4);
+    var cutoff = Instant.parse("2026-08-20T12:00:00.123456Z");
+    when(repository.purgeCreatedBefore(cutoff, 500)).thenReturn(500);
     var result = service.purge(policy);
-    assertThat(result.visibleDeleted()).isEqualTo(1000);
-    assertThat(result.archivedDeleted()).isEqualTo(1000);
-    assertThat(result.totalDeleted()).isEqualTo(2000);
+    assertThat(result.deletedCount()).isEqualTo(2000);
     assertThat(result.batchesExecuted()).isEqualTo(4);
-    var ordered = inOrder(repository);
-    ordered.verify(repository).purgeArchivedBefore(archived, 500);
-    ordered.verify(repository).purgeVisibleBefore(visible, 500);
-    ordered.verify(repository).purgeArchivedBefore(archived, 500);
-    ordered.verify(repository).purgeVisibleBefore(visible, 500);
-    ordered.verifyNoMoreInteractions();
+    verify(repository, times(4)).purgeCreatedBefore(cutoff, 500);
+    verifyNoMoreInteractions(repository);
   }
 
   @Test
-  void stopsExhaustedScopeAndGivesRemainingBudgetToTheOther() {
-    when(repository.purgeArchivedBefore(any(), eq(2))).thenReturn(1);
-    when(repository.purgeVisibleBefore(any(), eq(2))).thenReturn(2, 2, 0);
-    var result =
-        service.purge(
-            new NotificationRetentionPolicy(Duration.ofDays(90), Duration.ofDays(90), 2, 10));
-    assertThat(result.totalDeleted()).isEqualTo(5);
-    assertThat(result.batchesExecuted()).isEqualTo(4);
-    verify(repository, times(1)).purgeArchivedBefore(any(), eq(2));
-    verify(repository, times(3)).purgeVisibleBefore(any(), eq(2));
+  void stopsEarlyOnceABatchDeletesFewerRowsThanBatchSize() {
+    when(repository.purgeCreatedBefore(any(), eq(2))).thenReturn(2, 2, 1);
+    var result = service.purge(new NotificationRetentionPolicy(Duration.ofDays(90), 2, 10));
+    assertThat(result.deletedCount()).isEqualTo(5);
+    assertThat(result.batchesExecuted()).isEqualTo(3);
+    verify(repository, times(3)).purgeCreatedBefore(any(), eq(2));
+    verifyNoMoreInteractions(repository);
   }
 
   @Test
-  void stopsAfterFailureSoTheJobCanRetryRemainingWorkOnTheNextRun() {
-    when(repository.purgeArchivedBefore(any(), anyInt())).thenReturn(500);
-    when(repository.purgeVisibleBefore(any(), anyInt()))
+  void stopsAfterFailureSoTheSchedulerCanRetryRemainingWorkOnTheNextRun() {
+    when(repository.purgeCreatedBefore(any(), anyInt()))
+        .thenReturn(500)
         .thenThrow(new IllegalStateException("database unavailable"));
     assertThatThrownBy(
-            () ->
-                service.purge(
-                    new NotificationRetentionPolicy(
-                        Duration.ofDays(90), Duration.ofDays(90), 500, 10)))
+            () -> service.purge(new NotificationRetentionPolicy(Duration.ofDays(90), 500, 10)))
         .isInstanceOf(IllegalStateException.class);
-    verify(repository, times(1)).purgeArchivedBefore(any(), anyInt());
-    verify(repository, times(1)).purgeVisibleBefore(any(), anyInt());
+    verify(repository, times(2)).purgeCreatedBefore(any(), anyInt());
     verifyNoMoreInteractions(repository);
   }
 }

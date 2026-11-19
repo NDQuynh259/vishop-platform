@@ -223,36 +223,22 @@ public class NotificationJpaAdapter
     bind(query, scope).setParameter("id", id).setParameter("at", at).executeUpdate();
   }
 
+  // #region purgeCreatedBefore
   @Override
   @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 10)
-  public int purgeVisibleBefore(Instant cutoffInclusive, int batchSize) {
-    return purgeBatch("created_at", "deleted_at IS NULL", cutoffInclusive, batchSize);
-  }
-
-  @Override
-  @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 10)
-  public int purgeArchivedBefore(Instant cutoffInclusive, int batchSize) {
-    return purgeBatch("deleted_at", "deleted_at IS NOT NULL", cutoffInclusive, batchSize);
-  }
-
-  private int purgeBatch(
-      String timestampColumn, String statePredicate, Instant cutoff, int batchSize) {
-    if (cutoff == null || batchSize < 1 || batchSize > NotificationRetentionPolicy.MAX_BATCH_SIZE) {
+  public int purgeCreatedBefore(Instant cutoffInclusive, int batchSize) {
+    if (cutoffInclusive == null
+        || batchSize < 1
+        || batchSize > NotificationRetentionPolicy.MAX_BATCH_SIZE) {
       throw new IllegalArgumentException(
           "A cutoff and bounded batch size are required for recipient retention");
     }
-    // Column/predicate are internal constants. Replicas skip rows already locked by another worker.
+    // Replicas skip rows already locked by another worker.
     return em.createNativeQuery(
-            "WITH expired AS (SELECT id FROM notification_recipients WHERE "
-                + statePredicate
-                + " AND "
-                + timestampColumn
-                + " <= :cutoff ORDER BY "
-                + timestampColumn
-                + ",id"
-                + " LIMIT :batchSize FOR UPDATE SKIP LOCKED)"
+            "WITH expired AS (SELECT id FROM notification_recipients WHERE created_at <= :cutoff"
+                + " ORDER BY created_at,id LIMIT :batchSize FOR UPDATE SKIP LOCKED)"
                 + " DELETE FROM notification_recipients r USING expired e WHERE r.id=e.id")
-        .setParameter("cutoff", cutoff)
+        .setParameter("cutoff", cutoffInclusive)
         .setParameter("batchSize", batchSize)
         .executeUpdate();
   }

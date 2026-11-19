@@ -125,27 +125,27 @@ class NotificationRetentionPersistenceTest {
   }
 
   @Test
-  void purgesVisibleAtInclusiveCreationCutoffIncludingUnreadButUsesDeletionTimeForArchived() {
+  void purgesBothVisibleAndArchivedRecipientsAtInclusiveCreationCutoffIncludingUnread() {
     UUID oldUnread = create("old-unread", CUTOFF.minusSeconds(1), user);
     UUID boundaryRead = create("boundary-read", CUTOFF, user);
     inbox.markRead(actor(user), boundaryRead);
     UUID fresh = create("fresh", CUTOFF.plusNanos(1000), user);
     UUID oldArchived = create("old-archived", CUTOFF.minusSeconds(100), user);
-    clock.at = CUTOFF;
-    inbox.archive(actor(user), oldArchived);
-    UUID recentlyArchived = create("recent-archive", CUTOFF.minusSeconds(100), user);
     clock.at = NOW;
-    inbox.archive(actor(user), recentlyArchived);
+    inbox.archive(actor(user), oldArchived);
+    UUID freshArchived = create("fresh-archived", CUTOFF.plusNanos(1000), user);
+    clock.at = NOW;
+    inbox.archive(actor(user), freshArchived);
 
     var result =
         new NotificationRetentionService(repository, clock)
-            .purge(new NotificationRetentionPolicy(RETENTION, RETENTION, 500, 10));
-    assertThat(result.visibleDeleted()).isEqualTo(2);
-    assertThat(result.archivedDeleted()).isEqualTo(1);
+            .purge(new NotificationRetentionPolicy(RETENTION, 500, 10));
+    assertThat(result.deletedCount()).isEqualTo(3);
+    assertThat(result.batchesExecuted()).isEqualTo(1);
     for (UUID id : List.of(oldUnread, boundaryRead, oldArchived))
       assertThat(recipients(id)).isZero();
     assertThat(recipients(fresh)).isEqualTo(1);
-    assertThat(recipients(recentlyArchived)).isEqualTo(1);
+    assertThat(recipients(freshArchived)).isEqualTo(1);
     assertThat(inbox.unreadCount(actor(user)).getCount()).isEqualTo(1);
     assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications", Long.class)).isEqualTo(5);
   }
@@ -164,13 +164,13 @@ class NotificationRetentionPersistenceTest {
         id,
         user,
         "retention@example.com");
-    // Give the other recipient a later inbox creation time; only the archived recipient expires.
+    // Give the other recipient a later creation time; only the expired recipient is purged.
     jdbc.update(
         "UPDATE notification_recipients SET created_at=? WHERE notification_id=? AND user_id=?",
         java.sql.Timestamp.from(NOW),
         id,
         other);
-    assertThat(repository.purgeArchivedBefore(CUTOFF, 500)).isEqualTo(1);
+    assertThat(repository.purgeCreatedBefore(CUTOFF, 500)).isEqualTo(1);
     assertThat(recipients(id)).isEqualTo(1);
     assertThat(inbox.getById(actor(other), id).getId()).isEqualTo(id);
     assertThat(
@@ -200,32 +200,31 @@ class NotificationRetentionPersistenceTest {
                   locked);
               // REQUIRES_NEW suspends this transaction; this simulates another worker holding its
               // row lock.
-              assertThat(repository.purgeVisibleBefore(CUTOFF, 1)).isEqualTo(1);
+              assertThat(repository.purgeCreatedBefore(CUTOFF, 1)).isEqualTo(1);
               assertThat(recipients(locked)).isEqualTo(1);
               assertThat(recipients(free)).isZero();
               assertThat(recipients(next)).isEqualTo(1);
               status.setRollbackOnly();
             });
     assertThat(recipients(free)).isZero();
-    assertThat(repository.purgeVisibleBefore(CUTOFF, 1)).isEqualTo(1);
+    assertThat(repository.purgeCreatedBefore(CUTOFF, 1)).isEqualTo(1);
     assertThat(recipients(next)).isEqualTo(1);
-    assertThat(repository.purgeVisibleBefore(CUTOFF, 1)).isEqualTo(1);
-    assertThat(repository.purgeVisibleBefore(CUTOFF, 1)).isZero();
+    assertThat(repository.purgeCreatedBefore(CUTOFF, 1)).isEqualTo(1);
+    assertThat(repository.purgeCreatedBefore(CUTOFF, 1)).isZero();
   }
 
   @Test
-  void migrationCreatesSeparatePartialIndexesForEachRetentionScope() {
+  void migrationCreatesUnifiedRetentionIndexOnCreatedAtAndId() {
     var definitions =
         jdbc.queryForList(
             "SELECT indexdef FROM pg_indexes WHERE tablename='notification_recipients'"
-                + " AND indexname IN ('idx_notification_recipient_visible_retention','idx_notification_recipient_archived_retention')",
+                + " AND indexname IN ('idx_notification_recipient_retention',"
+                + "'idx_notification_recipient_visible_retention',"
+                + "'idx_notification_recipient_archived_retention')",
             String.class);
-    assertThat(definitions).hasSize(2);
-    assertThat(definitions)
-        .anySatisfy(
-            sql -> assertThat(sql).contains("(created_at, id)", "WHERE (deleted_at IS NULL)"));
-    assertThat(definitions)
-        .anySatisfy(
-            sql -> assertThat(sql).contains("(deleted_at, id)", "WHERE (deleted_at IS NOT NULL)"));
+    assertThat(definitions).hasSize(1);
+    assertThat(definitions.getFirst())
+        .contains("idx_notification_recipient_retention", "(created_at, id)")
+        .doesNotContain("WHERE");
   }
 }

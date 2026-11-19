@@ -1,0 +1,9 @@
+# Imported by the host application's dev profile.
+notification:
+  retention:
+    enabled: ${NOTIFICATION_RETENTION_ENABLED:false}
+    period: ${NOTIFICATION_RETENTION_PERIOD:90d}
+    batch-size: ${NOTIFICATION_RETENTION_BATCH_SIZE:500}
+    max-batches-per-run: ${NOTIFICATION_RETENTION_MAX_BATCHES_PER_RUN:10}
+    fixed-delay-ms: ${NOTIFICATION_RETENTION_FIXED_DELAY_MS:300000}
+    initial-delay-ms: ${NOTIFICATION_RETENTION_INITIAL_DELAY_MS:60000}

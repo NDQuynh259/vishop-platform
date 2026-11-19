@@ -12,6 +12,6 @@ Tài liệu riêng: [docs/README.md](docs/README.md).
 ```
 
 Cấu hình route, Redis và biến môi trường:
-[application.yml](src/main/resources/application.yml).
+[application-dev.yml](src/main/resources/application-dev.yml).
 Contract quyền: [Gateway authorization](../../docs/core-architecture/gateway-authorization.md).
 Gateway không có PostgreSQL hoặc lệnh migrate.

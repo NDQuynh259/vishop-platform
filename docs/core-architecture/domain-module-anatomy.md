@@ -47,7 +47,7 @@ Lời gọi giữa các phân hệ chạy trong cùng JVM, không phát sinh HTT
 
 Cách tổ chức tham khảo `api-vishop/libs` được áp dụng trong phạm vi microservice IAM: `infra` chứa kỹ thuật dùng chung của IAM, còn adapter riêng vẫn ở `modules/<tên>/infrastructure`. `shared` giữ kiểu dữ liệu và abstraction không phụ thuộc framework. Access đã được gộp vào tenant; tạo tenant, role và owner là use case của tenant, không cần `composition/onboarding`. Composition chỉ còn tích hợp identity với tenant và projection cần dữ liệu user.
 
-`resources/application.yml` và `resources/db/migration` vẫn ở cấp service. Identity và tenant là hai module trong cùng một deployment và database, không phải hai service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.
+`resources/application-dev.yml`, `resources/application-prod.yml` và `resources/db/migration` vẫn ở cấp service. Identity và tenant là hai module trong cùng một deployment và database, không phải hai service độc lập. Cây trên liệt kê các nhóm và file tiêu biểu.
 
 ---
 

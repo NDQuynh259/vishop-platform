@@ -8,16 +8,16 @@ services:
     container_name: vishop-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
-      POSTGRES_USER: vishop
-      POSTGRES_PASSWORD: vishop_secret
+      POSTGRES_USER: ${POSTGRES_USER:-vishop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       POSTGRES_DB: vishop_platform
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../postgres/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vishop -d vishop_platform"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d vishop_platform"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -157,7 +157,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ../grafana/provisioning:/etc/grafana/provisioning:ro

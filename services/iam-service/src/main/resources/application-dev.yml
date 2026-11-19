@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${IAM_PORT:8080}
 spring:
   data:
     redis:
@@ -15,9 +15,9 @@ spring:
   application:
     name: iam-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_iam}
-    username: ${SPRING_DATASOURCE_USERNAME:vishop}
-    password: ${SPRING_DATASOURCE_PASSWORD:vishop_secret}
+    url: ${IAM_DATASOURCE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_iam}}
+    username: ${IAM_DATASOURCE_USERNAME:${SPRING_DATASOURCE_USERNAME:vishop}}
+    password: ${IAM_DATASOURCE_PASSWORD:${SPRING_DATASOURCE_PASSWORD:}}
     hikari:
       maximum-pool-size: 10
   jpa:
@@ -45,8 +45,8 @@ vishop:
     key-prefix: ${CACHE_KEY_PREFIX:${AUTH_CACHE_PREFIX:vishop:}}
   security:
     jwt:
-      access-token-secret: ${JWT_ACCESS_SECRET:${GATEWAY_JWT_ACCESS_TOKEN_SECRET:dev_vishop_access_secret_at_least_32_bytes}}
-      refresh-token-secret: ${JWT_REFRESH_SECRET:${GATEWAY_JWT_REFRESH_TOKEN_SECRET:dev_vishop_refresh_secret_at_least_32_bytes}}
+      access-token-secret: ${JWT_ACCESS_SECRET:${GATEWAY_JWT_ACCESS_TOKEN_SECRET:}}
+      refresh-token-secret: ${JWT_REFRESH_SECRET:${GATEWAY_JWT_REFRESH_TOKEN_SECRET:}}
       access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
       refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
     cookies:

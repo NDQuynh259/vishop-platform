@@ -12,6 +12,7 @@ Reusable Java 21 and Spring Boot 3.3 libraries for building service-oriented app
 ## Modules
 
 - `common-domain`: DDD building blocks, CQRS contracts, and domain exceptions
+- `common-config`: opt-in Spring Boot loader for service-level dotenv files
 - `common-web`: Spring web adapters, pagination, and CQRS dispatch
 - `common-security`: request context primitives
 - [`common-cache`](libs/common-cache/README.md): shared Redis cache with JSON values and TTL; callers choose when to cache

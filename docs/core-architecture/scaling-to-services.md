@@ -208,7 +208,7 @@ Khi hệ thống phát triển, nếu một module trong `commerce-core` (ví d�
 - Cấu hình port riêng (ví dụ: `:8084`) và Dockerfile container riêng.
 
 ### Bước 5: Cấu hình định tuyến tại API Gateway
-- Bổ sung cấu hình route trong [services/api-gateway/src/main/resources/application.yml](../../services/api-gateway/src/main/resources/application.yml):
+- Bổ sung cấu hình route trong [services/api-gateway/src/main/resources/application-dev.yml](../../services/api-gateway/src/main/resources/application-dev.yml):
   ```yaml
   - id: inventory-service
     uri: ${INVENTORY_SERVICE_URL:http://localhost:8084}

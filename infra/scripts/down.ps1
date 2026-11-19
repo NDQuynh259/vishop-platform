@@ -9,26 +9,28 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "compose-env.ps1")
 $infraDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
 $volumeArgs = if ($Volumes) { @("-v") } else { @() }
-Set-Location $infraDir
-
-if ($Env -eq "infra" -or $Env -eq "all") {
-    Write-Host ">>> Stopping INFRASTRUCTURE stack..." -ForegroundColor Yellow
-    & docker compose -f compose/docker-compose.infra.yml down @volumeArgs 2>$null
+$stacks = if ($Env -eq "all") { @("infra", "dev", "prod") } else { @($Env) }
+$failedStacks = @()
+Push-Location $infraDir
+try {
+    foreach ($stack in $stacks) {
+        Write-Host ">>> Stopping $stack stack..." -ForegroundColor Yellow
+        $envArgs = @(Get-ComposeEnvArgs -Stack $stack)
+        & docker compose @envArgs -f "compose/docker-compose.$stack.yml" down @volumeArgs
+        if ($LASTEXITCODE -ne 0) {
+            $failedStacks += $stack
+        }
+    }
+    if ($failedStacks.Count -gt 0) {
+        throw "Docker Compose could not stop: $($failedStacks -join ', '). Check the Compose output and environment settings."
+    }
 }
-
-if ($Env -eq "dev" -or $Env -eq "all") {
-    Write-Host ">>> Stopping DEVELOPMENT stack..." -ForegroundColor Yellow
-    $envArgs = if (Test-Path ".env.dev") { @("--env-file", ".env.dev") } else { @() }
-    & docker compose @envArgs -f compose/docker-compose.dev.yml down @volumeArgs 2>$null
-}
-
-if ($Env -eq "prod" -or $Env -eq "all") {
-    Write-Host ">>> Stopping PRODUCTION stack..." -ForegroundColor Yellow
-    $envArgs = if (Test-Path ".env.prod") { @("--env-file", ".env.prod") } else { @() }
-    & docker compose @envArgs -f compose/docker-compose.prod.yml down @volumeArgs 2>$null
+finally {
+    Pop-Location
 }
 
 Write-Host "`n[OK] Services stopped for environment: $Env" -ForegroundColor Green

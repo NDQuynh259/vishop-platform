@@ -15,5 +15,5 @@ gốc và cơ chế cập nhật projection; Gateway không trở thành nguồn
 | Route và khóa ký context backend | Cấu hình môi trường |
 
 Redis host/port/database và cache prefix nằm trong
-[application.yml](../src/main/resources/application.yml).
+[application-dev.yml](../src/main/resources/application-dev.yml).
 Định dạng và độ mới của projection: [Gateway authorization](../../../docs/core-architecture/gateway-authorization.md).

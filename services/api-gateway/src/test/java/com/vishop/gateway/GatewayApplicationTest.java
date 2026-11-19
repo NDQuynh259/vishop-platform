@@ -18,8 +18,10 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
+      "vishop.env-file.enabled=false",
       "management.health.redis.enabled=false",
-      "vishop.cache.key-prefix=gateway-test:cache:"
+      "vishop.cache.key-prefix=gateway-test:cache:",
+      "vishop.security.jwt.access-token-secret=gateway-test-access-key-at-least-32-bytes"
     })
 class GatewayApplicationTest {
   private static final java.util.concurrent.atomic.AtomicReference<com.sun.net.httpserver.Headers>

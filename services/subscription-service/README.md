@@ -8,6 +8,23 @@ chuyển khoản SePay, chu kỳ tháng/năm lịch. Không tự thu tiền gia 
 
 Thiết kế bảng, ERD, khóa và transaction: [Database Billing](docs/database-design.md).
 
+## Cấu hình runtime
+
+Profile mặc định là `dev`. Cấu hình runtime nằm trực tiếp trong `application-dev.yml` và
+`application-prod.yml`. Khi chạy bằng IDE, Gradle
+hoặc JAR, Subscription tự nạp `services/subscription-service/.env.dev` hay `.env.prod`
+theo profile. Chạy từ thư mục service cũng hỗ trợ tên file tương ứng. Dùng
+`SUBSCRIPTION_ENV_FILE` để chỉ định đường dẫn khác hoặc khi chạy JAR từ thư mục khác.
+
+Tạo file cấu hình từ [mẫu env](.env.example). URL, user và mật khẩu dùng
+`SUBSCRIPTION_DATASOURCE_URL`, `SUBSCRIPTION_DATASOURCE_USERNAME` và
+`SUBSCRIPTION_DATASOURCE_PASSWORD`. Biến môi trường của tiến trình có ưu tiên cao hơn
+file. Compose đưa file env tương ứng vào riêng container Subscription. Với các biến do
+Compose đặt qua `environment`, dùng script `infra/scripts/up.ps1` để nạp file khi nội suy.
+
+Lệnh migration là CLI riêng và vẫn nhận `SUBSCRIPTION_DB_URL`, `SUBSCRIPTION_DB_USER`
+và `SUBSCRIPTION_DB_PASSWORD` từ môi trường chạy lệnh.
+
 ## Kiến trúc và dữ liệu
 
 ```mermaid

@@ -2,7 +2,7 @@ package com.vishop.notification.modules.notification.infrastructure.config;
 
 import com.vishop.notification.modules.notification.application.service.NotificationRetentionService;
 import com.vishop.notification.modules.notification.domain.port.NotificationRecipientRetentionRepository;
-import com.vishop.notification.modules.notification.infrastructure.maintenance.NotificationRetentionJob;
+import com.vishop.notification.modules.notification.infrastructure.scheduler.NotificationRetentionScheduler;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -24,9 +24,9 @@ public class NotificationRetentionConfiguration {
     }
 
     @Bean
-    NotificationRetentionJob notificationRetentionJob(
+    NotificationRetentionScheduler notificationRetentionScheduler(
         NotificationRetentionService service, NotificationRetentionProperties properties) {
-      return new NotificationRetentionJob(service, properties);
+      return new NotificationRetentionScheduler(service, properties);
     }
   }
 }

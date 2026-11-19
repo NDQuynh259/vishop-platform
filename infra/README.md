@@ -43,7 +43,7 @@ infra/
 ├── loki/                            # Centralized Logging
 │   └── loki-config.yml
 │
-├── .env.dev                         # Biến môi trường mặc định cho Dev
+├── .env.dev                         # Cấu hình local do người chạy tạo từ .env.example
 ├── .env.example                     # File mẫu biến môi trường
 └── .env.prod.example                # File mẫu biến môi trường cho Production
 ```
@@ -53,25 +53,26 @@ infra/
 ## 🛠️ Hướng dẫn vận hành
 
 ### 1. Dành cho Developer chạy app trên IDE (Local Java Dev)
-Nếu bạn lập trình và debug trực tiếp trên IntelliJ / VS Code, chỉ cần khởi động các dịch vụ hạ tầng nền tảng (Postgres, Kafka, Redis, Jaeger):
+Tạo `infra/.env.dev` từ [mẫu dev](.env.example) và điền `POSTGRES_PASSWORD` cùng
+`GRAFANA_ADMIN_PASSWORD`. Sau đó khởi động hạ tầng dùng bởi các service chạy từ IDE.
 
 ```powershell
 # Dùng script:
 .\infra\scripts\up.ps1 -Env infra
 
 # Hoặc dùng docker compose trực tiếp:
-docker compose -f infra/compose/docker-compose.infra.yml up -d
+docker compose --env-file infra/.env.dev -f infra/compose/docker-compose.infra.yml up -d
 ```
 
 ### 2. Dành cho Developer chạy Full-Stack bằng Docker (Dev Profile)
-Chạy toàn bộ hạ tầng cùng 4 microservices:
+Điền khóa access dùng chung trong `infra/.env.dev` và khóa refresh trong
+`services/iam-service/.env.dev`. Các service khác có thể dùng `.env.dev` riêng
+từ mẫu trong thư mục service. Xem [bảng cấu hình theo service](../docs/environment.md).
 
 ```powershell
-# Dùng script:
+# Tạo file IAM từ mẫu nếu chưa có, sau đó điền JWT_REFRESH_SECRET.
+Copy-Item services/iam-service/.env.example services/iam-service/.env.dev
 .\infra\scripts\up.ps1 -Env dev -Build
-
-# Hoặc bằng lệnh Docker Compose:
-docker compose --env-file infra/.env.dev -f infra/compose/docker-compose.dev.yml up -d --build
 ```
 
 **Cổng Remote Debugging (JDWP):**
@@ -82,10 +83,11 @@ docker compose --env-file infra/.env.dev -f infra/compose/docker-compose.dev.yml
 
 ### 3. Môi trường Production
 ```powershell
-# 1. Tạo file .env.prod từ template mẫu
+# Tạo các file từ mẫu nếu chưa có.
 Copy-Item infra\.env.prod.example infra\.env.prod
+Copy-Item services/iam-service/.env.example services/iam-service/.env.prod
 
-# 2. Khởi động với profile production
+# Điền các biến bắt buộc vào hai file trước khi khởi động.
 .\infra\scripts\up.ps1 -Env prod -Build
 ```
 
@@ -113,7 +115,7 @@ Copy-Item infra\.env.prod.example infra\.env.prod
 | **API Gateway** | `http://localhost:8000` | Cổng Ingress công khai duy nhất cho Client |
 | **Kafka UI** | `http://localhost:8088` | Giao diện trực quan xem Topic, Message, Consumer Group |
 | **Jaeger UI** | `http://localhost:16686` | Giao diện Distributed Tracing xem Span ID & Request latency |
-| **Grafana** | `http://localhost:3000` | Dashboard tổng hợp Metrics & Logs (user: `admin` / pass: `admin`) |
+| **Grafana** | `http://localhost:3000` | Dashboard Metrics & Logs. Mật khẩu quản trị lấy từ `GRAFANA_ADMIN_PASSWORD` |
 | **Prometheus** | `http://localhost:9090` | Web UI Prometheus kiểm tra PromQL & Scrape targets |
 | **PostgreSQL** | `localhost:5432` | Cổng DB mở để kết nối DBeaver / DataGrip |
 | **Redis** | `localhost:6379` | Cache & Token storage |

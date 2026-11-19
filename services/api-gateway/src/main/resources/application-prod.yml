@@ -1,7 +1,116 @@
+server:
+  port: ${GATEWAY_PORT:8000}
 
----
+spring:
+  output:
+    ansi:
+      enabled: ALWAYS
+  data:
+    redis:
+      host: ${AUTH_REDIS_HOST:localhost}
+      port: ${AUTH_REDIS_PORT:6380}
+      password: ${AUTH_REDIS_PASSWORD}
+      database: ${AUTH_REDIS_DATABASE:0}
+      timeout: 2s
+      connect-timeout: 2s
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      routes:
+        # CMS audit must be matched before the general CMS route to IAM.
+        - id: cms-audit-service
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/cms/audit-logs,/api/v1/cms/audit-logs/**
+
+        # ---------------------------------------------------------------------
+        # 1. Identity, tenants and CMS share IAM
+        # ---------------------------------------------------------------------
+        - id: subscription-service
+          uri: ${SUBSCRIPTION_SERVICE_URL:${BILLING_SERVICE_URL:http://localhost:8083}}
+          predicates:
+            - Path=/api/v1/subscriptions/**,/api/v1/billing/**,/api/v1/cms/billing/**
+
+        - id: iam-service
+          uri: ${IAM_SERVICE_URL:http://localhost:8080}
+          predicates:
+            - Path=/api/v1/auth/**,/api/v1/tenants/**,/api/v1/invitations/**,/api/v1/cms/**
+
+        # ---------------------------------------------------------------------
+        # 3. Audit Service
+        # ---------------------------------------------------------------------
+        - id: audit-service
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/audit/**
+
+        # ---------------------------------------------------------------------
+        # 4. OpenAPI Specification Routing
+        # ---------------------------------------------------------------------
+        - id: subscription-service-docs
+          uri: ${SUBSCRIPTION_SERVICE_URL:${BILLING_SERVICE_URL:http://localhost:8083}}
+          predicates:
+            - Path=/v3/api-docs/subscription-service,/v3/api-docs/billing-service
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: iam-service-docs
+          uri: ${IAM_SERVICE_URL:http://localhost:8080}
+          predicates:
+            - Path=/v3/api-docs/iam-service
+          filters:
+            - SetPath=/v3/api-docs
+
+        - id: audit-service-docs
+          uri: ${AUDIT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/v3/api-docs/audit-service
+          filters:
+            - SetPath=/v3/api-docs
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+    gateway:
+      enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    propagation:
+      type: W3C,B3
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
 vishop:
+  cache:
+    key-prefix: ${CACHE_KEY_PREFIX:${AUTH_CACHE_PREFIX:vishop:}}
   security:
+    authorization:
+      max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
     jwt:
-      secret: ${JWT_ACCESS_SECRET}
+      secret: ${vishop.security.jwt.access-token-secret}
       access-token-secret: ${JWT_ACCESS_SECRET}
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:3000}

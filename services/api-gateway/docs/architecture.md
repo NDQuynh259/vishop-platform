@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Dùng Spring Cloud Gateway. Route khai báo trong
-[application.yml](../src/main/resources/application.yml); route CMS Audit phải được
+[application-dev.yml](../src/main/resources/application-dev.yml); route CMS Audit phải được
 match trước route CMS tổng quát tới IAM. OpenAPI được định tuyến riêng cho từng service.
 
 `LocalAuthenticationVerifier` phối hợp kiểm tra claims và projection;

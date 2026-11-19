@@ -304,7 +304,7 @@ class NotificationRedesignMigrationTest {
     Flyway.configure().dataSource(url, "postgres", "postgres").target("18").load().migrate();
     var before = snapshots();
     var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-    assertThat(latest.migrate().migrationsExecuted).isEqualTo(2);
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(3);
     assertThat(snapshots()).isEqualTo(before);
     UUID group = UuidV7.nextId();
     execute(

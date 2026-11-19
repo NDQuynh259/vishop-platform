@@ -1,1 +1,87 @@
-# Gateway-only ingress; role authorization uses shared Auth Redis configuration.
+server:
+  port: ${AUDIT_PORT:8082}
+
+spring:
+  data:
+    redis:
+      host: ${AUTH_REDIS_HOST:localhost}
+      port: ${AUTH_REDIS_PORT:6380}
+      password: ${AUTH_REDIS_PASSWORD}
+      database: ${AUTH_REDIS_DATABASE:0}
+      timeout: 2s
+      connect-timeout: 2s
+  output:
+    ansi:
+      enabled: ALWAYS
+  application:
+    name: audit-service
+
+  datasource:
+    url: ${AUDIT_DATASOURCE_URL:${SPRING_DATASOURCE_URL:}}
+    username: ${AUDIT_DATASOURCE_USERNAME:${SPRING_DATASOURCE_USERNAME:}}
+    password: ${AUDIT_DATASOURCE_PASSWORD:${SPRING_DATASOURCE_PASSWORD:}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    open-in-view: false
+    generate-ddl: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  flyway:
+    enabled: false
+    baseline-on-migrate: false
+    clean-disabled: true
+
+  sql:
+    init:
+      mode: never
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      group-id: audit-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    propagation:
+      type: W3C,B3
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+vishop:
+  cache:
+    key-prefix: ${CACHE_KEY_PREFIX:${AUTH_CACHE_PREFIX:vishop:}}
+  security:
+    authorization:
+      max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
+    jwt:
+      enabled: false # Gateway identity headers; no user JWT key is needed.

@@ -1,5 +1,5 @@
 server:
-  port: 8082
+  port: ${SUBSCRIPTION_PORT:8083}
 
 spring:
   data:
@@ -13,13 +13,10 @@ spring:
   output:
     ansi:
       enabled: ALWAYS
-  application:
-    name: audit-service
-
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_audit}
-    username: ${SPRING_DATASOURCE_USERNAME:vishop}
-    password: ${SPRING_DATASOURCE_PASSWORD:vishop_secret}
+    url: ${SUBSCRIPTION_DB_URL:${BILLING_DB_URL:${SUBSCRIPTION_DATASOURCE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_subscription}}}}
+    username: ${SUBSCRIPTION_DB_USER:${BILLING_DB_USER:${SUBSCRIPTION_DATASOURCE_USERNAME:${SPRING_DATASOURCE_USERNAME:vishop}}}}
+    password: ${SUBSCRIPTION_DB_PASSWORD:${BILLING_DB_PASSWORD:${SUBSCRIPTION_DATASOURCE_PASSWORD:${SPRING_DATASOURCE_PASSWORD:}}}}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -46,11 +43,10 @@ spring:
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
-    consumer:
-      group-id: audit-service
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
 
 management:
   endpoints:
@@ -85,3 +81,15 @@ vishop:
       max-age-seconds: ${AUTH_CACHE_MAX_AGE_SECONDS:30}
     jwt:
       enabled: false # Gateway identity headers; no user JWT key is needed.
+
+  subscription:
+    checkout-lifetime: ${SUBSCRIPTION_CHECKOUT_LIFETIME:${BILLING_CHECKOUT_LIFETIME:PT30M}}
+    sepay:
+      enabled: ${SEPAY_ENABLED:false}
+      webhook-secret: ${SEPAY_WEBHOOK_SECRET:}
+      bank: ${SEPAY_BANK:}
+      account-number: ${SEPAY_ACCOUNT_NUMBER:}
+      account-holder: ${SEPAY_ACCOUNT_HOLDER:}
+      qr-account-number: ${SEPAY_QR_ACCOUNT_NUMBER:}
+      sub-account: ${SEPAY_SUB_ACCOUNT:}
+      memo-prefix: ${SEPAY_MEMO_PREFIX:}

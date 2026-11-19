@@ -4,6 +4,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
+    implementation(project(":libs:common-config"))
     implementation(project(":libs:common-domain"))
     implementation(project(":libs:common-web"))
     implementation(project(":libs:common-security"))

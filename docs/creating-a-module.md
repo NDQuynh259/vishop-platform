@@ -89,7 +89,11 @@ com.vishop.catalog/
 
 ## 3. Tạo cấu hình và DB Migration
 
-### File `src/main/resources/application.yml`
+### File cấu hình theo profile
+
+Đặt YAML runtime trong `src/main/resources/application-dev.yml` và
+`application-prod.yml`. Các service có thể dùng bộ nạp env chung theo quy ước
+trong [tài liệu cấu hình](environment.md).
 ```yaml
 server:
   port: 8083 # Cổng riêng cho service mới
@@ -101,7 +105,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vishop_catalog}
     username: ${SPRING_DATASOURCE_USERNAME:vishop}
-    password: ${SPRING_DATASOURCE_PASSWORD:vishop_secret}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:

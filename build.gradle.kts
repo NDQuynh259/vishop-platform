@@ -95,7 +95,7 @@ tasks.test {
     inputs.files(subprojects.map { it.layout.buildDirectory.dir("classes/java/main") })
     inputs.files(subprojects.flatMap {
         it.fileTree("src/main/resources") {
-            include("application.yml", "db/migration/*.sql")
+            include("application*.yml", "application.properties", "db/migration/*.sql")
         }.files
     })
 }

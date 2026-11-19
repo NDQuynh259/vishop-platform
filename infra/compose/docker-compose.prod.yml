@@ -27,7 +27,7 @@ services:
       - "5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-vishop_platform}
     volumes:
       - postgres-prod-data:/var/lib/postgresql/data
@@ -187,7 +187,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ../grafana/provisioning:/etc/grafana/provisioning:ro
@@ -211,6 +211,9 @@ services:
   # 5. IAM Service
   # ---------------------------------------------------------------------------
   iam-service:
+    env_file:
+      - path: ../../services/iam-service/.env.prod
+        required: false
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.prod
@@ -238,11 +241,11 @@ services:
       JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-900000}
       JWT_REFRESH_EXPIRATION_MS: ${JWT_REFRESH_EXPIRATION_MS:-604800000}
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_iam
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      SPRING_DATASOURCE_URL: ${IAM_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/vishop_iam}
+      SPRING_DATASOURCE_USERNAME: ${IAM_DATASOURCE_USERNAME:-${POSTGRES_USER}}
+      SPRING_DATASOURCE_PASSWORD: ${IAM_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
       TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
       JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
     deploy:
@@ -270,6 +273,9 @@ services:
   # 6. Tenant Service
   # ---------------------------------------------------------------------------
   audit-service:
+    env_file:
+      - path: ../../services/audit-service/.env.prod
+        required: false
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.prod
@@ -290,11 +296,11 @@ services:
       CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-${AUTH_CACHE_PREFIX:-vishop:prod:}}
       SERVER_PORT: 8082
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_audit
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      SPRING_DATASOURCE_URL: ${AUDIT_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/vishop_audit}
+      SPRING_DATASOURCE_USERNAME: ${AUDIT_DATASOURCE_USERNAME:-${POSTGRES_USER}}
+      SPRING_DATASOURCE_PASSWORD: ${AUDIT_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
       TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
       JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
     deploy:
@@ -321,6 +327,9 @@ services:
     logging: *prod-logging
 
   subscription-service:
+    env_file:
+      - path: ../../services/subscription-service/.env.prod
+        required: false
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.prod
@@ -349,11 +358,11 @@ services:
       SEPAY_SUB_ACCOUNT: ${SEPAY_SUB_ACCOUNT:-}
       SEPAY_MEMO_PREFIX: ${SEPAY_MEMO_PREFIX:-}
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vishop_subscription
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      SPRING_DATASOURCE_URL: ${SUBSCRIPTION_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/vishop_subscription}
+      SPRING_DATASOURCE_USERNAME: ${SUBSCRIPTION_DATASOURCE_USERNAME:-${POSTGRES_USER}}
+      SPRING_DATASOURCE_PASSWORD: ${SUBSCRIPTION_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
       TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
       JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
     deploy:
@@ -383,6 +392,9 @@ services:
   # 8. API Gateway (Public Ingress Entrypoint on Host Port 8000)
   # ---------------------------------------------------------------------------
   api-gateway:
+    env_file:
+      - path: ../../services/api-gateway/.env.prod
+        required: false
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.prod
@@ -405,10 +417,10 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set the same access JWT key as IAM}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       SPRING_PROFILES_ACTIVE: prod
-      IAM_SERVICE_URL: http://iam-service:8080
-      AUDIT_SERVICE_URL: http://audit-service:8082
-      SUBSCRIPTION_SERVICE_URL: http://subscription-service:8083
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      IAM_SERVICE_URL: ${IAM_SERVICE_URL:-http://iam-service:8080}
+      AUDIT_SERVICE_URL: ${AUDIT_SERVICE_URL:-http://audit-service:8082}
+      SUBSCRIPTION_SERVICE_URL: ${SUBSCRIPTION_SERVICE_URL:-http://subscription-service:8083}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
       TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
       JAVA_OPTS: ${JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
     deploy:

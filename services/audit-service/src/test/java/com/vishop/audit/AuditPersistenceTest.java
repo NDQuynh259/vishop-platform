@@ -17,7 +17,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /** Flyway creates the PostgreSQL schema; Hibernate validates it and persists JSONB through JPA. */
-@DataJpaTest
+@DataJpaTest(properties = "vishop.env-file.enabled=false")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class AuditPersistenceTest {
   private static final EmbeddedPostgres POSTGRES = startPostgres();

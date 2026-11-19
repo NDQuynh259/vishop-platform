@@ -44,26 +44,35 @@ class PersistenceArchitectureTest {
     try (var services = Files.list(WORKSPACE.resolve("services"))) {
       for (var service : services.filter(Files::isDirectory).toList()) {
         var resources = service.resolve("src/main/resources");
-        var config = resources.resolve("application.yml");
-        if (!Files.exists(config)) continue;
-        Map<String, Object> document;
-        try (var reader = Files.newBufferedReader(config)) {
-          document = new Yaml().load(reader);
+        if (!Files.isDirectory(resources)) continue;
+        try (var configs = Files.list(resources)) {
+          for (var config :
+              configs
+                  .filter(
+                      path -> path.getFileName().toString().matches("application(?:-.+)?\\.yml"))
+                  .toList()) {
+            Map<String, Object> document;
+            try (var reader = Files.newBufferedReader(config)) {
+              document = new Yaml().load(reader);
+            }
+            if (value(document, "spring", "datasource") == null) continue;
+            String name = service.getFileName() + "/" + config.getFileName();
+            assertEquals(
+                "validate", value(document, "spring", "jpa", "hibernate", "ddl-auto"), name);
+            assertEquals(false, value(document, "spring", "jpa", "generate-ddl"), name);
+            assertEquals("never", value(document, "spring", "sql", "init", "mode"), name);
+            assertEquals(false, value(document, "spring", "flyway", "enabled"), name);
+            assertEquals(false, value(document, "spring", "flyway", "baseline-on-migrate"), name);
+            assertEquals(true, value(document, "spring", "flyway", "clean-disabled"), name);
+            try (var files = Files.list(resources.resolve("db/migration"))) {
+              assertTrue(
+                  files.anyMatch(path -> path.getFileName().toString().matches("V.+__.+\\.sql")),
+                  name);
+            }
+            assertFalse(Files.exists(resources.resolve("schema.sql")), name);
+            checked++;
+          }
         }
-        if (value(document, "spring", "datasource") == null) continue;
-        String name = service.getFileName().toString();
-        assertEquals("validate", value(document, "spring", "jpa", "hibernate", "ddl-auto"), name);
-        assertEquals(false, value(document, "spring", "jpa", "generate-ddl"), name);
-        assertEquals("never", value(document, "spring", "sql", "init", "mode"), name);
-        assertEquals(false, value(document, "spring", "flyway", "enabled"), name);
-        assertEquals(false, value(document, "spring", "flyway", "baseline-on-migrate"), name);
-        assertEquals(true, value(document, "spring", "flyway", "clean-disabled"), name);
-        try (var files = Files.list(resources.resolve("db/migration"))) {
-          assertTrue(
-              files.anyMatch(path -> path.getFileName().toString().matches("V.+__.+\\.sql")), name);
-        }
-        assertFalse(Files.exists(resources.resolve("schema.sql")), name);
-        checked++;
       }
     }
     assertTrue(checked > 0, "Expected at least one database-backed service");

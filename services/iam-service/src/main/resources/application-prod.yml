@@ -1,8 +1,66 @@
+server:
+  port: ${IAM_PORT:8080}
+spring:
+  data:
+    redis:
+      host: ${AUTH_REDIS_HOST:localhost}
+      port: ${AUTH_REDIS_PORT:6380}
+      password: ${AUTH_REDIS_PASSWORD}
+      database: ${AUTH_REDIS_DATABASE:0}
+      timeout: 2s
+      connect-timeout: 2s
+  output:
+    ansi:
+      enabled: ALWAYS
+  application:
+    name: iam-service
+  datasource:
+    url: ${IAM_DATASOURCE_URL:${SPRING_DATASOURCE_URL:}}
+    username: ${IAM_DATASOURCE_USERNAME:${SPRING_DATASOURCE_USERNAME:}}
+    password: ${IAM_DATASOURCE_PASSWORD:${SPRING_DATASOURCE_PASSWORD:}}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+    generate-ddl: false
+    hibernate:
+      ddl-auto: validate
+  sql:
+    init:
+      mode: never
+  flyway:
+    enabled: false
+    baseline-on-migrate: false
+    clean-disabled: true
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
 vishop:
+  cache:
+    key-prefix: ${CACHE_KEY_PREFIX:${AUTH_CACHE_PREFIX:vishop:}}
   security:
     jwt:
       access-token-secret: ${JWT_ACCESS_SECRET}
       refresh-token-secret: ${JWT_REFRESH_SECRET}
+      access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
+      refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
     cookies:
       secure: ${AUTH_COOKIE_SECURE:true}
+      same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
     allowed-origins: ${ALLOWED_ORIGINS}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}

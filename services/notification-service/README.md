@@ -2,6 +2,11 @@
 
 Service business rules, architecture and database ERDs: [docs/README.md](docs/README.md).
 
+For a dedicated Spring Boot host, set `vishop.env-file.service=notification-service` to
+load the module's `.env.dev` or `.env.prod`. An existing service hosting the module can
+provide the Notification variables through its own deployment environment. The module's
+profile YAML files are under `classpath:notification/` for explicit import by the host.
+
 This service contains three business modules (`notification`, `setting`, `announcement`), shared notification constants, database
 schema and standalone Flyway migration CLI. See [module design](docs/module-design.md)
 for implemented use cases and adapter contracts. [Shared constants](docs/constants.md) define

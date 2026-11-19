@@ -3,6 +3,7 @@ rootProject.name = "core-platform"
 include(
     // Platform shared libraries
     "libs:common-domain",
+    "libs:common-config",
     "libs:common-web",
     "libs:common-security",
     "libs:common-cache",

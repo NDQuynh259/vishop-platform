@@ -5,15 +5,20 @@ Các runtime hiện tại là `iam-service` (:8080), `api-gateway` (:8000) và
 
 ## Môi trường
 
-Cần JDK 21 và Docker Desktop/Compose để chạy PostgreSQL 16, Kafka và Redis:
+Cần JDK 21 và Docker Desktop/Compose. Sao chép mẫu env rồi điền `POSTGRES_PASSWORD` và
+`GRAFANA_ADMIN_PASSWORD` trước khi chạy hạ tầng. Nếu chạy cả stack dev, điền thêm
+`JWT_ACCESS_SECRET` trong `infra/.env.dev` và `JWT_REFRESH_SECRET` trong
+`services/iam-service/.env.dev`. Xem [quy ước cấu hình](environment.md).
 
 ```powershell
-docker compose -f infra/compose/docker-compose.infra.yml up -d
+Copy-Item infra/.env.example infra/.env.dev
+# Điền POSTGRES_PASSWORD và GRAFANA_ADMIN_PASSWORD trong infra/.env.dev.
+docker compose --env-file infra/.env.dev -f infra/compose/docker-compose.infra.yml up -d
 ```
 
-Trên volume mới, PostgreSQL tự tạo `vishop_iam` và `vishop_audit` tại localhost:5432
-(user `vishop`, mật khẩu local `vishop_secret`). Volume cũ cần tạo database IAM
-riêng; không xóa volume để áp dụng lại init script.
+Trên volume mới, PostgreSQL tạo các database của service tại `localhost:5432` theo mặc định.
+Với volume hiện có, dùng thông tin đăng nhập của database đã khởi tạo. Thay env của
+container PostgreSQL chỉ đổi thông tin khởi tạo cho volume mới.
 
 Thiết lập database credentials theo [hướng dẫn IAM](../services/iam-service/README.md).
 IAM cấp access/refresh JWT HS256 bằng hai key riêng và tạo sid cho mỗi lần login.
@@ -42,10 +47,10 @@ Sau khi PostgreSQL sẵn sàng, chạy migration cho cả IAM và audit từ th�
 ```powershell
 $env:IAM_DB_URL = "jdbc:postgresql://localhost:5432/vishop_iam"
 $env:IAM_DB_USER = "vishop"
-$env:IAM_DB_PASSWORD = "vishop_secret"
+$env:IAM_DB_PASSWORD = '<mật khẩu PostgreSQL local>'
 $env:AUDIT_DB_URL = "jdbc:postgresql://localhost:5432/vishop_audit"
 $env:AUDIT_DB_USER = "vishop"
-$env:AUDIT_DB_PASSWORD = "vishop_secret"
+$env:AUDIT_DB_PASSWORD = $env:IAM_DB_PASSWORD
 .\gradlew.bat :services:iam-service:migrate :services:audit-service:migrate
 if ($LASTEXITCODE -ne 0) { throw "Migration thất bại; chưa khởi chạy ứng dụng." }
 ```
@@ -57,7 +62,10 @@ migration mới; Flyway chỉ áp dụng các migration chưa chạy.
 
 ### Chạy từng service
 
-Mỗi lệnh chạy trong một terminal đã thiết lập biến môi trường:
+Đặt `SPRING_DATASOURCE_PASSWORD` trong terminal hoặc cấu hình chạy IDE cho IAM, Audit và
+Subscription. Đặt `JWT_ACCESS_SECRET` giống nhau cho IAM và Gateway, cùng
+`JWT_REFRESH_SECRET` riêng cho IAM. Nếu bật mật khẩu Auth Redis, truyền
+`AUTH_REDIS_PASSWORD` vào các service kết nối. Sau đó chạy service trong terminal tương ứng.
 
 ```powershell
 .\gradlew.bat :services:iam-service:bootRun
@@ -73,12 +81,13 @@ Mỗi lệnh chạy trong một terminal đã thiết lập biến môi trườn
 
 ### Chạy toàn bộ stack development
 
-Cấu hình secrets trong môi trường hoặc `infra/.env.dev`. Nếu dùng file này,
-thêm `--env-file infra/.env.dev` vào lệnh Compose dưới đây.
-Khởi chạy PostgreSQL của stack dev trước:
+Dùng file chung và file IAM đã cấu hình ở trên. Tạo file env cho các service còn lại
+khi cần đổi giá trị mặc định. Khởi chạy PostgreSQL trước để chạy migration.
 
 ```powershell
-docker compose -f infra/compose/docker-compose.dev.yml up -d --wait postgres
+# Nếu chưa có file IAM, sao chép mẫu và điền JWT_REFRESH_SECRET.
+Copy-Item services/iam-service/.env.example services/iam-service/.env.dev
+.\infra\scripts\up.ps1 -Env dev -Service postgres
 if ($LASTEXITCODE -ne 0) { throw "PostgreSQL chưa sẵn sàng." }
 ```
 
@@ -98,7 +107,7 @@ nguyên volume dữ liệu.
 và trả lỗi nếu Compose thất bại hoặc service không healthy trong thời gian chờ
 (mặc định 180 giây, điều chỉnh bằng `-WaitTimeout 300`). Cần Docker Compose hỗ trợ
 `up --wait --wait-timeout`. Với production, migrate database đích trước rồi chạy
-`.\infra\scripts\up.ps1 -Env prod -Build` với cấu hình `infra/.env.prod`.
+`.\infra\scripts\up.ps1 -Env prod -Build` với `infra/.env.prod` và các file `.env.prod` của service.
 
 ## Luồng thử nghiệm
 

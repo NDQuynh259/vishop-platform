@@ -5,8 +5,7 @@ import java.time.Instant;
 /**
  * Internal maintenance across tenants; each call deletes at most one independently committed batch.
  */
+@FunctionalInterface
 public interface NotificationRecipientRetentionRepository {
-  int purgeVisibleBefore(Instant cutoffInclusive, int batchSize);
-
-  int purgeArchivedBefore(Instant cutoffInclusive, int batchSize);
+  int purgeCreatedBefore(Instant cutoffInclusive, int batchSize);
 }

@@ -5,7 +5,7 @@ IAM cấp access/refresh bằng hai key riêng và hỗ trợ logout riêng sid 
 Xem [luồng auth và sơ đồ chi tiết](authentication-flow.md).
 
 Gateway dùng Spring Cloud Gateway/WebFlux, chạy ở cổng 8000. Các route được định nghĩa
-trong [application.yml](../../services/api-gateway/src/main/resources/application.yml).
+trong [application-dev.yml](../../services/api-gateway/src/main/resources/application-dev.yml).
 
 | Route | Đích |
 | --- | --- |

@@ -34,12 +34,15 @@ import redis.embedded.RedisServer;
 
 @SpringBootTest(
     properties = {
+      "vishop.env-file.enabled=false",
       "vishop.cache.key-prefix=iam-test:cache:",
       "vishop.outbox.enabled=false",
       "vishop.security.authorization.initial-delay-ms=600000",
       "vishop.security.authorization.eager-publish=false",
       "management.tracing.enabled=false",
-      "vishop.security.cookies.secure=true"
+      "vishop.security.cookies.secure=true",
+      "vishop.security.jwt.access-token-secret=iam-test-access-key-at-least-32-bytes",
+      "vishop.security.jwt.refresh-token-secret=iam-test-refresh-key-at-least-32-bytes"
     })
 @AutoConfigureMockMvc
 class IamAuthenticationApplicationTest {

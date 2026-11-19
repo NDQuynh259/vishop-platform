@@ -44,7 +44,7 @@ class NotificationSchemaTest {
     }
     String url = postgres.getJdbcUrl("postgres", name);
     flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(20);
+    assertThat(flyway.migrate().migrationsExecuted).isEqualTo(21);
     db = DriverManager.getConnection(url, "postgres", "postgres");
     execute(
         "INSERT INTO"
@@ -155,7 +155,7 @@ class NotificationSchemaTest {
                 .load()
                 .migrate()
                 .migrationsExecuted)
-        .isEqualTo(9);
+        .isEqualTo(10);
     try (var connection = DriverManager.getConnection(url, "postgres", "postgres");
         var statement = connection.createStatement();
         var result =
@@ -283,7 +283,7 @@ class NotificationSchemaTest {
               + "'00000000-0000-0000-0000-000000000005',"
               + "'2026-01-01 00:00:00Z','2026-01-02 00:00:00Z')");
       var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-      assertThat(latest.migrate().migrationsExecuted).isEqualTo(20 - previousVersion);
+      assertThat(latest.migrate().migrationsExecuted).isEqualTo(21 - previousVersion);
       latest.validate();
       try (var result =
           statement.executeQuery(
