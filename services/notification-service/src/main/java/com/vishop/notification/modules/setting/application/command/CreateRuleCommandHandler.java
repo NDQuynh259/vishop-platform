@@ -16,6 +16,6 @@ public class CreateRuleCommandHandler implements CommandHandler<CreateRuleComman
   @Transactional
   public RuleView handle(CreateRuleCommand request) {
     return service.createRule(
-        request.getTenantId(), request.getType(), request.isEnabled(), request.getChannels());
+        request.getTenantId(), request.getType(), request.isEnabled(), request.getFeatureCode());
   }
 }

@@ -23,6 +23,7 @@ import com.vishop.notification.modules.setting.infrastructure.persistence.reposi
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationChannelSettingRepository;
 import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationRuleController;
 import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationSettingController;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.UuidV7;
@@ -38,6 +39,8 @@ import java.util.concurrent.*;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -118,27 +121,30 @@ class NotificationSettingPersistenceTest {
                   post(path)
                       .contentType(MediaType.APPLICATION_JSON)
                       .content(
-                          "{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[\"IN_APP\",\"EMAIL\",\"TELEGRAM\",\"LARK\"]}"))
+                          "{\"type\":\"STOCK_LOW\",\"enabled\":true,\"featureCode\":\"INVENTORY\"}"))
               .andExpect(status().isCreated())
               .andExpect(jsonPath("$.version").value(1))
               .andReturn()
               .getResponse();
       UUID id = UUID.fromString(json.readTree(response.getContentAsString()).get("id").asText());
       assertThat(id.version()).isEqualTo(7);
+      mvc.perform(get(path))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(1))
+          .andExpect(jsonPath("$.data[0].id").value(id.toString()));
       var stored = ruleRows.findById(id).orElseThrow();
       assertThat(stored.getTenantId()).isEqualTo(tenant);
-      assertThat(stored.getChannels()).contains("LARK");
+      assertThat(stored.getFeatureCode()).isEqualTo(NotificationFeatureCode.INVENTORY);
       jdbc.update(
           "UPDATE notification_alert_rules SET thresholds=?::jsonb,cooldown_seconds=? WHERE id=?",
           "{\"legacyLimit\":10}",
           172800,
           id);
-      assertThat(rules.ruleById(tenant, id).getChannels())
-          .containsExactlyInAnyOrder(NotificationChannel.values());
+      assertThat(rules.ruleById(tenant, id).getFeatureCode()).isEqualTo(NotificationFeatureCode.INVENTORY);
       mvc.perform(
               post(path)
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content("{\"type\":\"STOCK_LOW\",\"enabled\":false,\"channels\":[]}"))
+                  .content("{\"type\":\"STOCK_LOW\",\"enabled\":false,\"featureCode\":\"INVENTORY\"}"))
           .andExpect(status().isConflict());
       String location = response.getHeader("Location");
       mvc.perform(get(location))
@@ -147,11 +153,10 @@ class NotificationSettingPersistenceTest {
       mvc.perform(
               put(location)
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content("{\"enabled\":false,\"channels\":[\"EMAIL\"],\"version\":1}"))
+                  .content("{\"enabled\":false,\"featureCode\":\"PRODUCT\",\"version\":1}"))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.version").value(2));
-      assertThat(rules.ruleById(tenant, id).getChannels())
-          .containsExactly(NotificationChannel.EMAIL);
+      assertThat(rules.ruleById(tenant, id).getFeatureCode()).isEqualTo(NotificationFeatureCode.PRODUCT);
       assertThat(
               jdbc.queryForObject(
                   "SELECT cooldown_seconds FROM notification_alert_rules WHERE id=?",
@@ -167,20 +172,20 @@ class NotificationSettingPersistenceTest {
       mvc.perform(
               put(location)
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content("{\"enabled\":true,\"channels\":[],\"version\":1}"))
+                  .content("{\"enabled\":true,\"featureCode\":\"INVENTORY\",\"version\":1}"))
           .andExpect(status().isConflict());
       var foreign =
           rules.createRule(
               UUID.randomUUID(),
               NotificationTypeCode.STOCK_LOW,
               true,
-              Set.of(NotificationChannel.IN_APP));
+              NotificationFeatureCode.INVENTORY);
       for (UUID missing : List.of(UUID.randomUUID(), foreign.getId())) {
         mvc.perform(get(path + "/" + missing)).andExpect(status().isNotFound());
         mvc.perform(
                 put(path + "/" + missing)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"enabled\":false,\"channels\":[],\"version\":1}"))
+                    .content("{\"enabled\":false,\"featureCode\":\"INVENTORY\",\"version\":1}"))
             .andExpect(status().isNotFound());
       }
       var row = ruleRows.findById(id).orElseThrow();
@@ -190,12 +195,12 @@ class NotificationSettingPersistenceTest {
       mvc.perform(
               put(location)
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content("{\"enabled\":false,\"channels\":[],\"version\":3}"))
+                  .content("{\"enabled\":false,\"featureCode\":\"INVENTORY\",\"version\":3}"))
           .andExpect(status().isNotFound());
       mvc.perform(
               post(path)
                   .contentType(MediaType.APPLICATION_JSON)
-                  .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[]}"))
+                  .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"featureCode\":\"INVENTORY\"}"))
           .andExpect(status().isConflict());
     } finally {
       SecurityContextHolder.clearContext();
@@ -213,12 +218,12 @@ class NotificationSettingPersistenceTest {
             code.defaultEnabled(),
             code.defaultChannels());
     var policy = new NotificationSettingDispatchPolicy(settings, rules);
-    assertThat(rules.rules(tenant)).hasSize(NotificationTypeCode.values().length);
+    assertThat(rules.rules(tenant)).isEmpty();
     assertThat(rules.ruleForType(tenant, code).getId()).isNull();
     assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.IN_APP);
     var rule =
         rules.createRule(
-            tenant, code, true, Set.of(NotificationChannel.IN_APP, NotificationChannel.LARK));
+            tenant, code, true, NotificationFeatureCode.INVENTORY);
     assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.IN_APP);
     var channel = settings.createChannel(tenant, NotificationChannel.IN_APP, null, false, Map.of());
     assertThat(policy.resolve(tenant, type).channels()).isEmpty();
@@ -228,7 +233,7 @@ class NotificationSettingPersistenceTest {
         new ChannelUpdate(true, (Map<String, String>) null, channel.version()));
     assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.IN_APP);
     rules.updateRule(
-        tenant, rule.getId(), new RuleChange(false, rule.getChannels(), rule.getVersion()));
+        tenant, rule.getId(), new RuleChange(false, rule.getFeatureCode(), rule.getVersion()));
     assertThat(policy.resolve(tenant, type).channels()).isEmpty();
     assertThat(
             policy.restrictForUser(
@@ -249,7 +254,7 @@ class NotificationSettingPersistenceTest {
                       tenant,
                       NotificationTypeCode.STOCK_LOW,
                       true,
-                      Set.of(NotificationChannel.LARK)));
+                      NotificationFeatureCode.INVENTORY));
               return true;
             } catch (ConflictException ex) {
               return false;
@@ -269,7 +274,7 @@ class NotificationSettingPersistenceTest {
             updates.await();
             try {
               rules.updateRule(
-                  tenant, rule.getId(), new RuleChange(false, Set.of(), rule.getVersion()));
+                  tenant, rule.getId(), new RuleChange(false, NotificationFeatureCode.INVENTORY, rule.getVersion()));
               return true;
             } catch (ConflictException ex) {
               return false;
@@ -936,6 +941,96 @@ class NotificationSettingPersistenceTest {
         .containsEntry("chatId", "-103");
     assertThat(settings.channelById(tenant, sales.id()).connectionConfig())
         .containsEntry("chatId", "-102");
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = NotificationChannel.class,
+      names = {"LARK", "TELEGRAM"})
+  void typeSelectionIsPerGroupAndCanBePreservedReplacedOrCleared(NotificationChannel provider) {
+    var stock = settings.createChannel(tenant, provider, "Stock", false, Map.of());
+    var sales = settings.createChannel(tenant, provider, "Sales", false, Map.of());
+    var types = Set.of(NotificationTypeCode.STOCK_LOW);
+    var updated =
+        settings.updateChannel(
+            tenant,
+            stock.id(),
+            new ChannelUpdate(false, null, stock.version(), null, null, null, null, types));
+    assertThat(settings.channelById(tenant, stock.id()).allowedTypes()).isEqualTo(types);
+    assertThat(settings.channelById(tenant, sales.id()).allowedTypes()).isEmpty();
+    var retained =
+        settings.updateChannel(
+            tenant, stock.id(), new ChannelUpdate(false, Map.of(), updated.version()));
+    assertThat(retained.allowedTypes()).isEqualTo(types);
+    var cleared =
+        settings.updateChannel(
+            tenant,
+            stock.id(),
+            new ChannelUpdate(false, null, retained.version(), null, null, null, null, Set.of()));
+    assertThat(cleared.allowedTypes()).isEmpty();
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = NotificationChannel.class,
+      names = {"TELEGRAM", "LARK"})
+  void groupRuleApiReplacesPersistedRulesByTenantScopedId(NotificationChannel channel)
+      throws Exception {
+    var group = settings.createChannel(tenant, channel, "Ops", false, Map.of());
+    var rule = rules.createRule(tenant, NotificationTypeCode.STOCK_LOW, true, NotificationFeatureCode.INVENTORY);
+    var foreign =
+        rules.createRule(UUID.randomUUID(), NotificationTypeCode.STOCK_LOW, true, NotificationFeatureCode.INVENTORY);
+    var mvc =
+        MockMvcBuilders.standaloneSetup(
+                new NotificationSettingController(commands, queries, json, validator))
+            .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .build();
+    var actor =
+        new GatewayPrincipal(
+            UUID.randomUUID(),
+            tenant,
+            "USER",
+            "OWNER",
+            Set.of("notifications.settings.manage", "notifications.settings.view"));
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, List.of()));
+    String path = "/api/v1/notifications/settings/channels/" + group.id() + "/rules";
+    try {
+      var body =
+          json.writeValueAsString(
+              Map.of("version", group.version(), "ruleIds", List.of(rule.getId())));
+      mvc.perform(put(path).contentType(MediaType.APPLICATION_JSON).content(body))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.version").value(group.version() + 1));
+      mvc.perform(put(path).contentType(MediaType.APPLICATION_JSON).content(body))
+          .andExpect(status().isConflict());
+      mvc.perform(
+              put(path)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      json.writeValueAsString(
+                          Map.of(
+                              "version",
+                              group.version() + 1,
+                              "ruleIds",
+                              List.of(foreign.getId())))))
+          .andExpect(status().isNotFound());
+      mvc.perform(get(path))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.ruleIds[0]").value(rule.getId().toString()));
+      mvc.perform(
+              put(path)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      json.writeValueAsString(
+                          Map.of("version", group.version() + 1, "ruleIds", List.of()))))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.ruleIds").isEmpty());
+      assertThat(settings.channelById(tenant, group.id()).allowedTypes()).isEmpty();
+    } finally {
+      SecurityContextHolder.clearContext();
+    }
   }
 
   @Test

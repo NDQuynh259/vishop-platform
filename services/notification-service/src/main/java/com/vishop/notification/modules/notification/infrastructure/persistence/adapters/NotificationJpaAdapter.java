@@ -98,7 +98,6 @@ public class NotificationJpaAdapter
 
   public List<NotificationInboxEntry> findAll(
       NotificationInboxScope scope, NotificationInboxFilter filter) {
-    if (scope.getPermissions().isEmpty()) return List.of();
     String conditions = listConditions(filter);
     var query =
         em.createQuery(
@@ -118,7 +117,6 @@ public class NotificationJpaAdapter
   }
 
   public long count(NotificationInboxScope scope, NotificationInboxFilter filter) {
-    if (scope.getPermissions().isEmpty()) return 0;
     var query =
         em.createQuery(
             "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
@@ -152,7 +150,8 @@ public class NotificationJpaAdapter
     if (feature != null) {
       var types =
           Arrays.stream(NotificationTypeCode.values())
-              .filter(type -> feature == NotificationFeatureCode.LEGACY || type.feature() == feature)
+              .filter(
+                  type -> feature == NotificationFeatureCode.LEGACY || type.feature() == feature)
               .map(NotificationTypeCode::code)
               .toList();
       query.setParameter("featureTypes", types);
@@ -166,7 +165,6 @@ public class NotificationJpaAdapter
   }
 
   public Optional<NotificationInboxEntry> findById(NotificationInboxScope scope, UUID id) {
-    if (scope.getPermissions().isEmpty()) return Optional.empty();
     var query =
         em.createQuery(
             "select n,r.readAt from NotificationJpaEntity n,NotificationRecipientJpaEntity r where "
@@ -178,7 +176,6 @@ public class NotificationJpaAdapter
   }
 
   public long unreadCount(NotificationInboxScope scope) {
-    if (scope.getPermissions().isEmpty()) return 0;
     var query =
         em.createQuery(
             "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where"
@@ -192,22 +189,19 @@ public class NotificationJpaAdapter
 
   @Transactional
   public NotificationInboxEntry markRead(NotificationInboxScope scope, UUID id, Instant at) {
-    if (!scope.getPermissions().isEmpty()) {
-      var query =
-          em.createQuery(
-              "update NotificationRecipientJpaEntity r set r.readAt=case when r.createdAt>:at then"
-                  + " r.createdAt else :at end,r.updatedAt=case when r.updatedAt>:at then"
-                  + " r.updatedAt else :at end,r.version=r.version+1 where "
-                  + recipientScope()
-                  + " and r.deletedAt is null and r.readAt is null and r.notificationId=:id");
-      bind(query, scope).setParameter("id", id).setParameter("at", at).executeUpdate();
-    }
+    var query =
+        em.createQuery(
+            "update NotificationRecipientJpaEntity r set r.readAt=case when r.createdAt>:at then"
+                + " r.createdAt else :at end,r.updatedAt=case when r.updatedAt>:at then"
+                + " r.updatedAt else :at end,r.version=r.version+1 where "
+                + recipientScope()
+                + " and r.deletedAt is null and r.readAt is null and r.notificationId=:id");
+    bind(query, scope).setParameter("id", id).setParameter("at", at).executeUpdate();
     return findById(scope, id).orElseThrow(() -> missing(id));
   }
 
   @Transactional
   public int markAllRead(NotificationInboxScope scope, Instant before, Instant at) {
-    if (scope.getPermissions().isEmpty()) return 0;
     var query =
         em.createQuery(
             "update NotificationRecipientJpaEntity r set r.readAt=case when r.createdAt>:at then"
@@ -220,7 +214,6 @@ public class NotificationJpaAdapter
 
   @Transactional
   public void archive(NotificationInboxScope scope, UUID id, Instant at) {
-    if (scope.getPermissions().isEmpty()) throw missing(id);
     var existing =
         em.createQuery(
             "select count(n.id) from NotificationJpaEntity n,NotificationRecipientJpaEntity r where"
@@ -274,14 +267,13 @@ public class NotificationJpaAdapter
   }
 
   private String payloadScope() {
-    return "n.tenantId=:tenant and n.deletedAt is null and n.requiredPermission in :permissions";
+    return "n.tenantId=:tenant and n.deletedAt is null";
   }
 
   private Query bind(Query query, NotificationInboxScope scope) {
     return query
         .setParameter("tenant", scope.getTenantId())
-        .setParameter("user", scope.getUserId())
-        .setParameter("permissions", scope.getPermissions());
+        .setParameter("user", scope.getUserId());
   }
 
   private NotificationInboxEntry entry(Object[] row) {

@@ -4,10 +4,12 @@ import com.vishop.notification.modules.notification.infrastructure.persistence.e
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi;
 import com.vishop.notification.modules.setting.application.command.CreateChannelCommandHandler;
 import com.vishop.notification.modules.setting.application.command.CreateRuleCommandHandler;
+import com.vishop.notification.modules.setting.application.command.ReplaceChannelRulesCommandHandler;
 import com.vishop.notification.modules.setting.application.command.UpdateChannelCommandHandler;
 import com.vishop.notification.modules.setting.application.command.UpdateRuleCommandHandler;
 import com.vishop.notification.modules.setting.application.port.NotificationSettingConnectionPolicy;
 import com.vishop.notification.modules.setting.application.query.GetChannelQueryHandler;
+import com.vishop.notification.modules.setting.application.query.GetChannelRulesQueryHandler;
 import com.vishop.notification.modules.setting.application.query.GetRuleQueryHandler;
 import com.vishop.notification.modules.setting.application.query.ListChannelsQueryHandler;
 import com.vishop.notification.modules.setting.application.query.ListRulesQueryHandler;
@@ -38,6 +40,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
     basePackageClasses = {NotificationChannelSettingJpaEntity.class, NotificationJpaEntity.class})
 @EnableJpaRepositories(basePackageClasses = SpringDataNotificationChannelSettingRepository.class)
 @Import({
+  GetChannelRulesQueryHandler.class,
+  ReplaceChannelRulesCommandHandler.class,
   NotificationSettingPersistenceMapper.class,
   NotificationAlertRuleJpaAdapter.class,
   NotificationSettingJpaAdapter.class,

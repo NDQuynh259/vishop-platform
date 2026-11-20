@@ -2,9 +2,7 @@ package com.vishop.notification.modules.setting.application.api;
 
 import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
-import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import lombok.Value;
 
@@ -15,14 +13,8 @@ public interface NotificationAlertRuleApi {
     String type;
     String name;
     boolean enabled;
-    Set<NotificationChannel> channels;
+    NotificationFeatureCode featureCode;
     long version;
-
-    public NotificationFeatureCode getFeatureCode() {
-      return NotificationTypeCode.fromCode(type)
-          .map(NotificationTypeCode::feature)
-          .orElse(NotificationFeatureCode.LEGACY);
-    }
 
     public String getFeatureName() {
       return getFeatureCode().displayName();
@@ -32,14 +24,8 @@ public interface NotificationAlertRuleApi {
   @Value
   class RuleChange {
     boolean enabled;
-    Set<NotificationChannel> channels;
+    NotificationFeatureCode featureCode;
     long version;
-
-    public RuleChange(boolean enabled, Set<NotificationChannel> channels, long version) {
-      this.enabled = enabled;
-      this.channels = Set.copyOf(channels);
-      this.version = version;
-    }
   }
 
   List<RuleView> rules(UUID tenantId);
@@ -49,7 +35,7 @@ public interface NotificationAlertRuleApi {
   RuleView ruleForType(UUID tenantId, NotificationTypeCode type);
 
   RuleView createRule(
-      UUID tenantId, NotificationTypeCode type, boolean enabled, Set<NotificationChannel> channels);
+      UUID tenantId, NotificationTypeCode type, boolean enabled, NotificationFeatureCode featureCode);
 
   RuleView updateRule(UUID tenantId, UUID ruleId, RuleChange change);
 }

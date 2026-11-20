@@ -48,8 +48,9 @@ thông báo tạo sau cutoff không bị đánh dấu đọc.
 
 ## Phạm vi truy cập
 
-Mọi list/detail/count/read/read-all/archive đều yêu cầu liên kết recipient đúng tenant/user,
-notification chưa xóa mềm và user hiện có `required_permission`. Mọi shop thuộc tenant đang đăng nhập
+Mọi thao tác hộp thư yêu cầu dòng recipient đúng tenant và user, cùng thông báo chưa xóa mềm.
+Luồng phân phối kiểm tra `required_permission` khi chọn người nhận. Nếu user mất quyền sau đó,
+user vẫn xem được thông báo đã nhận trong tenant. Mọi shop thuộc tenant đang đăng nhập
 đều được phép truy cập nên các thông báo có gắn `shopId` trong cùng tenant hiển thị bình thường
 (và vẫn hỗ trợ lọc theo query `?shopId=`). Các thao tác đọc bỏ recipient đã ẩn. Ngoài phạm vi hoặc
 không tồn tại trả 404 theo ID; count/list không để lộ mục bị chặn. Quyền cấu hình không cấp thêm
@@ -153,7 +154,7 @@ data:{"notificationId":"<uuid>","tenantId":"<uuid>"}
 ```
 
 Rollback và replay idempotent không phát tín hiệu. Chỉ các kết nối có đúng tenant, user thuộc
-snapshot recipient và có `required_permission` mới nhận event. Payload không chứa danh sách
+snapshot recipient mới nhận event. Payload không chứa danh sách
 người nhận hay nội dung nghiệp vụ. Registry index theo `(tenantId, userId)` nên mỗi event chỉ tra
 các recipient của nó, không quét toàn bộ kết nối. Mỗi tab có kết nối riêng; mặc định tối đa 5 kết nối
 cho một user/tenant trên mỗi instance, 1000 kết nối mỗi instance; vượt giới hạn trả 429 và `Retry-After: 3`.
@@ -166,9 +167,9 @@ SSE chỉ định retry 3 giây cho lỗi hạn mức và shutdown; lỗi thiế
 Heartbeat là comment `:heartbeat` khi kết nối không vừa gửi dữ liệu. Mặc định gửi sau 12–15 giây
 nhàn rỗi, có jitter để rải thời điểm gửi và scheduler kiểm tra mỗi giây. Không xếp heartbeat khi
 writer đang chạy hoặc chờ. Kết nối sống tối đa 60 giây rồi đóng để client
-kết nối lại qua gateway và lấy quyền/session hiện hành. Quyền trong stream là snapshot lúc
-subscribe; thay đổi quyền hoặc logout chưa chủ động ngắt stream đang mở, tối đa tới hết lifetime.
-REST vẫn kiểm tra quyền hiện hành khi tải nội dung. Registry dọn kết nối khi timeout, lỗi,
+kết nối lại qua gateway để xác thực phiên. Thay đổi quyền hoặc logout chưa chủ động ngắt
+stream đang mở, tối đa tới hết lifetime. REST kiểm tra dòng người nhận của tenant và user
+khi tải nội dung. Registry dọn kết nối khi timeout, lỗi,
 completion và shutdown. Mỗi kết nối có tối đa một tác vụ ghi đang chạy hoặc chờ trên pool riêng,
 và mailbox FIFO mặc định tối đa 32 event chờ ngoài event đang ghi. `ready` cũng nằm trong mailbox
 và luôn đi trước thông báo. Pool mặc định có 4 platform thread; queue tác vụ tối đa bằng hạn mức

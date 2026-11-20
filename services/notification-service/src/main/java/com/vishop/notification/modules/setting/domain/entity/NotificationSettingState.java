@@ -1,7 +1,9 @@
 package com.vishop.notification.modules.setting.domain.entity;
 
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class NotificationSettingState {
@@ -20,8 +22,10 @@ public final class NotificationSettingState {
       long version,
       Map<String, String> connectionConfig,
       UUID id,
-      String name) {
+      String name,
+      Set<NotificationTypeCode> allowedTypes) {
     public Connection {
+      allowedTypes = Set.copyOf(allowedTypes);
       name = name == null ? channel.name() : name;
       connectionConfig = connectionConfig == null ? null : Map.copyOf(connectionConfig);
     }
@@ -50,10 +54,11 @@ public final class NotificationSettingState {
           version,
           connectionConfig,
           id,
-          null);
+          null,
+          Set.of());
     }
 
-    public Connection withName(String name) {
+    public Connection withSettings(String name, Set<NotificationTypeCode> allowedTypes) {
       return new Connection(
           channel,
           configured,
@@ -66,7 +71,8 @@ public final class NotificationSettingState {
           version,
           connectionConfig,
           id,
-          name);
+          name,
+          allowedTypes);
     }
 
     public Connection(

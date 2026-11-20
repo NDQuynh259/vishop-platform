@@ -30,7 +30,7 @@ flowchart LR
   I/O chạy ở đó. Publisher không gửi trực tiếp SSE cục bộ.
 - Mọi replica subscribe cùng channel bằng `RedisMessageListenerContainer` và nhận cả các event
   do chính mình phát. `onMessage()` giải mã và gọi `NotificationSseStreams.broadcastLocal()`.
-  Hàm này chỉ tra registry RAM theo tenant/user, kiểm tra permission, rồi xếp việc gửi SSE.
+  Hàm này tra registry RAM theo tenant và user trong danh sách người nhận rồi xếp việc gửi SSE.
 - Subscriber không ghi lại notification vào DB và không republish Spring event/Redis message;
   nhờ vậy không có vòng lặp hoặc hai đường gửi trùng tại instance tạo notification.
 
@@ -95,6 +95,6 @@ phải được xác nhận bằng load test cả Redis, gateway, SSE và tải 
 
 `NotificationRedisFanoutTest` chạy hai Spring application context độc lập, chung PostgreSQL và Redis
 thật: kiểm tra sau commit, rollback, không phát ngoài transaction, nhiều tab ở cả hai instance,
-tenant/user/permission isolation, không gửi trùng, lỗi publish giữ nguyên dữ liệu đã commit,
+cách ly theo tenant và người nhận, không gửi trùng, lỗi publish giữ nguyên dữ liệu đã commit,
 và resubscribe yêu cầu REST refresh ngay trên SSE còn mở. Test persistence inbox giữ kiểm tra
 idempotent replay của luồng tạo notification thật.

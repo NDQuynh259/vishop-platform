@@ -4,14 +4,12 @@ import com.vishop.notification.modules.setting.domain.entity.NotificationAlertRu
 import com.vishop.notification.modules.setting.domain.port.NotificationAlertRuleRepository;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.NotificationAlertRuleJpaEntity;
 import com.vishop.notification.modules.setting.infrastructure.persistence.repositories.SpringDataNotificationAlertRuleRepository;
-import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.UuidV7;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.OptimisticLockException;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,7 +44,7 @@ public class NotificationAlertRuleJpaAdapter implements NotificationAlertRuleRep
   @Transactional
   public NotificationAlertRule create(UUID tenantId, NotificationAlertRule rule) {
     UUID id = UuidV7.nextId();
-    if (rows.ensure(id, tenantId, rule.getType()) == 0)
+    if (rows.ensure(id, tenantId, rule.getType(), rule.getFeatureCode().name()) == 0)
       throw new ConflictException("Rule already exists for this type");
     var row = rows.lock(tenantId, id).orElseThrow(() -> missing(id));
     copy(row, rule);
@@ -60,7 +58,8 @@ public class NotificationAlertRuleJpaAdapter implements NotificationAlertRuleRep
     try {
       var row = rows.lock(tenantId, rule.getId()).orElseThrow(() -> missing(rule.getId()));
       em.refresh(row, LockModeType.PESSIMISTIC_WRITE);
-      if (row.getDeletedAt() != null) throw missing(rule.getId());
+      if (row.getDeletedAt() != null)
+        throw missing(rule.getId());
       if (row.getVersion() != expectedVersion)
         throw new ConflictException("Rule version has changed");
       copy(row, rule);
@@ -75,15 +74,13 @@ public class NotificationAlertRuleJpaAdapter implements NotificationAlertRuleRep
     if (!row.getType().equals(rule.getType()))
       throw new IllegalArgumentException("Rule type is immutable");
     row.setEnabled(rule.isEnabled());
-    row.setChannels(rule.getChannels().stream().sorted().map(Enum::name).toArray(String[]::new));
+    row.setFeatureCode(rule.getFeatureCode());
     row.touch();
   }
 
   private NotificationAlertRule view(NotificationAlertRuleJpaEntity row) {
-    var channels = EnumSet.noneOf(NotificationChannel.class);
-    for (String channel : row.getChannels()) channels.add(NotificationChannel.valueOf(channel));
     return new NotificationAlertRule(
-        row.getId(), row.getType(), row.isEnabled(), channels, row.getVersion());
+        row.getId(), row.getType(), row.isEnabled(), row.getFeatureCode(), row.getVersion());
   }
 
   private static EntityNotFoundException missing(UUID id) {

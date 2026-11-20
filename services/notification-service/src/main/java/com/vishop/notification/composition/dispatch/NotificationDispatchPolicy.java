@@ -17,10 +17,18 @@ public interface NotificationDispatchPolicy {
     }
   }
 
-  record RoutingPolicy(Set<NotificationChannel> channels, Set<UUID> selectedRecipients) {
+  record GroupSetting(NotificationChannel channel, UUID settingId) {}
+
+  record RoutingPolicy(
+      Set<NotificationChannel> channels, Set<UUID> selectedRecipients, Set<GroupSetting> groups) {
+    public RoutingPolicy(Set<NotificationChannel> channels, Set<UUID> selectedRecipients) {
+      this(channels, selectedRecipients, Set.of());
+    }
+
     public RoutingPolicy {
       channels = Set.copyOf(channels);
       selectedRecipients = Set.copyOf(selectedRecipients);
+      groups = Set.copyOf(groups);
     }
   }
 

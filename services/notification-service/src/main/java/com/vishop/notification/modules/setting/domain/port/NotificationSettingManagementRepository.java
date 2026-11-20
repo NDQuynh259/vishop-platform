@@ -1,8 +1,10 @@
 package com.vishop.notification.modules.setting.domain.port;
 
+import com.vishop.notification.modules.setting.domain.entity.ChannelRuleSelection;
 import com.vishop.notification.modules.setting.domain.entity.NotificationSettingState.Connection;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public interface NotificationSettingManagementRepository {
@@ -18,4 +20,9 @@ public interface NotificationSettingManagementRepository {
       UUID tenant, UUID channelId, Connection connection, long expectedVersion);
 
   Connection saveConnection(UUID tenant, Connection connection, long expectedVersion);
+
+  ChannelRuleSelection channelRules(UUID tenant, UUID settingId);
+
+  ChannelRuleSelection replaceChannelRules(
+      UUID tenant, UUID settingId, long version, Set<UUID> ruleIds);
 }

@@ -2,8 +2,10 @@ package com.vishop.notification.modules.setting.presentation.rest.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import jakarta.validation.constraints.*;
+import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,6 +15,8 @@ public class NotificationSettingCreateReq {
   @Size(min = 1, max = 150)
   @Pattern(regexp = "(?s).*\\S.*")
   private String name;
+
+  private Set<@NotNull NotificationTypeCode> allowedTypes;
 
   @NotNull private NotificationChannel channel;
 

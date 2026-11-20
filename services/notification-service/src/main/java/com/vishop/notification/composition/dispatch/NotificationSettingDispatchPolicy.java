@@ -27,16 +27,25 @@ public class NotificationSettingDispatchPolicy implements NotificationDispatchPo
             .orElseThrow(() -> new IllegalArgumentException("Unknown notification type"));
     var rule = rules.ruleForType(tenantId, code);
     if (!rule.isEnabled()) return new RoutingPolicy(Set.of(), Set.of());
-    var enabledChannels =
+    var ready =
         settings.channels(tenantId).stream()
+            .filter(c -> rule.getId() != null || type.defaultChannels().contains(c.channel()))
             .filter(c -> c.enabled() && c.available() && c.connectionVerified())
+            .filter(
+                c ->
+                    !c.channel().isGroupChannel()
+                        || (c.id() != null && c.allowedTypes().contains(code)))
+            .toList();
+    var channels =
+        ready.stream()
             .map(NotificationSettingManagementApi.ChannelView::channel)
             .collect(Collectors.toSet());
-    var allowed =
-        rule.getChannels().stream()
-            .filter(enabledChannels::contains)
-            .collect(Collectors.toUnmodifiableSet());
-    return new RoutingPolicy(allowed, Set.of());
+    var groups =
+        ready.stream()
+            .filter(c -> c.channel().isGroupChannel())
+            .map(c -> new GroupSetting(c.channel(), c.id()))
+            .collect(Collectors.toSet());
+    return new RoutingPolicy(channels, Set.of(), groups);
   }
 
   public Set<NotificationChannel> restrictForUser(

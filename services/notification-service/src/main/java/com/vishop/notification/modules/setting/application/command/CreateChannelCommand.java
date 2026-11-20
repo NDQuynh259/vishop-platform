@@ -1,9 +1,11 @@
 package com.vishop.notification.modules.setting.application.command;
 
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi.ChannelView;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.cqrs.Command;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.ToString;
 import lombok.Value;
@@ -17,12 +19,25 @@ public class CreateChannelCommand implements Command<ChannelView> {
   boolean enabled;
   Map<String, String> connectionConfig;
 
+  Set<NotificationTypeCode> allowedTypes;
+
   public CreateChannelCommand(
       UUID tenantId,
       NotificationChannel channel,
       String name,
       boolean enabled,
       Map<String, String> connectionConfig) {
+    this(tenantId, channel, name, enabled, connectionConfig, Set.of());
+  }
+
+  public CreateChannelCommand(
+      UUID tenantId,
+      NotificationChannel channel,
+      String name,
+      boolean enabled,
+      Map<String, String> connectionConfig,
+      Set<NotificationTypeCode> allowedTypes) {
+    this.allowedTypes = allowedTypes == null ? Set.of() : Set.copyOf(allowedTypes);
     this.tenantId = tenantId;
     this.channel = channel;
     this.name = name;

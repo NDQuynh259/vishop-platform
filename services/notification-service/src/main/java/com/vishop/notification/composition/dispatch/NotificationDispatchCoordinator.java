@@ -1,5 +1,6 @@
 package com.vishop.notification.composition.dispatch;
 
+import com.vishop.notification.modules.notification.application.api.NotificationDeliveryApi.Target;
 import com.vishop.notification.modules.notification.application.command.CreateNotificationCommand;
 import com.vishop.notification.modules.notification.application.command.EnqueueDeliveriesCommand;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
@@ -77,12 +78,40 @@ public final class NotificationDispatchCoordinator {
             .filter(entry -> entry.getValue().contains(NotificationChannel.IN_APP))
             .map(Map.Entry::getKey)
             .collect(Collectors.toUnmodifiableSet());
-    var targets = recipients.providerTargets(message, allowed);
+    var targets =
+        recipients.providerTargets(message, allowed).stream()
+            .filter(target -> policy.channels().contains(target.channel()))
+            .filter(
+                target ->
+                    target.userId() == null
+                        || allowed
+                            .getOrDefault(target.userId(), Set.of())
+                            .contains(target.channel()))
+            .filter(
+                target ->
+                    !target.channel().isGroupChannel()
+                        || authorizedGroup(message, target, policy.groups(), allowed))
+            .toList();
     if (inApp.isEmpty() && targets.isEmpty()) return skipped();
     UUID id = commands.dispatch(new CreateNotificationCommand(message, inApp));
     var jobs = commands.dispatch(new EnqueueDeliveriesCommand(message.tenantId(), id, targets));
     if (!inApp.isEmpty()) journal.notificationCreated(message.tenantId(), id, inApp);
     return new Result(Optional.of(id), inApp.size(), jobs);
+  }
+
+  private boolean authorizedGroup(
+      NotificationMessage message,
+      Target target,
+      Set<NotificationDispatchPolicy.GroupSetting> configuredGroups,
+      Map<UUID, Set<NotificationChannel>> allowed) {
+    if (target.settingId() == null
+        || !configuredGroups.contains(
+            new NotificationDispatchPolicy.GroupSetting(target.channel(), target.settingId())))
+      return false;
+    var members = recipients.verifiedGroupMembers(message, target);
+    return !members.isEmpty()
+        && members.stream()
+            .allMatch(user -> allowed.getOrDefault(user, Set.of()).contains(target.channel()));
   }
 
   private static Result skipped() {

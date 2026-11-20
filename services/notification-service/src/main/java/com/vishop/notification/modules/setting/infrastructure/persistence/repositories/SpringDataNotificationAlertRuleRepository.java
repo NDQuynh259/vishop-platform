@@ -18,6 +18,14 @@ public interface SpringDataNotificationAlertRuleRepository
   Optional<NotificationAlertRuleJpaEntity> findByTenantIdAndTypeAndDeletedAtIsNull(
       UUID tenantId, String type);
 
+  Optional<NotificationAlertRuleJpaEntity> findByTenantIdAndType(UUID tenantId, String type);
+
+  @Lock(LockModeType.PESSIMISTIC_READ)
+  @Query(
+      "select r from NotificationAlertRuleJpaEntity r where r.tenantId=:tenant and r.deletedAt is null and r.id in :ids order by r.id")
+  List<NotificationAlertRuleJpaEntity> lockActiveByIds(
+      @Param("tenant") UUID tenant, @Param("ids") java.util.Set<UUID> ids);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query(
       "select r from NotificationAlertRuleJpaEntity r where r.id=:id and r.tenantId=:tenant and"
@@ -28,8 +36,8 @@ public interface SpringDataNotificationAlertRuleRepository
   @Modifying(flushAutomatically = true)
   @Query(
       value =
-          "INSERT INTO notification_alert_rules(id,tenant_id,type) VALUES(:id,:tenant,:type) ON"
+          "INSERT INTO notification_alert_rules(id,tenant_id,type,feature_code) VALUES(:id,:tenant,:type,:feature) ON"
               + " CONFLICT(tenant_id,type) DO NOTHING",
       nativeQuery = true)
-  int ensure(@Param("id") UUID id, @Param("tenant") UUID tenantId, @Param("type") String type);
+  int ensure(@Param("id") UUID id, @Param("tenant") UUID tenantId, @Param("type") String type, @Param("feature") String featureCode);
 }

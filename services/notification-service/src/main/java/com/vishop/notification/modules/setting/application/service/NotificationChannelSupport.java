@@ -32,7 +32,8 @@ public class NotificationChannelSupport {
         c.chatId(),
         c.messageThreadId(),
         c.version(),
-        NotificationConnectionConfiguration.publicConfig(c));
+        NotificationConnectionConfiguration.publicConfig(c),
+        c.allowedTypes());
   }
 
   public Connection configuredConnection(

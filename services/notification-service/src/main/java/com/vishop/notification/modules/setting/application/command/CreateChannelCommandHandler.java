@@ -21,6 +21,7 @@ public class CreateChannelCommandHandler
         command.getChannel(),
         command.getName(),
         command.isEnabled(),
-        command.getConnectionConfig());
+        command.getConnectionConfig(),
+        command.getAllowedTypes());
   }
 }

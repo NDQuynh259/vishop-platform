@@ -59,7 +59,7 @@ public class NotificationRuleController {
     var created =
         commands.dispatch(
             new CreateRuleCommand(
-                actor.tenantId(), body.getType(), body.getEnabled(), body.getChannels()));
+                actor.tenantId(), body.getType(), body.getEnabled(), body.getFeatureCode()));
     return ResponseEntity.created(
             Objects.requireNonNull(
                 URI.create(ApiPaths.V1 + "/notifications/settings/rules/" + created.getId())))
@@ -76,6 +76,6 @@ public class NotificationRuleController {
         new UpdateRuleCommand(
             actor.tenantId(),
             ruleId,
-            new RuleChange(body.getEnabled(), body.getChannels(), body.getVersion())));
+            new RuleChange(body.getEnabled(), body.getFeatureCode(), body.getVersion())));
   }
 }

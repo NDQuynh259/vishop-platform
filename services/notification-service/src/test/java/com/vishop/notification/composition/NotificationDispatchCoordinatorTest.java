@@ -26,6 +26,8 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class NotificationDispatchCoordinatorTest {
@@ -98,6 +100,51 @@ class NotificationDispatchCoordinatorTest {
             message.tenantId(),
             new NotificationDispatchPolicy.TypePolicy(
                 "STOCK_LOW", "INVENTORY", true, true, channels));
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = NotificationChannel.class,
+      names = {"LARK", "TELEGRAM"})
+  void skipsUnconfiguredGroupsAndGroupsWithUnverifiedOrUnauthorizedMembers(
+      NotificationChannel provider) {
+    UUID user = UUID.randomUUID(), group = UUID.randomUUID(), id = UUID.randomUUID();
+    var channels = Set.of(provider);
+    var accepted = new NotificationDeliveryApi.Target(null, provider, "verified", group);
+    var unknown = new NotificationDeliveryApi.Target(null, provider, "unknown", group);
+    var mixed = new NotificationDeliveryApi.Target(null, provider, "mixed", group);
+    var other = new NotificationDeliveryApi.Target(null, provider, "other", UUID.randomUUID());
+    when(setting.resolve(eq(message.tenantId()), any()))
+        .thenReturn(
+            new NotificationDispatchPolicy.RoutingPolicy(
+                channels,
+                Set.of(),
+                Set.of(new NotificationDispatchPolicy.GroupSetting(provider, group))));
+    when(directory.eligible(message, Set.of())).thenReturn(Set.of(user));
+    when(setting.restrictForUser(message.tenantId(), user, message.type(), channels))
+        .thenReturn(channels);
+    when(directory.providerTargets(message, Map.of(user, channels)))
+        .thenReturn(List.of(other, unknown, mixed, accepted));
+    when(directory.verifiedGroupMembers(message, accepted)).thenReturn(Set.of(user));
+    when(directory.verifiedGroupMembers(message, mixed))
+        .thenReturn(Set.of(user, UUID.randomUUID()));
+    when(inbox.create(message, Set.of())).thenReturn(id);
+
+    coordinator.dispatch(message);
+    verify(delivery).enqueue(message.tenantId(), id, List.of(accepted));
+    verify(directory, never()).verifiedGroupMembers(message, other);
+  }
+
+  @Test
+  void emptyAuthorizedAudienceSkipsNewNotification() {
+    var channels = Set.of(NotificationChannel.IN_APP);
+    when(setting.resolve(eq(message.tenantId()), any()))
+        .thenReturn(new NotificationDispatchPolicy.RoutingPolicy(channels, Set.of()));
+    when(directory.eligible(message, Set.of())).thenReturn(Set.of());
+
+    assertThat(coordinator.dispatch(message).orElseThrow().notificationId()).isEmpty();
+    verify(directory).eligible(message, Set.of());
+    verifyNoInteractions(inbox, delivery);
   }
 
   @Test

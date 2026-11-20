@@ -237,7 +237,8 @@ class NotificationRedesignMigrationTest {
     var excluded =
         Map.of(
             "notification_alert_rules",
-                "in_app_enabled,email_enabled,telegram_enabled,lark_enabled,channels",
+                "in_app_enabled,email_enabled,telegram_enabled,lark_enabled,channels,feature_code",
+            "notification_settings", "allowed_types",
             "notification_deliveries", "setting_id,destination_key",
             "notification_deduplication", "id,destination,setting_id,recipient_key");
     var result = new TreeMap<String, String>();
@@ -299,12 +300,53 @@ class NotificationRedesignMigrationTest {
   }
 
   @Test
+  void normalizesV24SelectionsAndPreventsDuplicateOrCrossTenantLinks() throws Exception {
+    Flyway.configure().dataSource(url, "postgres", "postgres").target("24").load().migrate();
+    execute(
+        "UPDATE notification_settings SET allowed_types=ARRAY['SKU_UNMAPPED','CUSTOM_LEGACY_TYPE'] WHERE id=?",
+        LARK);
+    execute(
+        "UPDATE notification_settings SET allowed_types=ARRAY['SKU_UNMAPPED'] WHERE id=?",
+        TELEGRAM);
+    Flyway.configure().dataSource(url, "postgres", "postgres").load().migrate();
+    assertThat(scalar("SELECT count(*) FROM notification_setting_types")).isEqualTo(3);
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM notification_setting_types l JOIN notification_alert_rules r ON l.rule_id=r.id WHERE r.type='SKU_UNMAPPED' AND r.feature_code='PRODUCT' AND r.enabled"))
+        .isEqualTo(2);
+    assertThat(
+            scalar(
+                "SELECT count(*) FROM notification_setting_types WHERE substr(id::text,15,1)='7'"))
+        .isEqualTo(3);
+    String insert = "INSERT INTO notification_setting_types(id,setting_id,rule_id) VALUES (?,?,?)";
+    UUID rule;
+    try (var statement = db.createStatement();
+        var rows =
+            statement.executeQuery(
+                "SELECT id FROM notification_alert_rules WHERE type='SKU_UNMAPPED'")) {
+      rows.next();
+      rule = rows.getObject(1, UUID.class);
+    }
+    rejects("23505", () -> execute(insert, UuidV7.nextId(), LARK, rule));
+    rejects("23514", () -> execute(insert, UuidV7.nextId(), EMAIL, rule));
+    UUID other = UuidV7.nextId();
+    execute(
+        "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'LARK')",
+        other,
+        UuidV7.nextId());
+    rejects("23514", () -> execute(insert, UuidV7.nextId(), other, rule));
+  }
+
+  @Test
   void groupMigrationsKeepRowsAndTenantChannelDeliveryForeignKey() throws Exception {
     migrate();
     Flyway.configure().dataSource(url, "postgres", "postgres").target("18").load().migrate();
     var before = snapshots();
     var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-    assertThat(latest.migrate().migrationsExecuted).isEqualTo(4);
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(8);
+    assertThat(scalar("SELECT count(*) FROM notification_alert_rules WHERE type='CUSTOM_LEGACY_TYPE' AND feature_code='LEGACY'")).isEqualTo(1);
+    assertThat(scalar("SELECT count(*) FROM notification_alert_rules WHERE type='STOCK_LOW' AND feature_code='INVENTORY' AND deleted_at IS NOT NULL")).isEqualTo(1);
+    assertThat(scalar("SELECT count(*) FROM notification_setting_types")).isZero();
     assertThat(snapshots()).isEqualTo(before);
     UUID group = UuidV7.nextId();
     execute(
@@ -320,13 +362,13 @@ class NotificationRedesignMigrationTest {
                 "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
                 UuidV7.nextId(),
                 TENANT));
-    delivery("LARK", "https://example.test/second-group", null, group);
+    rejects("23514", () -> delivery("LARK", "https://example.test/second-group", null, group));
     UUID telegramGroup = UuidV7.nextId();
     execute(
         "INSERT INTO notification_settings(id,tenant_id,channel,name) VALUES (?,?,'TELEGRAM','Sales')",
         telegramGroup,
         TENANT);
-    delivery("TELEGRAM", "-100456", null, telegramGroup);
+    rejects("23514", () -> delivery("TELEGRAM", "-100456", null, telegramGroup));
     rejects("23503", () -> delivery("LARK", "wrong-group", null, telegramGroup));
     rejects("23503", () -> delivery("EMAIL", "wrong-channel@example.test", null, group));
     assertThat(latest.migrate().migrationsExecuted).isZero();

@@ -100,11 +100,7 @@ public class NotificationSseStreams implements AutoCloseable {
         var emitter = emitters.get();
         connection =
             new Connection(
-                key,
-                actor,
-                emitter,
-                clock.instant().plusMillis(LIFETIME_MILLIS),
-                refreshVersion.get());
+                key, emitter, clock.instant().plusMillis(LIFETIME_MILLIS), refreshVersion.get());
         emitter.onCompletion(() -> disconnect(connection, false, null));
         emitter.onTimeout(() -> disconnect(connection, true, null));
         emitter.onError(error -> disconnect(connection, false, null));
@@ -130,13 +126,11 @@ public class NotificationSseStreams implements AutoCloseable {
       var connections = connectionsByUser.get(new UserKey(event.tenantId(), recipient));
       if (connections == null) continue;
       for (var connection : connections) {
-        if (connection.actor.getPermissions().contains(event.requiredPermission())) {
-          enqueue(
-              connection,
-              SseEmitter.event()
-                  .name("notification.created")
-                  .data(payload, MediaType.APPLICATION_JSON));
-        }
+        enqueue(
+            connection,
+            SseEmitter.event()
+                .name("notification.created")
+                .data(payload, MediaType.APPLICATION_JSON));
       }
     }
   }
@@ -313,7 +307,6 @@ public class NotificationSseStreams implements AutoCloseable {
   // The connection monitor protects mailbox/lifecycle metadata only, never socket I/O.
   private static final class Connection {
     final UserKey key;
-    final InboxActor actor;
     final SseEmitter emitter;
     final Instant expiresAt;
     final ArrayDeque<SseEmitter.SseEventBuilder> pending = new ArrayDeque<>();
@@ -325,10 +318,8 @@ public class NotificationSseStreams implements AutoCloseable {
     Throwable error;
     long refreshVersion;
 
-    Connection(
-        UserKey key, InboxActor actor, SseEmitter emitter, Instant expiresAt, long refreshVersion) {
+    Connection(UserKey key, SseEmitter emitter, Instant expiresAt, long refreshVersion) {
       this.key = key;
-      this.actor = actor;
       this.emitter = emitter;
       this.expiresAt = expiresAt;
       this.refreshVersion = refreshVersion;

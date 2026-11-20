@@ -44,7 +44,8 @@ class NotificationSseStreamsTest {
       streams.broadcastLocal(new NotificationCreated(id, tenant, Set.of(user), "inventory.view"));
       verify(emitters.get(0), timeout(2000).times(2)).send(any(SseEmitter.SseEventBuilder.class));
       verify(emitters.get(1), timeout(2000).times(2)).send(any(SseEmitter.SseEventBuilder.class));
-      for (int i = 2; i < emitters.size(); i++) {
+      verify(emitters.get(4), timeout(2000).times(2)).send(any(SseEmitter.SseEventBuilder.class));
+      for (int i = 2; i < 4; i++) {
         verify(emitters.get(i), timeout(2000)).send(any(SseEmitter.SseEventBuilder.class));
       }
     }

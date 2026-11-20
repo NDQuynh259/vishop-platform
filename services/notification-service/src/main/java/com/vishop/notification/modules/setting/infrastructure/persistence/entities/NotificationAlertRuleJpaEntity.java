@@ -1,13 +1,12 @@
 package com.vishop.notification.modules.setting.infrastructure.persistence.entities;
 
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(
@@ -30,9 +29,9 @@ public class NotificationAlertRuleJpaEntity {
   @Column(nullable = false)
   private boolean enabled;
 
-  @JdbcTypeCode(SqlTypes.ARRAY)
-  @Column(nullable = false, columnDefinition = "text[]")
-  private String[] channels = {"IN_APP"};
+  @Enumerated(EnumType.STRING)
+  @Column(name = "feature_code", nullable = false, length = 32)
+  private NotificationFeatureCode featureCode;
 
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;

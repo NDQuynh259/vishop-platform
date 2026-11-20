@@ -1,9 +1,8 @@
 package com.vishop.notification.modules.setting.presentation.rest.dto;
 
-import com.vishop.notification.shared.contract.NotificationChannel;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
-import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,6 +10,6 @@ import lombok.Setter;
 @Setter
 public class NotificationRuleUpdateReq {
   @NotNull private Boolean enabled;
-  @NotNull private Set<@NotNull NotificationChannel> channels;
+  @NotNull private NotificationFeatureCode featureCode;
   @NotNull @PositiveOrZero private Long version;
 }

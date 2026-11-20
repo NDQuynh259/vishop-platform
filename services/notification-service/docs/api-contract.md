@@ -42,14 +42,14 @@ hợp đồng hiện hành, giới hạn scope và phần wiring còn thiếu �
 | PLATFORM_ADMIN | CMS announcement và vận hành platform theo policy; catalog thay đổi qua code release |
 
 Tùy chọn cá nhân yêu cầu membership active và chỉ sửa bản thân.
-Quyền notifications.view không thay thế required_permission và tenant của từng notification.
+Luồng phân phối dùng `required_permission` của từng thông báo để chọn người nhận trong tenant.
 
 ## 1. In-app — HTTP/JPA đã triển khai
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
 | GET | /notifications | Danh sách cá nhân; filter category, featureCode, type, severity, read, shopId, cursor, limit |
-| GET | /notifications/unread-count | Count theo policy đọc hiện hành, chỉ chính user/tenant |
+| GET | /notifications/unread-count | Đếm thông báo chưa đọc đã gửi cho user trong tenant |
 | GET | /notifications/{id} | Nội dung và trạng thái đọc của chính người nhận |
 | PATCH | /notifications/{id}/read | Đánh dấu đọc idempotent; giữ readAt đầu tiên |
 | POST | /notifications/read-all | Body before: ISO timestamp; đánh dấu các mục hợp lệ đến cutoff, trả updatedCount |
@@ -60,7 +60,8 @@ occurredAt, createdAt, readAt. actionUrl chỉ là đường dẫn/đích hợp 
 Không có POST tạo thông báo tùy ý hoặc PATCH sửa title/body từ client.
 Filter category/featureCode trong thiết kế mở rộng chưa có ở API inbox hiện hành;
 hiện hỗ trợ type/severity/read/shopId/cursor/limit. Quyền notifications.view ở bảng đề xuất
-chưa được đưa vào IAM; inbox kiểm tra đăng nhập, required_permission và tenant từng item.
+chưa được đưa vào IAM. Inbox kiểm tra phiên đăng nhập và dòng người nhận theo tenant.
+Người dùng vẫn đọc được thông báo đã nhận sau khi mất quyền nghiệp vụ.
 
 ## 2. Nhóm tính năng — kế hoạch, chưa triển khai
 
@@ -87,8 +88,7 @@ catalog table. Threshold schema vẫn chờ contract của domain nguồn.
 | PUT | /notification-settings/types/{type}/recipients | Body recipientIds, version; thay thế danh sách user |
 | GET | /notification-settings/types/{type}/recipient-candidates | Tìm member hợp lệ có quyền, paging/filter q |
 
-JSON channels hiện triển khai là mảng enum `IN_APP`/`EMAIL`/`TELEGRAM`/`LARK`. Không tự thêm kênh tùy ý. Rule absent kế thừa
-catalog defaults. Cooldown chưa áp dụng và không có tham số cooldownSeconds. Threshold sai schema trả 422;
+API rule lưu nhóm nghiệp vụ qua `featureCode`. Cooldown chưa áp dụng và không có tham số cooldownSeconds. Threshold sai schema trả 422;
 không có source config contract thì trả unsupported thay vì báo đã áp dụng.
 Danh sách rỗng nghĩa dùng resolver theo type; nếu type không có resolver thì không gửi,
 response giải thích. Recipient candidates và mutation dùng cùng kiểm tra quyền.
@@ -101,9 +101,12 @@ response đã che thông tin nhạy cảm: [API cấu hình kết nối](setting
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
-| GET | /notification-settings/channels | Danh sách IN_APP/EMAIL/TELEGRAM/LARK và trạng thái cấu hình |
-| GET | /notification-settings/channels/{channel} | Chi tiết kênh, connectionConfig công khai và version |
-| PUT | /notification-settings/channels/{channel} | Upsert enabled, version và connectionConfig theo enum trên URL |
+| POST | /notifications/settings/channels | Tạo cấu hình kênh trong tenant |
+| GET | /notifications/settings/channels | Danh sách cấu hình kênh trong tenant |
+| GET | /notifications/settings/channels/{channelId} | Chi tiết cấu hình theo UUID |
+| PUT | /notifications/settings/channels/{channelId} | Cập nhật cấu hình theo UUID và version |
+| GET | /notifications/settings/channels/{settingId}/rules | Đọc version và các ruleId đã gán cho nhóm Telegram hoặc Lark |
+| PUT | /notifications/settings/channels/{settingId}/rules | Thay toàn bộ liên kết bằng danh sách ruleIds của cùng tenant |
 
 GET yêu cầu `notifications.settings.view`; PUT yêu cầu `notifications.settings.manage`.
 PUT có `connectionConfig` sẽ thay thế toàn bộ cấu hình; không có field này thì giữ

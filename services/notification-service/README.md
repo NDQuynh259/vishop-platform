@@ -99,7 +99,7 @@ or database creation occurs in the CLI. Application UUIDs require no extensions.
 | `outbox_events` | Transactional publication, including future realtime signals |
 
 V18 removes `notification_deduplication_archive` and `notification_delivery_attempts`.
-The current schema has seven business tables, plus Flyway's schema history. Delivery status,
+V25 stores group subscriptions in notification_setting_types with a UUIDv7 primary key and a unique (setting_id, rule_id) pair. The current schema has eight business tables, plus Flyway's schema history. Delivery status,
 attempt counters and provider IDs stay in `notification_deliveries`; technical details belong in logging.
 
 Each tenant can configure multiple Lark groups (V19) and Telegram groups (V22).
@@ -109,7 +109,8 @@ Email and in-app each have one configuration per tenant.
 Tenant/user/shop IDs are external references to their owning services; no cross-database
 foreign keys. Local foreign keys include tenant ID to reject mismatched tenant links.
 These constraints do not replace authorization: every API query must scope by tenant
-and user, and recheck membership and business permission before exposing content.
+and user. The dispatcher checks business permission when selecting recipients. Users with
+tenant access can read their previously assigned notifications after a business permission is revoked.
 Tenant members can access every shop belonging to their tenant; no per-user shop grant is required.
 
 In-app list and unread queries use `(tenant_id, user_id)` on recipients; join notifications
@@ -207,7 +208,7 @@ returns only connection metadata. The default port rejects credential writes and
 channel enablement until secret storage and provider verification adapters are installed.
 See [setting implementation](docs/setting.md).
 
-Tenant type rules and code catalog defaults select enabled channels. The V16 queue supports
+Rules store their business group in `feature_code` (V26). Enabled group connections select rules through `notification_setting_types`. The V16 queue supports
 EMAIL/TELEGRAM/LARK. Delivery JPA
 adapters are registered in `NotificationModuleConfiguration`. Provider workers,
 audience resolvers and test-connection APIs remain

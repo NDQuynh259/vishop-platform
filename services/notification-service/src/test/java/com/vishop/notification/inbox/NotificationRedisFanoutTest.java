@@ -153,7 +153,7 @@ class NotificationRedisFanoutTest {
     var b1 = subscribe(b, tenant, user, "inventory.view");
     var wrongTenant = subscribe(b, UUID.randomUUID(), user, "inventory.view");
     var wrongUser = subscribe(b, tenant, UUID.randomUUID(), "inventory.view");
-    var wrongPermission = subscribe(b, tenant, user, "finance.view");
+    var previouslyAssigned = subscribe(b, tenant, user, "finance.view");
     transaction(a)
         .executeWithoutResult(
             status -> {
@@ -168,7 +168,7 @@ class NotificationRedisFanoutTest {
         .atMost(Duration.ofSeconds(5))
         .untilAsserted(
             () -> {
-              for (var client : List.of(a1, a2, b1)) {
+              for (var client : List.of(a1, a2, b1, previouslyAssigned)) {
                 assertThat(body(client))
                     .contains("event:notification.created", id.toString(), tenant.toString())
                     .doesNotContain(
@@ -180,9 +180,9 @@ class NotificationRedisFanoutTest {
         .atMost(Duration.ofSeconds(2))
         .untilAsserted(
             () -> {
-              for (var client : List.of(a1, a2, b1))
+              for (var client : List.of(a1, a2, b1, previouslyAssigned))
                 assertThat(count(client, "notification.created")).isEqualTo(1);
-              for (var client : List.of(wrongTenant, wrongUser, wrongPermission)) {
+              for (var client : List.of(wrongTenant, wrongUser)) {
                 assertThat(count(client, "notification.created")).isZero();
               }
             });

@@ -1,6 +1,6 @@
 # Database Notification
 
-Schema V21 có **7 bảng nghiệp vụ**. [V19](../src/main/resources/db/migration/V19__allow_multiple_lark_group_settings.sql)
+Schema V25 có **8 bảng nghiệp vụ**. [V19](../src/main/resources/db/migration/V19__allow_multiple_lark_group_settings.sql)
 nâng cấp nhiều nhóm Lark; [V21](../src/main/resources/db/migration/V21__unify_notification_recipient_retention_index.sql)
 thay hai partial index của V20 bằng một index `(created_at, id)` thống nhất cho [retention recipient](retention.md).
 Database riêng: `vishop_notification`. V1–V17 giữ nguyên checksum. V18 xóa archive cooldown
@@ -13,7 +13,8 @@ và bảng attempt history không dùng; giữ nội dung, recipient, setting, r
 | `notifications` | Nội dung chung, sự kiện nguồn, đối tượng nghiệp vụ, quyền và phạm vi shop |
 | `notification_recipients` | Inbox in-app của từng user; trạng thái đọc/ẩn riêng |
 | `notification_settings` | Kết nối provider theo tenant/kênh, tên, bật/tắt và connection_config |
-| `notification_alert_rules` | Bật/tắt loại thông báo và tập kênh channels |
+| `notification_alert_rules` | Bật/tắt loại thông báo và phân nhóm nghiệp vụ |
+| `notification_setting_types` | Liên kết một nhóm Telegram/Lark với một rule của cùng tenant. Khóa chính `id` là UUIDv7, cặp `(setting_id, rule_id)` là duy nhất. |
 | `notification_deliveries` | Hàng đợi EMAIL/TELEGRAM/LARK, đích gửi, retry và lease |
 | `consumed_messages` | Chống xử lý lặp sự kiện |
 | `outbox_events` | Phát sự kiện sau khi transaction thành công |
@@ -22,6 +23,13 @@ Danh mục feature/type nằm trong code. Không khôi phục các bảng catalo
 
 ```mermaid
 erDiagram
+    notification_settings ||--o{ notification_setting_types : setting_id
+    notification_alert_rules ||--o{ notification_setting_types : rule_id
+    notification_setting_types {
+        uuid id PK
+        uuid setting_id FK
+        uuid rule_id FK
+    }
     notifications ||--o{ notification_recipients : tenant_notification
     notifications ||--o{ notification_deliveries : tenant_notification
     notification_settings o|--o{ notification_deliveries : tenant_setting_channel
@@ -60,7 +68,7 @@ erDiagram
         uuid tenant_id
         varchar type
         boolean enabled
-        text_array channels
+        varchar feature_code
         jsonb thresholds "legacy data retained"
         int cooldown_seconds "legacy data retained"
     }
@@ -126,9 +134,7 @@ Unique `(tenant_id, id, channel)` được giữ để bảo vệ FK của deliv
 connection_config chứa cấu hình và tham chiếu secret; API không trả secret.
 Từ V22, TELEGRAM cũng hỗ trợ nhiều nhóm theo settingId. IN_APP và EMAIL dùng một kết nối cho mỗi tenant/kênh.
 
-Rule unique `(tenant_id, type)`. V16 chuyển bốn boolean thành `channels TEXT[]`,
-ví dụ `['IN_APP','TELEGRAM']`; tập rỗng hợp lệ.
-DB chặn mã lạ, NULL, phần tử trùng và mảng nhiều chiều. Entity/JPA adapter dùng trường mới; API vẫn trả tập kênh.
+Rule unique `(tenant_id, type)`. V26 lưu nhóm nghiệp vụ vào `feature_code`. Mỗi nhóm Telegram/Lark chọn rule qua `notification_setting_types`.
 
 thresholds và cooldown_seconds cũ được giữ để không mất dữ liệu. API setting hiện chưa sử dụng hai trường này; không tự coi chúng là policy dispatch đã có hiệu lực.
 

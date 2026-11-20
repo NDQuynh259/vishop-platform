@@ -3,9 +3,11 @@ package com.vishop.notification.modules.setting.presentation.rest.dto;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import jakarta.validation.constraints.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,6 +18,8 @@ public final class NotificationSettingUpdateReq {
   @Size(min = 1, max = 150)
   @Pattern(regexp = "(?s).*\\S.*")
   private String name;
+
+  private Set<@NotNull NotificationTypeCode> allowedTypes;
 
   @NotNull private Boolean enabled;
 

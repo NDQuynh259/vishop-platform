@@ -168,8 +168,7 @@ public class NotificationService implements NotificationApi {
   }
 
   private NotificationInboxScope scope(InboxActor actor) {
-    return new NotificationInboxScope(
-        actor.getTenantId(), actor.getUserId(), actor.getPermissions());
+    return new NotificationInboxScope(actor.getTenantId(), actor.getUserId());
   }
 
   private NotificationView view(NotificationInboxEntry entry) {

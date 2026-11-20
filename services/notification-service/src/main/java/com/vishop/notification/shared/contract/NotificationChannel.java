@@ -4,5 +4,9 @@ public enum NotificationChannel {
   IN_APP,
   EMAIL,
   TELEGRAM,
-  LARK
+  LARK;
+
+  public boolean isGroupChannel() {
+    return this == LARK || this == TELEGRAM;
+  }
 }

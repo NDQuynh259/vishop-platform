@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi.*;
 import com.vishop.notification.modules.setting.application.command.CreateChannelCommand;
+import com.vishop.notification.modules.setting.application.command.ReplaceChannelRulesCommand;
 import com.vishop.notification.modules.setting.application.command.UpdateChannelCommand;
 import com.vishop.notification.modules.setting.application.query.GetChannelQuery;
+import com.vishop.notification.modules.setting.application.query.GetChannelRulesQuery;
 import com.vishop.notification.modules.setting.application.query.ListChannelsQuery;
+import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi.ChannelRulesView;
+import com.vishop.notification.modules.setting.presentation.rest.dto.ChannelRulesUpdateReq;
 import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingCreateReq;
 import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingUpdateReq;
 import com.vishop.notification.shared.contract.NotificationChannel;
@@ -55,7 +59,12 @@ public class NotificationSettingController {
     var created =
         commands.dispatch(
             new CreateChannelCommand(
-                actor.tenantId(), body.getChannel(), body.getName(), body.getEnabled(), config));
+                actor.tenantId(),
+                body.getChannel(),
+                body.getName(),
+                body.getEnabled(),
+                config,
+                body.getAllowedTypes()));
     return ResponseEntity.created(
             Objects.requireNonNull(
                 URI.create(ApiPaths.V1 + "/notifications/settings/channels/" + created.id())))
@@ -106,8 +115,27 @@ public class NotificationSettingController {
             body.getName(),
             body.getBotToken(),
             body.getChatId(),
-            body.getMessageThreadId());
+            body.getMessageThreadId(),
+            body.getAllowedTypes());
     return commands.dispatch(new UpdateChannelCommand(actor.tenantId(), channelId, change));
+  }
+
+  @GetMapping("/channels/{settingId}/rules")
+  @RequirePermission(Notification.SETTINGS_VIEW)
+  public ChannelRulesView channelRules(
+      @AuthenticationPrincipal GatewayPrincipal actor, @PathVariable UUID settingId) {
+    return queries.dispatch(new GetChannelRulesQuery(actor.tenantId(), settingId));
+  }
+
+  @PutMapping("/channels/{settingId}/rules")
+  @RequirePermission(Notification.SETTINGS_MANAGE)
+  public ChannelRulesView replaceChannelRules(
+      @AuthenticationPrincipal GatewayPrincipal actor,
+      @PathVariable UUID settingId,
+      @Valid @RequestBody ChannelRulesUpdateReq body) {
+    return commands.dispatch(
+        new ReplaceChannelRulesCommand(
+            actor.tenantId(), settingId, body.version(), body.ruleIds()));
   }
 
   private Map<String, String> connectionConfig(NotificationChannel channel, JsonNode config) {

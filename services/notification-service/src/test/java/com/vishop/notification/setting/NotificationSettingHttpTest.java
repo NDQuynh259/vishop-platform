@@ -16,6 +16,7 @@ import com.vishop.notification.modules.setting.application.query.ListChannelsQue
 import com.vishop.notification.modules.setting.application.service.NotificationSettingService;
 import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationSettingController;
 import com.vishop.notification.modules.setting.presentation.rest.dto.NotificationSettingUpdateReq;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
 import io.github.coreplatform.common.domain.cqrs.QueryBus;
@@ -146,7 +147,12 @@ class NotificationSettingHttpTest {
             1,
             Map.of());
     when(api.createChannel(
-            eq(tenant), eq(NotificationChannel.LARK), eq("Lark alerts"), eq(false), anyMap()))
+            eq(tenant),
+            eq(NotificationChannel.LARK),
+            eq("Lark alerts"),
+            eq(false),
+            anyMap(),
+            eq(Set.of(NotificationTypeCode.STOCK_LOW))))
         .thenReturn(created);
 
     mvc.perform(
@@ -154,7 +160,7 @@ class NotificationSettingHttpTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     "{\"channel\":\"LARK\",\"name\":\"Lark"
-                        + " alerts\",\"enabled\":false,\"tenantId\":\"ignored\",\"connectionConfig\":{\"appToken\":\"secret-ref\"}}"))
+                        + " alerts\",\"allowedTypes\":[\"STOCK_LOW\"],\"enabled\":false,\"tenantId\":\"ignored\",\"connectionConfig\":{\"appToken\":\"secret-ref\"}}"))
         .andExpect(status().isCreated())
         .andExpect(header().string("Location", path(NotificationChannel.LARK)))
         .andExpect(jsonPath("$.id").value(id.toString()))
@@ -169,7 +175,8 @@ class NotificationSettingHttpTest {
             NotificationChannel.LARK,
             "Lark alerts",
             false,
-            Map.of("appToken", "secret-ref"));
+            Map.of("appToken", "secret-ref"),
+            Set.of(NotificationTypeCode.STOCK_LOW));
   }
 
   @Test

@@ -58,7 +58,7 @@ modules/setting/infrastructure/persistence/adapters/
 
 | Module | API nội bộ | Trách nhiệm / bảng |
 | --- | --- | --- |
-| setting | NotificationSettingManagementApi, NotificationAlertRuleApi | Kết nối kênh và rule loại thông báo; notification_settings, notification_alert_rules |
+| setting | NotificationSettingManagementApi, NotificationAlertRuleApi | Kết nối kênh, rule theo loại và lựa chọn của từng nhóm trong `notification_settings`, `notification_alert_rules`, `notification_setting_types` |
 | notification | NotificationApi, NotificationDeliveryApi | Nội dung, recipient in-app, đọc/ẩn và quyền truy cập; external delivery |
 | announcement | NotificationAnnouncementApi | Draft/publish snapshot có version; persistence announcement cần migration tiếp theo |
 
@@ -107,8 +107,8 @@ explicit recipients hoặc personal preferences. Các bảng còn lại giữ sc
 - Delivery gộp EMAIL destination sau trim/lowercase; claim/complete/fail theo lease/token,
   due time và attempt budget. Không tự reclaim kết quả provider chưa xác định.
 - Recipient read idempotent, giữ readAt đầu tiên; archive không sửa notification chung.
-- Inbox HTTP/JPA đã có; [API và phạm vi đọc](inbox.md) kiểm tra tenant, recipient và
-  `required_permission` (mọi shop thuộc tenant đang đăng nhập đều truy cập được).
+- [Hộp thư](inbox.md) kiểm tra tenant và recipient. Luồng phân phối kiểm tra
+  `required_permission` lúc chọn người nhận.
 - NotificationSystemTypePolicy dùng constants thật, chỉ cho announcement type SYSTEM.
 - NotificationAnnouncement draft có audience tường minh; published snapshot bất biến. Repository save
   phải compare-and-swap expectedVersion; publish chưa fan-out hoặc gửi provider.

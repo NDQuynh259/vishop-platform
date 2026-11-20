@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vishop.notification.modules.setting.domain.entity.NotificationSettingState.Connection;
 import com.vishop.notification.modules.setting.infrastructure.persistence.entities.*;
 import com.vishop.notification.modules.setting.infrastructure.persistence.model.*;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +19,9 @@ public class NotificationSettingPersistenceMapper {
   private final ObjectMapper json;
 
   public Connection connection(
-      NotificationChannel channel, NotificationChannelSettingJpaEntity entity) {
+      NotificationChannel channel,
+      NotificationChannelSettingJpaEntity entity,
+      Set<NotificationTypeCode> types) {
     if (entity == null || entity.getDeletedAt() != null)
       return new Connection(
           channel,
@@ -72,7 +76,8 @@ public class NotificationSettingPersistenceMapper {
         entity.getVersion(),
         configurationValues(entity),
         entity.getId(),
-        entity.getName());
+        entity.getName(),
+        types);
   }
 
   public void copyConnection(NotificationChannelSettingJpaEntity entity, Connection connection) {

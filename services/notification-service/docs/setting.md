@@ -175,47 +175,41 @@ V12 thêm `name varchar(150) NOT NULL`, điền tên enum kênh cho bản ghi c�
 Feature subscription, recipient selection và personal preference chưa triển khai.
 HTTP runtime nhận các request cấu hình qua Gateway và tra quyền theo tenant trong Redis của IAM.
 
-## Rule loại thông báo và kênh gửi
+## Phân nhóm quy tắc thông báo
 
-Giai đoạn này dùng hai bảng: `notification_settings` cho kết nối kênh và
-`notification_alert_rules` cho bật/tắt từng loại thông báo và chọn kênh gửi.
+Các bảng cấu hình gồm `notification_settings` cho kết nối kênh và
+`notification_alert_rules` cho trạng thái và nhóm nghiệp vụ. Bảng `notification_setting_types` lưu liên kết giữa rule và nhóm chat.
 
 | Method | Endpoint | Quyền |
 | --- | --- | --- |
-| GET | `/notification-settings/rules` | `notifications.settings.view` |
-| GET | `/notification-settings/rules/{ruleId}` | `notifications.settings.view` |
-| POST | `/notification-settings/rules` | `notifications.settings.manage` |
-| PUT | `/notification-settings/rules/{ruleId}` | `notifications.settings.manage` |
+| GET | `/notifications/settings/rules` | `notifications.settings.view` |
+| GET | `/notifications/settings/rules/{ruleId}` | `notifications.settings.view` |
+| POST | `/notifications/settings/rules` | `notifications.settings.manage` |
+| PUT | `/notifications/settings/rules/{ruleId}` | `notifications.settings.manage` |
 
 `ruleId` là UUID bản ghi. Tenant lấy từ principal; ID tenant khác, đã xóa hoặc không tồn tại trả 404.
 `type` lúc tạo là mã enum `NotificationTypeCode`, không đổi qua PUT.
-`channels` là tập enum `IN_APP`, `EMAIL`, `TELEGRAM`, `LARK`; tập rỗng nghĩa không gửi qua kênh nào.
-
-Từ V16, DB lưu tập này trong `channels TEXT[]`, thay bốn cờ boolean cũ. Backfill giữ
-nguyên lựa chọn từng kênh và dữ liệu audit, bao gồm rule đã xóa mềm. API không đổi.
+Từ V26, `featureCode` là nhóm nghiệp vụ lưu trong cột `feature_code`. Ví dụ `INVENTORY` là kho hàng, `PRODUCT` là sản phẩm và `FULFILLMENT` là đơn hàng.
 Mỗi tenant chỉ có một rule cho mỗi type. POST trùng trả 409, kể cả bản ghi đã soft-delete.
 PUT yêu cầu version hiện tại; version cũ trả 409, kể cả hai request ghi đồng thời.
 
 POST không cần version, trả 201 và Location theo ID:
 
 ```json
-{"type":"STOCK_LOW","enabled":true,"channels":["IN_APP","EMAIL"]}
+{"type":"STOCK_LOW","enabled":true,"featureCode":"INVENTORY"}
 ```
 
-PUT thay toàn bộ danh sách kênh và trạng thái bật/tắt:
+PUT cập nhật nhóm nghiệp vụ và trạng thái bật/tắt:
 
 ```json
-{"enabled":true,"channels":["IN_APP","LARK"],"version":1}
+{"enabled":true,"featureCode":"INVENTORY","version":1}
 ```
 
 Mỗi rule trả `featureCode` và `featureName` để giao diện nhóm theo cùng nghiệp vụ với hộp thư.
-Danh sách GET trả các type trong code catalog với tên hiển thị và giá trị mặc định,
-được ghi đè bằng rule đã lưu của tenant. Dòng mặc định chưa lưu có id=null, version=0;
-frontend dùng POST để tạo. Dữ liệu type cũ ngoài catalog vẫn đọc được, nhưng không tạo
+GET chỉ trả các dòng còn hiệu lực trong bảng `notification_alert_rules` của tenant. Dữ liệu type cũ ngoài catalog vẫn đọc được, nhưng không tạo
 hoặc cập nhật như type đang hỗ trợ.
 
-`NotificationSettingDispatchPolicy` lấy giao giữa kênh trong rule và kết nối kênh đang
-bật, available và verified. Rule bật EMAIL không tự bật kết nối EMAIL hoặc bỏ qua xác minh provider.
+Rule phải bật và kết nối phải sẵn sàng. Telegram/Lark cần liên kết đúng rule trong `notification_setting_types`.
 Không có truy vấn feature, recipient list hoặc personal preference trong policy này;
 kiểm tra người nhận/quyền vẫn do RecipientDirectory đảm nhiệm.
 
@@ -225,8 +219,45 @@ provider adapter vẫn là phần chưa triển khai.
 
 ## List response
 
-GET `/notification-settings/channels` and `/notification-settings/rules` use the shared
+GET `/notification-settings/channels` and `/notifications/settings/rules` use the shared
 `PaginationRequest` and return `ListEnvelope`: `object`, `url`, `data`, `pageInfo`.
 Use `pageMode=offset&page=1&limit=20` (maximum limit 100), or `pageMode=cursor&limit=20`.
 Continue cursor pages with `pageMode=cursor&cursor=<nextCursor>`. Cursor keys use the
-channel/type code, including default rules without database IDs. Read items from `data`.
+channel key or persisted rule type. Read items from `data`.
+## Chọn loại thông báo cho từng nhóm Telegram hoặc Lark
+
+FE quản lý các rule của nhóm qua `/api/v1/notifications/settings/channels/{settingId}/rules`.
+
+| Method | Quyền | Dữ liệu |
+| --- | --- | --- |
+| GET | `notifications.settings.view` | Trả `settingId`, `version` và danh sách UUID `ruleIds`. |
+| PUT | `notifications.settings.manage` | Nhận `version` từ lần đọc và toàn bộ `ruleIds` muốn giữ. Trả cấu hình sau khi lưu. |
+
+Khi chỉnh sửa nhóm, FE chọn UUID từ danh sách rule đã lưu của tenant.
+Gửi `{"version":1,"ruleIds":[]}` để gỡ toàn bộ rule của nhóm. Nếu phiên bản đã cũ,
+API trả 409. Nếu ID rule không tồn tại trong tenant, API trả 404.
+
+API tạo và sửa kênh hiện có vẫn nhận và trả `allowedTypes`. Từ V25, database lưu mỗi lựa chọn bằng một dòng
+`notification_setting_types(id, setting_id, rule_id)`. Nếu tenant chưa có rule cho loại đã chọn,
+thao tác lưu nhóm tạo rule với nhóm nghiệp vụ mặc định của loại đó.
+
+Khi tạo nhóm bằng `POST /api/v1/notifications/settings/channels` hoặc sửa nhóm bằng
+`PUT /api/v1/notifications/settings/channels/{channelId}`, truyền `allowedTypes` ở cấp
+ngoài cùng. API đọc kênh cũng trả trường này. Ví dụ dưới đây chọn hai loại cho nhóm Kho
+khi cập nhật một cấu hình đang tắt:
+
+```json
+{"enabled":false,"version":1,"allowedTypes":["STOCK_LOW","STOCK_PUSH_FAILED"]}
+```
+
+Nếu bỏ qua `allowedTypes` khi sửa, nhóm giữ danh sách hiện tại. Gửi `[]` để xóa lựa
+chọn. Nhóm mới, nhóm Lark có trước V23 và nhóm Telegram có trước V24 mặc định nhận 0 loại. Muốn đưa một thông báo vào
+hàng đợi, rule của tenant phải bật, đúng nhóm phải được bật, xác minh
+kết nối và cho phép loại đó. Chỉ người có quyền quản lý cấu hình mới sửa được danh sách.
+
+Trong hộp thư, mỗi người chỉ đọc được thông báo đã được gửi cho mình trong tenant.
+Luồng phân phối kiểm tra `required_permission` khi chọn người nhận. Với nhóm chat dùng chung, bộ điều phối yêu cầu adapter
+`RecipientDirectory` xác minh danh sách thành viên đầy đủ của đúng đích gửi, và
+mọi thành viên đều phải đủ điều kiện nhận thông báo qua Lark. Nếu chưa xác minh được
+thành viên, bộ điều phối bỏ qua nhóm. Worker gửi thực tế cần kiểm tra lại thành viên
+và quyền ngay trước khi gửi.

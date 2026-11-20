@@ -16,7 +16,17 @@ import java.util.UUID;
  * per chat.
  */
 public interface RecipientDirectory {
+  /** Resolve the authorized audience at dispatch using the message's requiredPermission. */
   Set<UUID> eligible(NotificationMessage message, Set<UUID> selectedRecipients);
+
+  /**
+   * Complete verified tenant-user membership for this exact group/destination. Return empty if
+   * membership is unknown, incomplete, or includes an unmapped external account.
+   */
+  default Set<UUID> verifiedGroupMembers(
+      NotificationMessage message, NotificationDeliveryApi.Target target) {
+    return Set.of();
+  }
 
   List<NotificationDeliveryApi.Target> providerTargets(
       NotificationMessage message, Map<UUID, Set<NotificationChannel>> allowedRoutes);

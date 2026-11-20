@@ -12,6 +12,7 @@ import com.vishop.notification.modules.setting.application.query.GetRuleQueryHan
 import com.vishop.notification.modules.setting.application.query.ListRulesQueryHandler;
 import com.vishop.notification.modules.setting.application.service.NotificationAlertRuleService;
 import com.vishop.notification.modules.setting.presentation.rest.controller.NotificationRuleController;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import io.github.coreplatform.common.security.config.PermissionSecurityAutoConfiguration;
@@ -93,7 +94,7 @@ class NotificationRuleHttpTest {
     verifyNoInteractions(service);
     actor("notifications.settings.view");
     var rule =
-        new RuleView(ruleId, "STOCK_LOW", "Low stock", true, Set.of(NotificationChannel.IN_APP), 1);
+        new RuleView(ruleId, "STOCK_LOW", "Low stock", true, NotificationFeatureCode.INVENTORY, 1);
     when(service.rules(tenant)).thenReturn(List.of(rule));
     when(service.ruleById(tenant, ruleId)).thenReturn(rule);
     mvc.perform(get(PATH).param("tenantId", UUID.randomUUID().toString()))
@@ -105,13 +106,13 @@ class NotificationRuleHttpTest {
   }
 
   @Test
-  void rulesSupportCursorModeUsingTypeCodesForDefaultRules() throws Exception {
+  void rulesSupportCursorModeUsingPersistedRuleTypeCodes() throws Exception {
     actor("notifications.settings.view");
     var one =
-        new RuleView(null, "STOCK_LOW", "Low stock", true, Set.of(NotificationChannel.IN_APP), 0);
+        new RuleView(ruleId, "STOCK_LOW", "Low stock", true, NotificationFeatureCode.INVENTORY, 0);
     var two =
         new RuleView(
-            null, "SYNC_FAILED", "Sync failed", true, Set.of(NotificationChannel.IN_APP), 0);
+            UUID.randomUUID(), "SYNC_FAILED", "Sync failed", true, NotificationFeatureCode.INVENTORY, 0);
     when(service.rules(tenant)).thenReturn(List.of(one, two));
     var first =
         mvc.perform(get(PATH).param("pageMode", "cursor").param("limit", "1"))
@@ -136,15 +137,15 @@ class NotificationRuleHttpTest {
   void createAndUpdateGoThroughTheirHandlersWithAuthenticatedTenant() throws Exception {
     actor("notifications.settings.manage");
     var rule =
-        new RuleView(ruleId, "STOCK_LOW", "Low stock", true, Set.of(NotificationChannel.LARK), 1);
+        new RuleView(ruleId, "STOCK_LOW", "Low stock", true, NotificationFeatureCode.INVENTORY, 1);
     when(service.createRule(
-            tenant, NotificationTypeCode.STOCK_LOW, true, Set.of(NotificationChannel.LARK)))
+            tenant, NotificationTypeCode.STOCK_LOW, true, NotificationFeatureCode.INVENTORY))
         .thenReturn(rule);
     mvc.perform(
             post(PATH)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"tenantId\":\"ignored\",\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[\"LARK\"]}"))
+                    "{\"tenantId\":\"ignored\",\"type\":\"STOCK_LOW\",\"enabled\":true,\"featureCode\":\"INVENTORY\"}"))
         .andExpect(status().isCreated())
         .andExpect(header().string("Location", PATH + "/" + ruleId))
         .andExpect(jsonPath("$.id").value(ruleId.toString()));
@@ -152,10 +153,10 @@ class NotificationRuleHttpTest {
             put(PATH + "/" + ruleId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"type\":\"SYSTEM_INCIDENT\",\"enabled\":false,\"channels\":[],\"version\":1}"))
+                    "{\"type\":\"SYSTEM_INCIDENT\",\"enabled\":false,\"featureCode\":\"INVENTORY\",\"version\":1}"))
         .andExpect(status().isOk());
     verify(service)
-        .createRule(tenant, NotificationTypeCode.STOCK_LOW, true, Set.of(NotificationChannel.LARK));
+        .createRule(tenant, NotificationTypeCode.STOCK_LOW, true, NotificationFeatureCode.INVENTORY);
     verify(service)
         .updateRule(
             eq(tenant),
@@ -163,46 +164,46 @@ class NotificationRuleHttpTest {
             argThat(
                 change ->
                     !change.isEnabled()
-                        && change.getChannels().isEmpty()
+                        && change.getFeatureCode() == NotificationFeatureCode.INVENTORY
                         && change.getVersion() == 1));
   }
 
   @Test
-  void writesRequireManageAndValidateEnumsVersionAndChannels() throws Exception {
+  void writesRequireManageAndValidateEnumsVersionAndFeature() throws Exception {
     actor("notifications.settings.view");
     mvc.perform(
             post(PATH)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[\"IN_APP\"]}"))
+                .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"featureCode\":\"INVENTORY\"}"))
         .andExpect(status().isForbidden());
     actor("notifications.settings.manage");
     for (String body :
         List.of(
             "{}",
             "{\"type\":\"STOCK_LOW\",\"enabled\":true}",
-            "{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[null]}")) {
+            "{\"type\":\"STOCK_LOW\",\"enabled\":true,\"featureCode\":null}")) {
       mvc.perform(post(PATH).contentType(MediaType.APPLICATION_JSON).content(body))
           .andExpect(status().isUnprocessableEntity());
     }
     mvc.perform(
             post(PATH)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"type\":\"UNKNOWN\",\"enabled\":true,\"channels\":[]}"))
+                .content("{\"type\":\"UNKNOWN\",\"enabled\":true,\"featureCode\":\"INVENTORY\"}"))
         .andExpect(status().isBadRequest());
     mvc.perform(
             post(PATH)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"channels\":[\"SMS\"]}"))
+                .content("{\"type\":\"STOCK_LOW\",\"enabled\":true,\"featureCode\":\"INVALID\"}"))
         .andExpect(status().isBadRequest());
     mvc.perform(
             put(PATH + "/" + ruleId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"enabled\":true,\"channels\":[]}"))
+                .content("{\"enabled\":true,\"featureCode\":\"INVENTORY\"}"))
         .andExpect(status().isUnprocessableEntity());
     mvc.perform(
             put(PATH + "/" + ruleId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"enabled\":true,\"channels\":[],\"version\":-1}"))
+                .content("{\"enabled\":true,\"featureCode\":\"INVENTORY\",\"version\":-1}"))
         .andExpect(status().isUnprocessableEntity());
     verifyNoInteractions(service);
   }

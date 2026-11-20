@@ -9,6 +9,7 @@ import com.vishop.notification.modules.setting.application.api.NotificationAlert
 import com.vishop.notification.modules.setting.application.api.NotificationAlertRuleApi.RuleView;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi;
 import com.vishop.notification.modules.setting.application.api.NotificationSettingManagementApi.ChannelView;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.List;
@@ -16,6 +17,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class NotificationSettingDispatchPolicyTest {
   final UUID tenant = UUID.randomUUID();
@@ -30,6 +33,15 @@ class NotificationSettingDispatchPolicyTest {
 
   ChannelView channel(
       NotificationChannel channel, boolean enabled, boolean available, boolean verified) {
+    return channel(channel, enabled, available, verified, Set.of());
+  }
+
+  ChannelView channel(
+      NotificationChannel channel,
+      boolean enabled,
+      boolean available,
+      boolean verified,
+      Set<NotificationTypeCode> types) {
     return new ChannelView(
         UUID.randomUUID(),
         channel.name(),
@@ -43,11 +55,12 @@ class NotificationSettingDispatchPolicyTest {
         null,
         null,
         1,
-        Map.of());
+        Map.of(),
+        types);
   }
 
   @Test
-  void sendsOnlyThroughChannelsAllowedByRuleAndReadyConnection() {
+  void routesThroughReadyConnectionsForEnabledRule() {
     when(rules.ruleForType(tenant, code))
         .thenReturn(
             new RuleView(
@@ -55,7 +68,7 @@ class NotificationSettingDispatchPolicyTest {
                 code.code(),
                 "Low stock",
                 true,
-                Set.of(NotificationChannel.values()),
+                NotificationFeatureCode.INVENTORY,
                 1));
     when(settings.channels(tenant))
         .thenReturn(
@@ -66,16 +79,6 @@ class NotificationSettingDispatchPolicyTest {
                 channel(NotificationChannel.LARK, false, true, true)));
     assertThat(policy.resolve(tenant, type).channels())
         .containsExactlyInAnyOrder(NotificationChannel.IN_APP, NotificationChannel.EMAIL);
-    when(rules.ruleForType(tenant, code))
-        .thenReturn(
-            new RuleView(
-                UUID.randomUUID(),
-                code.code(),
-                "Low stock",
-                true,
-                Set.of(NotificationChannel.LARK),
-                1));
-    assertThat(policy.resolve(tenant, type).channels()).isEmpty();
     assertThat(policy.resolve(tenant, type).selectedRecipients()).isEmpty();
   }
 
@@ -88,7 +91,7 @@ class NotificationSettingDispatchPolicyTest {
                 code.code(),
                 "Low stock",
                 false,
-                Set.of(NotificationChannel.IN_APP),
+                NotificationFeatureCode.INVENTORY,
                 1));
     assertThat(policy.resolve(tenant, type).channels()).isEmpty();
     verifyNoInteractions(settings);
@@ -100,22 +103,26 @@ class NotificationSettingDispatchPolicyTest {
     verifyNoInteractions(settings, rules);
   }
 
-  @Test
-  void larkIsAvailableWhenAnyOfTheConfiguredGroupsIsEnabledAndVerified() {
+  @ParameterizedTest
+  @EnumSource(
+      value = NotificationChannel.class,
+      names = {"LARK", "TELEGRAM"})
+  void routesOnlyToTheVerifiedGroupSubscribedToThisType(NotificationChannel provider) {
     when(rules.ruleForType(tenant, code))
         .thenReturn(
-            new RuleView(
-                UUID.randomUUID(),
-                code.code(),
-                "Low stock",
-                true,
-                Set.of(NotificationChannel.LARK),
-                1));
+            new RuleView(UUID.randomUUID(), code.code(), "Low stock", true, NotificationFeatureCode.INVENTORY, 1));
+    var stock = channel(provider, true, true, true, Set.of(code));
+    var products = channel(provider, true, true, true, Set.of(NotificationTypeCode.SKU_UNMAPPED));
     when(settings.channels(tenant))
         .thenReturn(
             List.of(
-                channel(NotificationChannel.LARK, false, true, false),
-                channel(NotificationChannel.LARK, true, true, true)));
-    assertThat(policy.resolve(tenant, type).channels()).containsExactly(NotificationChannel.LARK);
+                stock,
+                products,
+                channel(provider, true, true, true),
+                channel(provider, false, true, true, Set.of(code))));
+    var routing = policy.resolve(tenant, type);
+    assertThat(routing.channels()).containsExactly(provider);
+    assertThat(routing.groups())
+        .containsExactly(new NotificationDispatchPolicy.GroupSetting(provider, stock.id()));
   }
 }

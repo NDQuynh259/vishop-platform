@@ -92,6 +92,14 @@ class NotificationDeliveryPersistenceTest {
         UuidV7.nextId(), tenant, notification, null, NotificationChannel.EMAIL, destination, NOW);
   }
 
+  private void linkStockRule(UUID setting) {
+    db.update(
+        "INSERT INTO notification_setting_types(id,setting_id,rule_id) SELECT ?,?,id FROM notification_alert_rules WHERE tenant_id=? AND type='STOCK_LOW'",
+        UuidV7.nextId(),
+        setting,
+        tenant);
+  }
+
   private int count(String table) {
     return db.queryForObject(
         "SELECT count(*) FROM " + table + " WHERE tenant_id=?", Integer.class, tenant);
@@ -104,6 +112,19 @@ class NotificationDeliveryPersistenceTest {
         "INSERT INTO notification_settings(id,tenant_id,channel) VALUES (?,?,'EMAIL')",
         setting,
         tenant);
+    UUID telegram = UuidV7.nextId();
+    db.update(
+        """
+        INSERT INTO notification_settings(id,tenant_id,channel,enabled,connection_config)
+        VALUES (?,?,'TELEGRAM',true,'{"chatId":"-100123","token":"test-ref"}')
+        """,
+        telegram,
+        tenant);
+    db.update(
+        "INSERT INTO notification_alert_rules(id,tenant_id,type,feature_code,enabled) VALUES (?,?,'STOCK_LOW','INVENTORY',true)",
+        UuidV7.nextId(),
+        tenant);
+    linkStockRule(telegram);
     List<UUID> ids =
         commands.dispatch(
             new EnqueueDeliveriesCommand(
@@ -115,10 +136,8 @@ class NotificationDeliveryPersistenceTest {
                     new NotificationDeliveryApi.Target(
                         user, NotificationChannel.EMAIL, "member@EXAMPLE.test", setting),
                     new NotificationDeliveryApi.Target(
-                        null, NotificationChannel.TELEGRAM, "-100123"),
-                    new NotificationDeliveryApi.Target(
-                        null, NotificationChannel.LARK, "https://example.test/Webhook"))));
-    assertThat(ids).hasSize(3);
+                        null, NotificationChannel.TELEGRAM, "-100123", telegram))));
+    assertThat(ids).hasSize(2);
     var email = repository.findById(tenant, ids.getFirst()).orElseThrow();
     assertThat(email.userId()).isEqualTo(user);
     assertThat(email.settingId()).isEqualTo(setting);
@@ -132,8 +151,16 @@ class NotificationDeliveryPersistenceTest {
     assertThat(stored.getUpdatedAt()).isNotNull();
     assertThat(repository.findById(UuidV7.nextId(), email.id())).isEmpty();
     assertThat(repository.findById(tenant, ids.get(1)).orElseThrow().userId()).isNull();
-    assertThat(repository.findById(tenant, ids.get(2)).orElseThrow().channel())
-        .isEqualTo(NotificationChannel.LARK);
+    assertThatThrownBy(
+            () ->
+                commands.dispatch(
+                    new EnqueueDeliveriesCommand(
+                        tenant,
+                        notification,
+                        List.of(
+                            new NotificationDeliveryApi.Target(
+                                null, NotificationChannel.LARK, "unbound")))))
+        .hasRootCauseInstanceOf(java.sql.SQLException.class);
   }
 
   @Test
@@ -277,11 +304,27 @@ class NotificationDeliveryPersistenceTest {
   void larkDeliveriesBindToTheCorrectGroupWhenTenantHasMultipleSettings() {
     UUID firstSetting = UuidV7.nextId(), secondSetting = UuidV7.nextId();
     db.update(
-        "INSERT INTO notification_settings(id,tenant_id,channel,name) VALUES (?,?,'LARK','Operations'), (?,?,'LARK','Accounting')",
+        "INSERT INTO notification_settings(id,tenant_id,channel,name,enabled) VALUES (?,?,'LARK','Operations',true), (?,?,'LARK','Accounting',true)",
         firstSetting,
         tenant,
         secondSetting,
         tenant);
+    db.update(
+        "INSERT INTO notification_alert_rules(id,tenant_id,type,enabled,feature_code) VALUES (?,?,'STOCK_LOW',true,'INVENTORY')",
+        UuidV7.nextId(),
+        tenant);
+    linkStockRule(firstSetting);
+    assertThatThrownBy(
+            () ->
+                commands.dispatch(
+                    new EnqueueDeliveriesCommand(
+                        tenant,
+                        notification,
+                        List.of(
+                            new NotificationDeliveryApi.Target(
+                                null, NotificationChannel.LARK, "unsubscribed", secondSetting)))))
+        .hasRootCauseInstanceOf(java.sql.SQLException.class);
+    linkStockRule(secondSetting);
     List<UUID> ids =
         commands.dispatch(
             new EnqueueDeliveriesCommand(
@@ -312,6 +355,15 @@ class NotificationDeliveryPersistenceTest {
                   .extracting(NotificationDeliveryJpaEntity::getId)
                   .containsExactly(second.getId());
             });
+    db.update("DELETE FROM notification_setting_types WHERE setting_id=?", secondSetting);
+    assertThatThrownBy(
+            () ->
+                db.update(
+                    "UPDATE notification_deliveries SET status='PROCESSING',lock_token=?,"
+                        + " locked_until=now()+interval '1 minute' WHERE id=?",
+                    UuidV7.nextId(),
+                    ids.get(1)))
+        .hasStackTraceContaining("LARK group is not configured for this notification type");
   }
 
   @Test
