@@ -20,7 +20,13 @@ permissions lấy từ principal do gateway/filter tạo, không lấy từ body
 | POST | `/notifications/read-all` | Đọc tới cutoff, trả `{"updatedCount": 3}` |
 | DELETE | `/notifications/{notificationId}` | 204, xóa mềm riêng recipient; lặp lại 204 khi recipient chưa bị dọn cứng |
 
-List hỗ trợ `type`, `severity`, `read`, `shopId`, `page`, `limit`, `cursor`, `pageMode`. Quyền được áp dụng
+Mỗi thông báo có mã nhóm `featureCode` và tên tiếng Việt `featureName`. Ví dụ,
+`GET /api/v1/notifications?featureCode=INVENTORY` lấy nhóm Kho hàng. Nhóm Sản phẩm
+dùng `PRODUCT`, Đơn hàng dùng `FULFILLMENT`. Đơn hàng lỗ (`ORDER_LOSS`) thuộc nhóm
+Tài chính và đối soát (`FINANCE`). Mã loại cũ ngoài danh mục thuộc nhóm `LEGACY`.
+Bỏ qua `featureCode` để xem tất cả các nhóm.
+
+List hỗ trợ `featureCode`, `type`, `severity`, `read`, `shopId`, `page`, `limit`, `cursor`, `pageMode`. Quyền được áp dụng
 trong DB trước khi phân trang. Thứ tự `created_at DESC, id DESC`; cursor giữ đủ microsecond
 để không bỏ sót thông báo được tạo trong cùng millisecond. GET không tự đánh dấu đã đọc.
 

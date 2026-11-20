@@ -26,10 +26,10 @@ Nếu không gửi tên lúc tạo, API dùng tên enum kênh. PUT có thể đ�
 `name` thì giữ tên hiện tại. Tên được trim và trả về trong GET/POST/PUT.
 Tenant lấy từ principal. Khi bỏ `connectionConfig`, cấu hình ban đầu là object rỗng.
 API trả 201, JSON có `id`/`version`, và Location trỏ tới GET/PUT theo ID vừa tạo.
-LARK cho phép nhiều bản ghi trong cùng tenant, mỗi nhóm có `id`, tên và cấu hình webhook
-riêng. POST tạo nhóm mới, GET/PUT dùng ID của nhóm; không ghi đè cấu hình nhóm khác.
-IN_APP/EMAIL/TELEGRAM vẫn có một bản ghi mỗi tenant/kênh, POST trùng trả 409 kể cả khi đã soft-delete.
-Danh sách trả đủ các nhóm Lark chưa xóa; cursor dùng channel cùng setting ID để không lặp/bỏ sót nhóm.
+TELEGRAM và LARK cho phép nhiều nhóm trong cùng tenant. Mỗi nhóm có ID, tên và cấu hình kết nối riêng.
+POST tạo nhóm mới. GET/PUT dùng ID để xem và sửa đúng nhóm.
+IN_APP và EMAIL có một bản ghi mỗi tenant/kênh, POST trùng trả 409 kể cả khi đã soft-delete.
+Danh sách trả các nhóm chưa xóa. Cursor dùng channel và setting ID để phân trang.
 
 ```http
 POST /api/v1/notification-settings/channels
@@ -163,9 +163,9 @@ soft delete và optimistic locking. `channel` là enum lưu bằng `EnumType.STR
 `connectionConfig` là JSONB. Mapper chọn record cấu hình theo enum khi đọc/ghi,
 không suy đoán loại từ field JSON. Legacy Telegram aliases vẫn đọc được.
 
-V19 bỏ unique tenant/channel toàn bảng, thay bằng partial unique index cho các kênh khác LARK.
-Adapter đọc nhiều kết nối Lark theo ID; API nội bộ lấy một cấu hình theo channel sẽ báo conflict
-khi có nhiều bản ghi, yêu cầu dùng settingId. Ghi/đọc theo ID và tenant giữ nguyên optimistic locking.
+V19 cho phép nhiều nhóm Lark. V22 mở rộng cho Telegram. Partial unique index tiếp tục
+giới hạn mỗi tenant ở một cấu hình IN_APP và một cấu hình EMAIL. Khi có nhiều nhóm cùng
+kênh, dùng settingId để chọn nhóm cần cập nhật và version để kiểm tra xung đột.
 
 V9 backfill UUIDv7. V10 chuyển các cột connection cũ sang JSONB. V11 cho phép
 LARK trong constraint channel. API bật/tắt giữ toàn bộ cấu hình riêng của kênh;
@@ -208,6 +208,7 @@ PUT thay toàn bộ danh sách kênh và trạng thái bật/tắt:
 {"enabled":true,"channels":["IN_APP","LARK"],"version":1}
 ```
 
+Mỗi rule trả `featureCode` và `featureName` để giao diện nhóm theo cùng nghiệp vụ với hộp thư.
 Danh sách GET trả các type trong code catalog với tên hiển thị và giá trị mặc định,
 được ghi đè bằng rule đã lưu của tenant. Dòng mặc định chưa lưu có id=null, version=0;
 frontend dùng POST để tạo. Dữ liệu type cũ ngoài catalog vẫn đọc được, nhưng không tạo

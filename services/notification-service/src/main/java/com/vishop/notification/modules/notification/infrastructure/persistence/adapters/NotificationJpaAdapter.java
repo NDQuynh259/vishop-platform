@@ -9,12 +9,15 @@ import com.vishop.notification.modules.notification.domain.port.NotificationReci
 import com.vishop.notification.modules.notification.domain.port.NotificationRepository;
 import com.vishop.notification.modules.notification.domain.valueobject.NotificationRetentionPolicy;
 import com.vishop.notification.modules.notification.infrastructure.persistence.entities.NotificationJpaEntity;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
+import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import io.github.coreplatform.common.domain.exception.ConflictException;
 import io.github.coreplatform.common.domain.exception.EntityNotFoundException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -129,6 +132,11 @@ public class NotificationJpaAdapter
   private String listConditions(NotificationInboxFilter filter) {
     String conditions = visible() + " and r.deletedAt is null";
     if (filter.getType() != null) conditions += " and n.type=:type";
+    if (filter.getFeatureCode() != null)
+      conditions +=
+          filter.getFeatureCode() == NotificationFeatureCode.LEGACY
+              ? " and n.type not in :featureTypes"
+              : " and n.type in :featureTypes";
     if (filter.getSeverity() != null) conditions += " and n.severity=:severity";
     if (filter.getRead() != null)
       conditions += filter.getRead() ? " and r.readAt is not null" : " and r.readAt is null";
@@ -140,6 +148,15 @@ public class NotificationJpaAdapter
 
   private void bindList(Query query, NotificationInboxFilter filter) {
     if (filter.getType() != null) query.setParameter("type", filter.getType());
+    var feature = filter.getFeatureCode();
+    if (feature != null) {
+      var types =
+          Arrays.stream(NotificationTypeCode.values())
+              .filter(type -> feature == NotificationFeatureCode.LEGACY || type.feature() == feature)
+              .map(NotificationTypeCode::code)
+              .toList();
+      query.setParameter("featureTypes", types);
+    }
     if (filter.getSeverity() != null) query.setParameter("severity", filter.getSeverity());
     if (filter.getShopId() != null) query.setParameter("shopId", filter.getShopId());
     if (filter.getBeforeCreatedAt() != null)

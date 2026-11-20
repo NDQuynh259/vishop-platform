@@ -9,6 +9,7 @@ import com.vishop.notification.modules.notification.application.command.*;
 import com.vishop.notification.modules.notification.application.dto.*;
 import com.vishop.notification.modules.notification.infrastructure.config.NotificationModuleConfiguration;
 import com.vishop.notification.modules.notification.presentation.rest.controller.NotificationInboxController;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import io.github.coreplatform.common.domain.cqrs.CommandBus;
@@ -173,6 +174,36 @@ class NotificationInboxPersistenceTest {
   UUID create(String event, String permission, UUID shopId, UUID... recipients) {
     return commands.dispatch(
         new CreateNotificationCommand(message(event, permission, shopId), Set.of(recipients)));
+  }
+
+  @Test
+  void groupFilterUsesTypeMappingBeforeCountingAndPaging() {
+    var stock = create("stock", "inventory.view", null, user);
+    var shipment = create("shipment", "inventory.view", null, user);
+    var legacy = create("legacy", "inventory.view", null, user);
+    jdbc.update("UPDATE notifications SET type='SHIPMENT_EXCEPTION' WHERE id=?", shipment);
+    jdbc.update("UPDATE notifications SET type='HISTORICAL_TYPE' WHERE id=?", legacy);
+    var a = actor(user, "inventory.view");
+    for (var group :
+        Map.of(
+                NotificationFeatureCode.INVENTORY, stock,
+                NotificationFeatureCode.FULFILLMENT, shipment,
+                NotificationFeatureCode.LEGACY, legacy)
+            .entrySet()) {
+      var page =
+          inbox.list(
+              a,
+              new InboxFilter(
+                  null, null, null, null, OffsetPagination.of(1, 1), null, group.getKey()));
+      assertThat(page.total()).isEqualTo(1);
+      assertThat(page.items())
+          .singleElement()
+          .satisfies(
+              item -> {
+                assertThat(item.getId()).isEqualTo(group.getValue());
+                assertThat(item.getFeatureName()).isEqualTo(group.getKey().displayName());
+              });
+    }
   }
 
   @Test

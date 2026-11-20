@@ -299,12 +299,12 @@ class NotificationRedesignMigrationTest {
   }
 
   @Test
-  void multipleLarkMigrationKeepsRowsAndTenantChannelDeliveryForeignKey() throws Exception {
+  void groupMigrationsKeepRowsAndTenantChannelDeliveryForeignKey() throws Exception {
     migrate();
     Flyway.configure().dataSource(url, "postgres", "postgres").target("18").load().migrate();
     var before = snapshots();
     var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-    assertThat(latest.migrate().migrationsExecuted).isEqualTo(3);
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(4);
     assertThat(snapshots()).isEqualTo(before);
     UUID group = UuidV7.nextId();
     execute(
@@ -321,6 +321,13 @@ class NotificationRedesignMigrationTest {
                 UuidV7.nextId(),
                 TENANT));
     delivery("LARK", "https://example.test/second-group", null, group);
+    UUID telegramGroup = UuidV7.nextId();
+    execute(
+        "INSERT INTO notification_settings(id,tenant_id,channel,name) VALUES (?,?,'TELEGRAM','Sales')",
+        telegramGroup,
+        TENANT);
+    delivery("TELEGRAM", "-100456", null, telegramGroup);
+    rejects("23503", () -> delivery("LARK", "wrong-group", null, telegramGroup));
     rejects("23503", () -> delivery("EMAIL", "wrong-channel@example.test", null, group));
     assertThat(latest.migrate().migrationsExecuted).isZero();
   }

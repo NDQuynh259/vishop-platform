@@ -10,7 +10,7 @@ public enum NotificationFeatureCode {
   SHOP("Kết nối gian hàng"),
   INVENTORY("Kho hàng"),
   PRODUCT("Sản phẩm"),
-  FULFILLMENT("Xử lý và vận chuyển đơn"),
+  FULFILLMENT("Đơn hàng"),
   FINANCE("Tài chính và đối soát"),
   SYNC("Đồng bộ dữ liệu"),
   LEGACY("Loại thông báo hiện có khác");

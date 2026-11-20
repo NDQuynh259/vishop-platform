@@ -53,7 +53,8 @@ public class NotificationInboxController {
                     request.getRead(),
                     request.getShopId(),
                     cursorMode ? null : pagination.toOffsetPagination(),
-                    cursorMode ? pagination.toCursorParams() : null))));
+                    cursorMode ? pagination.toCursorParams() : null,
+                    request.getFeatureCode()))));
   }
 
   @GetMapping("/unread-count")

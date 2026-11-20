@@ -1,5 +1,6 @@
 package com.vishop.notification.modules.notification.application.dto;
 
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.contract.NotificationMessage.Severity;
 import java.time.Instant;
 import java.util.UUID;
@@ -19,4 +20,10 @@ public class NotificationView {
   Instant occurredAt;
   Instant createdAt;
   Instant readAt;
+
+  public String getFeatureName() {
+    return NotificationFeatureCode.fromCode(featureCode)
+        .orElse(NotificationFeatureCode.LEGACY)
+        .displayName();
+  }
 }

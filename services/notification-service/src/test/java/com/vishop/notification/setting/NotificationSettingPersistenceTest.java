@@ -919,6 +919,26 @@ class NotificationSettingPersistenceTest {
   }
 
   @Test
+  void telegramGroupsHaveIndependentChatIdsWithinOneTenant() {
+    var ops =
+        settings.createChannel(
+            tenant, NotificationChannel.TELEGRAM, "Operations", false, Map.of("chatId", "-101"));
+    var sales =
+        settings.createChannel(
+            tenant, NotificationChannel.TELEGRAM, "Sales", false, Map.of("chatId", "-102"));
+    assertThat(settings.channels(tenant))
+        .filteredOn(channel -> channel.channel() == NotificationChannel.TELEGRAM)
+        .extracting(ChannelView::id)
+        .containsExactlyInAnyOrder(ops.id(), sales.id());
+    settings.updateChannel(
+        tenant, ops.id(), new ChannelUpdate(false, Map.of("chatId", "-103"), ops.version()));
+    assertThat(settings.channelById(tenant, ops.id()).connectionConfig())
+        .containsEntry("chatId", "-103");
+    assertThat(settings.channelById(tenant, sales.id()).connectionConfig())
+        .containsEntry("chatId", "-102");
+  }
+
+  @Test
   void multipleLarkGroupsAreListedAndUpdatedByIdWithoutAmbiguousChannelLookup() throws Exception {
     var first =
         settings.createChannel(

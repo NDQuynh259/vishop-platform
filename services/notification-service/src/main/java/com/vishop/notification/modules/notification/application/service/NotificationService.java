@@ -13,6 +13,7 @@ import com.vishop.notification.modules.notification.domain.entity.NotificationIn
 import com.vishop.notification.modules.notification.domain.entity.NotificationInboxScope;
 import com.vishop.notification.modules.notification.domain.entity.NotificationRecipient;
 import com.vishop.notification.modules.notification.domain.port.NotificationRepository;
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationMessage;
 import io.github.coreplatform.common.domain.exception.BadRequestException;
@@ -105,6 +106,7 @@ public class NotificationService implements NotificationApi {
     var query =
         new NotificationInboxFilter(
             filter.getType() == null ? null : filter.getType().code(),
+            filter.getFeatureCode(),
             filter.getSeverity(),
             filter.getRead(),
             filter.getShopId(),
@@ -177,7 +179,7 @@ public class NotificationService implements NotificationApi {
     return new NotificationView(
         notification.id(),
         message.type(),
-        type.map(t -> t.feature().code()).orElse(null),
+        type.map(NotificationTypeCode::feature).orElse(NotificationFeatureCode.LEGACY).code(),
         type.map(t -> t.category().name()).orElse(null),
         message.severity(),
         message.title(),

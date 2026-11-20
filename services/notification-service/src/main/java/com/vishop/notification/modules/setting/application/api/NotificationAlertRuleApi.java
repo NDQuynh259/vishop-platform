@@ -1,5 +1,6 @@
 package com.vishop.notification.modules.setting.application.api;
 
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationChannel;
 import java.util.List;
@@ -16,6 +17,16 @@ public interface NotificationAlertRuleApi {
     boolean enabled;
     Set<NotificationChannel> channels;
     long version;
+
+    public NotificationFeatureCode getFeatureCode() {
+      return NotificationTypeCode.fromCode(type)
+          .map(NotificationTypeCode::feature)
+          .orElse(NotificationFeatureCode.LEGACY);
+    }
+
+    public String getFeatureName() {
+      return getFeatureCode().displayName();
+    }
   }
 
   @Value

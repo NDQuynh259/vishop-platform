@@ -102,9 +102,9 @@ V18 removes `notification_deduplication_archive` and `notification_delivery_atte
 The current schema has seven business tables, plus Flyway's schema history. Delivery status,
 attempt counters and provider IDs stay in `notification_deliveries`; technical details belong in logging.
 
-V19 allows multiple Lark group settings per tenant. Each group is addressed by its setting ID;
-the tenant/id/channel key remains for delivery foreign keys. The other channels retain one
-setting per tenant. Listing returns every active Lark group; cursor identity includes the setting ID.
+Each tenant can configure multiple Lark groups (V19) and Telegram groups (V22).
+List, update and delivery operations identify each group by its setting ID.
+Email and in-app each have one configuration per tenant.
 
 Tenant/user/shop IDs are external references to their owning services; no cross-database
 foreign keys. Local foreign keys include tenant ID to reject mismatched tenant links.

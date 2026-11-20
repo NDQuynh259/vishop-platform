@@ -1,5 +1,6 @@
 package com.vishop.notification.modules.notification.presentation.rest.dto;
 
+import com.vishop.notification.shared.constants.NotificationFeatureCode;
 import com.vishop.notification.shared.constants.NotificationTypeCode;
 import com.vishop.notification.shared.contract.NotificationMessage.Severity;
 import java.util.UUID;
@@ -10,6 +11,7 @@ import lombok.Setter;
 @Setter
 public class NotificationInboxListReq {
   private NotificationTypeCode type;
+  private NotificationFeatureCode featureCode;
   private Severity severity;
   private Boolean read;
   private UUID shopId;

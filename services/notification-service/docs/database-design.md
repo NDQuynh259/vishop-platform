@@ -124,7 +124,7 @@ LARK có nhiều setting mỗi tenant, mỗi nhóm được chọn bằng settin
 V19 thay unique `(tenant_id, channel)` bằng partial unique index chỉ áp dụng với kênh khác LARK.
 Unique `(tenant_id, id, channel)` được giữ để bảo vệ FK của delivery.
 connection_config chứa cấu hình và tham chiếu secret; API không trả secret.
-IN_APP/EMAIL/TELEGRAM vẫn dùng một kết nối cho mỗi tenant/kênh.
+Từ V22, TELEGRAM cũng hỗ trợ nhiều nhóm theo settingId. IN_APP và EMAIL dùng một kết nối cho mỗi tenant/kênh.
 
 Rule unique `(tenant_id, type)`. V16 chuyển bốn boolean thành `channels TEXT[]`,
 ví dụ `['IN_APP','TELEGRAM']`; tập rỗng hợp lệ.

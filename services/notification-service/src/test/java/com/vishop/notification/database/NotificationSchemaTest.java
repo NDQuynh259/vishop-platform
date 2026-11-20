@@ -19,6 +19,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class NotificationSchemaTest {
+        private static final int LATEST_SCHEMA_VERSION = 22;
         static EmbeddedPostgres postgres;
         Connection db;
         Flyway flyway;
@@ -45,7 +46,7 @@ class NotificationSchemaTest {
                 }
                 String url = postgres.getJdbcUrl("postgres", name);
                 flyway = Flyway.configure().dataSource(url, "postgres", "postgres").cleanDisabled(true).load();
-                assertThat(flyway.migrate().migrationsExecuted).isEqualTo(21);
+                assertThat(flyway.migrate().migrationsExecuted).isEqualTo(LATEST_SCHEMA_VERSION);
                 db = DriverManager.getConnection(url, "postgres", "postgres");
                 execute(
                                 "INSERT INTO"
@@ -154,7 +155,7 @@ class NotificationSchemaTest {
                                                 .dataSource(url, "postgres", "postgres")
                                                 .load()
                                                 .migrate().migrationsExecuted)
-                                .isEqualTo(10);
+                                .isEqualTo(LATEST_SCHEMA_VERSION - 11);
                 try (var connection = DriverManager.getConnection(url, "postgres", "postgres");
                                 var statement = connection.createStatement();
                                 var result = statement.executeQuery(
@@ -278,7 +279,7 @@ class NotificationSchemaTest {
                                                         + "'00000000-0000-0000-0000-000000000005',"
                                                         + "'2026-01-01 00:00:00Z','2026-01-02 00:00:00Z')");
                         var latest = Flyway.configure().dataSource(url, "postgres", "postgres").load();
-                        assertThat(latest.migrate().migrationsExecuted).isEqualTo(21 - previousVersion);
+                        assertThat(latest.migrate().migrationsExecuted).isEqualTo(LATEST_SCHEMA_VERSION - previousVersion);
                         latest.validate();
                         try (var result = statement.executeQuery(
                                         "SELECT id,created_at,read_at FROM notification_recipients WHERE "
